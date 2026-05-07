@@ -4260,7 +4260,15 @@ var LexeraEmbedMenu = (function () {
     // a per-card data attribute.
     if (!isExternal && previewKind === 'pdf' &&
         typeof window !== 'undefined' && window.LexeraPdfViewer) {
-      var currentMode = window.LexeraPdfViewer.readMode();
+      // The check-mark next to the current mode reflects the
+      // PER-EMBED choice (from `data-pdf-view` on the container,
+      // populated from the markdown's `{view=…}` attribute) when one
+      // is set, falling back to the global LexeraSettings default
+      // for unconfigured embeds.
+      var perEmbedMode = String(container.getAttribute('data-pdf-view') || '').toLowerCase();
+      var currentMode = window.LexeraPdfViewer.VALID_MODES[perEmbedMode]
+        ? perEmbedMode
+        : window.LexeraPdfViewer.readMode();
       function pdfItem(id, label, modeKey) {
         return { id: id, label: (currentMode === modeKey ? '✓ ' : '   ') + label };
       }
@@ -4294,9 +4302,12 @@ var LexeraEmbedMenu = (function () {
     if (action === 'pdf-view-scrolled' || action === 'pdf-view-overview' || action === 'pdf-view-stacked') {
       closeEmbedMenu();
       var pdfMode = action.substring('pdf-view-'.length);
-      if (typeof window !== 'undefined' && window.LexeraPdfViewer) {
-        window.LexeraPdfViewer.writeMode(pdfMode);
-        window.LexeraPdfViewer.applyModeToAll(pdfMode);
+      if (typeof window !== 'undefined' && window.LexeraPdfViewer &&
+          typeof window.LexeraPdfViewer.applyModeToEmbed === 'function') {
+        // Per-embed: writes `{view=…}` into the card's markdown source
+        // for THIS embed only. Other PDFs in the same card / board
+        // keep their own per-embed value or the global default.
+        window.LexeraPdfViewer.applyModeToEmbed(container, pdfMode);
       }
       return;
 

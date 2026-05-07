@@ -117,10 +117,14 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(body).toMatch(/pdf-view-stacked/);
   });
 
-  it('embedMenu.js handles the pdf-view-* actions by calling LexeraPdfViewer.writeMode + applyModeToAll', () => {
+  it('embedMenu.js handles the pdf-view-* actions by calling applyModeToEmbed (per-embed, writes markdown)', () => {
+    // The picker is now per-embed: it persists the choice into the
+    // card's markdown source as `{view=…}` instead of writing a single
+    // global LexeraSettings flag. `applyModeToEmbed` is the entry
+    // point that combines local viewer.setMode + DOM data-attr update
+    // + markdown source rewrite.
     expect(embedMenuJs).toMatch(/action === ['"]pdf-view-scrolled['"]/);
-    expect(embedMenuJs).toMatch(/LexeraPdfViewer\.writeMode/);
-    expect(embedMenuJs).toMatch(/LexeraPdfViewer\.applyModeToAll/);
+    expect(embedMenuJs).toMatch(/LexeraPdfViewer\.applyModeToEmbed/);
   });
 
   it('renderPageToCanvas does NOT set inline canvas.style.height (preserves aspect ratio in narrow containers)', () => {

@@ -202,6 +202,78 @@
     };
   }
 
+  // Rewrite the source markdown of `card.cards[fullIdx].content` so the
+  // `targetIndex`-th `![alt](path){…}` whose path matches `filePath`
+  // carries `view=mode` in its attribute block. Used by the burger
+  // menu's per-embed picker to persist the user's choice in the
+  // markdown itself, so the mode survives reloads + appears in
+  // exported markdown. Existing attributes other than `view=` are
+  // preserved verbatim.
+  function rewriteEmbedView(content, filePath, targetIndex, mode) {
+    var idx = -1;
+    return String(content).replace(
+      /!\[([^\]]*)\]\(([^)]+)\)(\{[^}]*\})?/g,
+      function (match, alt, rawSrc, attrsBlock) {
+        idx++;
+        if (idx !== targetIndex) return match;
+        // rawSrc may carry a `path "title"` suffix — strip the title
+        // for the equality check, but emit rawSrc verbatim in the
+        // output so the title (and any escapes) are preserved.
+        var srcPath = rawSrc;
+        var titleMatch = rawSrc.match(/^(.+?)\s+["'][^"']*["']\s*$/);
+        if (titleMatch) srcPath = titleMatch[1].trim();
+        if (srcPath !== filePath) return match;
+        var newAttrs;
+        if (attrsBlock) {
+          var inner = attrsBlock.slice(1, -1).trim();
+          if (/(^|\s)view\s*=\s*\S+/.test(inner)) {
+            inner = inner.replace(
+              /(^|\s)view\s*=\s*\S+/,
+              function (_m, lead) { return lead + 'view=' + mode; }
+            );
+          } else {
+            inner = (inner ? inner + ' ' : '') + 'view=' + mode;
+          }
+          newAttrs = '{' + inner + '}';
+        } else {
+          newAttrs = '{view=' + mode + '}';
+        }
+        return '![' + alt + '](' + rawSrc + ')' + newAttrs;
+      }
+    );
+  }
+
+  // Persist the picked view-mode by rewriting the card's markdown
+  // source and dispatching the existing card-save flow. The local
+  // viewer was already updated by `applyModeToEmbed`, so this is a
+  // background persistence step — the UI doesn't wait on it.
+  function writeViewToCardMarkdown(embedContainer, mode) {
+    if (typeof window === 'undefined') return;
+    if (!VALID_MODES[mode] || !embedContainer) return;
+    var cardEl = embedContainer.closest && embedContainer.closest('.card');
+    if (!cardEl) return;
+    var bds = window.LexeraBoardDataStore;
+    var ce = window.CardEditor;
+    if (!bds || !ce || typeof ce.saveCardEdit !== 'function') return;
+    var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
+    var visibleIdx = parseInt(cardEl.getAttribute('data-card-index') || '-1', 10);
+    if (colIndex < 0 || visibleIdx < 0) return;
+    var col = typeof bds.getFullColumn === 'function' ? bds.getFullColumn(colIndex) : null;
+    if (!col || !col.cards) return;
+    var fullIdx = typeof bds.getFullCardIndex === 'function' ? bds.getFullCardIndex(col, visibleIdx) : visibleIdx;
+    if (fullIdx < 0 || !col.cards[fullIdx]) return;
+    var oldContent = col.cards[fullIdx].content || '';
+    var embedIndex = parseInt(embedContainer.getAttribute('data-embed-index') || '0', 10);
+    var filePath = embedContainer.getAttribute('data-file-path') || '';
+    if (!filePath) return;
+    var newContent = rewriteEmbedView(oldContent, filePath, embedIndex, mode);
+    if (newContent === oldContent) return;
+    // Fire-and-forget — the user already sees the visual change from
+    // the local viewer's setMode + the data-pdf-view attr update;
+    // saveCardEdit handles the CRDT write + sibling-window broadcast.
+    try { ce.saveCardEdit(cardEl, colIndex, fullIdx, newContent); } catch (_) {}
+  }
+
   // Surfaced on window so the burger menu can find the active viewer
   // for a given embed container and tell it to switch modes.
   if (typeof window !== 'undefined') {
@@ -211,14 +283,35 @@
       readMode: readMode,
       writeMode: writeMode,
       mount: mountPdfViewer,
+      _test_rewriteEmbedView: rewriteEmbedView,
+      // Apply a mode to ONE specific embed and persist the choice into
+      // the card's markdown source as a `{view=…}` attribute. Called
+      // by the burger menu's per-embed picker.
+      applyModeToEmbed: function (embedContainer, mode) {
+        if (!VALID_MODES[mode] || !embedContainer) return;
+        var viewer = embedContainer.querySelector('.pdf-viewer');
+        if (viewer && viewer.__lexeraPdfController &&
+            typeof viewer.__lexeraPdfController.setMode === 'function') {
+          try { viewer.__lexeraPdfController.setMode(mode); } catch (_) {}
+        }
+        embedContainer.setAttribute('data-pdf-view', mode);
+        writeViewToCardMarkdown(embedContainer, mode);
+      },
       // Walk every mounted PDF viewer in the document and tell it to
-      // switch to `mode`. Called by the burger menu after writeMode().
+      // switch to `mode`. Skips embeds with an explicit `data-pdf-view`
+      // attribute so per-embed `{view=…}` overrides stay pinned.
       // Each viewer keeps a back-reference at `el.__lexeraPdfController`.
       applyModeToAll: function (mode) {
         if (!VALID_MODES[mode]) return;
         var nodes = document.querySelectorAll('.pdf-viewer');
         for (var i = 0; i < nodes.length; i++) {
-          var ctrl = nodes[i].__lexeraPdfController;
+          var node = nodes[i];
+          var parent = node.parentNode;
+          var pinnedView = parent && parent.getAttribute
+            ? String(parent.getAttribute('data-pdf-view') || '').toLowerCase()
+            : '';
+          if (VALID_MODES[pinnedView]) continue;
+          var ctrl = node.__lexeraPdfController;
           if (ctrl && typeof ctrl.setMode === 'function') {
             try { ctrl.setMode(mode); } catch (_) { /* ignore */ }
           }
