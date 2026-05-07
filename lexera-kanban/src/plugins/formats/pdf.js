@@ -79,12 +79,17 @@
     });
   }
 
-  // Pixel widths used per mode when sizing each page canvas. These are
-  // intentionally simple — a future iteration can react to container
-  // size, but minimal-change scope just picks reasonable defaults.
+  // Pixel widths used per mode when sizing each page canvas.
+  //   scrolled — single tall column, comfortable read width.
+  //   overview — small contact-sheet thumbnails. CSS grid with
+  //              `auto-fill, minmax(140px, 1fr)` packs as many columns
+  //              as the host can hold, so a wide modal shows a 5-up
+  //              grid while a narrow card still gets 2-up — visually
+  //              distinct from scrolled even in tight cards.
+  //   stacked  — full host width, no inner scroll.
   var PAGE_WIDTH_BY_MODE = {
     scrolled: 720,
-    overview: 180,
+    overview: 140,
     stacked: 720
   };
 
@@ -108,6 +113,12 @@
           if (cancelled.flag) return;
           var pageEl = document.createElement('div');
           pageEl.className = 'pdf-page';
+          // Page number is shown as a CSS-positioned label only in
+          // overview mode — gives the contact-sheet a clear "page 1
+          // of N" identity that scrolled and stacked deliberately
+          // omit. Plain `data-` attribute so the CSS rule can pick it
+          // up without the JS having to know about styling.
+          pageEl.setAttribute('data-pdf-page-num', String(idx + 1));
           pageEl.appendChild(canvas);
           container.appendChild(pageEl);
           return next(idx + 1);

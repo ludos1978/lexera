@@ -158,12 +158,25 @@ var LexeraPollingService = (function () {
       var workspacesChanged = false;
       if (wsData) {
         var wsList = Array.isArray(wsData.workspaces) ? wsData.workspaces : [];
+        var defaultWsId = wsData.default_workspace || null;
+        // Stamp `isDefault` onto the matching workspace so
+        // setWorkspacesState's pickDefaultWorkspaceId() can promote
+        // it instead of falling back to list[0].
+        if (defaultWsId) {
+          var defaultIdStr = String(defaultWsId);
+          wsList = wsList.map(function (ws) {
+            if (ws && String(ws.id) === defaultIdStr) {
+              return Object.assign({}, ws, { isDefault: true });
+            }
+            return ws;
+          });
+        }
         var wsFp = fingerprint(wsList, 'name');
         if (wsFp !== _lastWorkspacesFingerprint) {
           _lastWorkspacesFingerprint = wsFp;
           workspacesChanged = true;
           _callDep('setWorkspaces', wsList);
-          _callDep('resolveActiveWorkspaceId', wsData.default_workspace || null);
+          _callDep('resolveActiveWorkspaceId', defaultWsId);
           _callDep('refreshWorkspaceMirrors');
         }
       }

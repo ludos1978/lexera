@@ -202,6 +202,22 @@ var LexeraDashboard = (function () {
     return first && first.id ? String(first.id) : null;
   }
 
+  // The backend returns `default_workspace` as a sibling field, not as
+  // a flag on each workspace, so `pickDefaultWorkspaceId` (which looks
+  // for `ws.isDefault`) would otherwise always fall through to the
+  // first entry. Stamp the flag onto the matching workspace before
+  // handing the catalog to setWorkspacesState.
+  function annotateDefaultWorkspace(list, defaultWorkspaceId) {
+    if (!Array.isArray(list) || !defaultWorkspaceId) return list;
+    var defaultIdStr = String(defaultWorkspaceId);
+    return list.map(function (ws) {
+      if (ws && String(ws.id) === defaultIdStr) {
+        return Object.assign({}, ws, { isDefault: true });
+      }
+      return ws;
+    });
+  }
+
   function setWorkspacesState(nextWorkspaces) {
     workspaces = Array.isArray(nextWorkspaces) ? nextWorkspaces : [];
     syncRuntimeState('workspaces', workspaces);
@@ -6208,6 +6224,7 @@ var LexeraDashboard = (function () {
 
   function handleManagementWorkspacesLoaded(workspaceList, defaultWorkspaceId) {
     var nextWorkspaces = Array.isArray(workspaceList) ? workspaceList : [];
+    nextWorkspaces = annotateDefaultWorkspace(nextWorkspaces, defaultWorkspaceId);
     setWorkspacesState(nextWorkspaces);
     resolveActiveWorkspaceId(defaultWorkspaceId || null);
   }

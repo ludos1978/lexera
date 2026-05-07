@@ -136,7 +136,7 @@ describe('LexeraPollingService', () => {
     service.init(deps);
     await service.poll();
 
-    expect(deps.setWorkspaces).toHaveBeenCalledWith([{ id: 'ws-1', name: 'Workspace 1' }]);
+    expect(deps.setWorkspaces).toHaveBeenCalledWith([{ id: 'ws-1', name: 'Workspace 1', isDefault: true }]);
     expect(deps.resolveActiveWorkspaceId).toHaveBeenCalledWith('ws-1');
     expect(deps.refreshWorkspaceMirrors).toHaveBeenCalled();
   });

@@ -4678,19 +4678,40 @@ img[data-lazy-src] {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* Mode 2 — overview: small thumbnails wrapped in a grid; whole doc
- * visible at a glance. Container scrolls only if the doc is huge. */
+/* Mode 2 — overview: contact-sheet of every page. Real CSS grid (not
+ * a flex column), tinted backdrop, and a page-number badge under
+ * each thumbnail so the user can read it as "page 3 of N" at a
+ * glance. Visually distinct from scrolled even in narrow cards
+ * (where overview shows 2 columns vs scrolled's single column). */
 .pdf-viewer.pdf-mode-overview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-content: flex-start;
-  justify-content: center;
-  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  padding: 10px;
+  background: var(--bg-secondary, #f5f5f7);
+  align-items: start;
+  justify-items: center;
 }
 .pdf-viewer.pdf-mode-overview .pdf-page {
   margin: 0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+}
+.pdf-viewer.pdf-mode-overview .pdf-page::after {
+  content: attr(data-pdf-page-num);
+  font-size: 11px;
+  color: var(--text-muted, #777);
+  font-variant-numeric: tabular-nums;
+}
+.pdf-viewer.pdf-mode-overview .pdf-page-canvas {
+  max-width: 100%;
+  height: auto;
 }
 
 /* Mode 3 — stacked: every page rendered at full host width, no inner
