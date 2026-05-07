@@ -79,29 +79,35 @@
     });
   }
 
-  // Pixel widths used per mode when sizing each page canvas.
-  //   scrolled — single tall column, comfortable read width.
-  //   overview — contact-sheet thumbnails. Renders at a higher
-  //              intrinsic resolution (220 px) so the CSS
-  //              `width: 100%` rule in app.css can scale each canvas
-  //              up to fill its grid cell (which itself adapts via
-  //              `minmax(100px, 1fr)`) without going blurry. Two
-  //              columns fit even in narrow ~250 px cards.
-  //   stacked  — full host width, no inner scroll.
-  var PAGE_WIDTH_BY_MODE = {
-    scrolled: 720,
-    overview: 220,
-    stacked: 720
-  };
+  // Single intrinsic-resolution constant for ALL modes. Each page is
+  // rasterized to canvas at this width once, then CSS sizes it down
+  // (overview = ~100-200 px grid cell) or up (stacked = host width)
+  // for display. Switching modes therefore does not require a re-
+  // render — the burger menu's setMode just swaps CSS classes, which
+  // is what makes the mode change feel immediate. 720 px covers
+  // scrolled mode at native resolution and stays sharp when scaled
+  // down to overview thumbnail size; modal stacked mode wider than
+  // 720 px loses some sharpness but typical card stacks are < 720 px
+  // so the trade-off lands on the right side for the common case.
+  var RENDER_WIDTH_PX = 720;
 
-  // Build the page list inside `container` for the given mode. Cancels
-  // any in-flight render via the `cancelled` token if the mode flips
-  // before the previous render finishes.
-  function renderPages(pdf, container, mode, cancelled) {
-    container.innerHTML = '';
+  // Apply mode-class to `container` without touching the rendered
+  // canvases. Used both at first render (just before renderPages
+  // starts appending pages) and on every subsequent mode switch.
+  function applyModeClass(container, mode) {
     container.classList.remove('pdf-mode-scrolled', 'pdf-mode-overview', 'pdf-mode-stacked');
     container.classList.add('pdf-mode-' + mode);
-    var width = PAGE_WIDTH_BY_MODE[mode] || PAGE_WIDTH_BY_MODE.scrolled;
+  }
+
+  // Build the page list inside `container`. Pages are always
+  // rasterized at RENDER_WIDTH_PX intrinsic — CSS sizes the canvas
+  // for display in each mode, so this only runs once per PDF (per
+  // mount) regardless of how many times the user switches modes.
+  // Cancels any in-flight render via the `cancelled` token if the
+  // host is destroyed mid-render.
+  function renderPages(pdf, container, mode, cancelled) {
+    container.innerHTML = '';
+    applyModeClass(container, mode);
     var loaders = [];
     for (var i = 1; i <= pdf.numPages; i++) {
       loaders.push(pdf.getPage(i));
@@ -110,7 +116,7 @@
       function next(idx) {
         if (cancelled.flag) return Promise.resolve();
         if (idx >= pages.length) return Promise.resolve();
-        return renderPageToCanvas(pages[idx], width).then(function (canvas) {
+        return renderPageToCanvas(pages[idx], RENDER_WIDTH_PX).then(function (canvas) {
           if (cancelled.flag) return;
           var pageEl = document.createElement('div');
           pageEl.className = 'pdf-page';
@@ -187,17 +193,16 @@
 
     return {
       setMode: function (mode) {
-        if (!VALID_MODES[mode] || mode === currentMode || !pdfDoc) {
-          if (VALID_MODES[mode] && mode !== currentMode) currentMode = mode;
-          return;
-        }
-        // Cancel the previous render token, install a fresh one, and
-        // re-paint with the new mode against the same loaded doc.
-        cancelToken.flag = true;
-        cancelToken = { flag: false };
+        if (!VALID_MODES[mode] || mode === currentMode) return;
+        // Mode switch is JUST a CSS class swap — every page is already
+        // rendered at RENDER_WIDTH_PX intrinsic resolution, so the
+        // browser handles the layout flip + per-mode sizing for free.
+        // No re-render, no progressive page-by-page repaint, no flash
+        // of "stacked → side-by-side" transition. The user sees the
+        // new layout in the next paint frame.
         currentMode = mode;
         host.setAttribute('data-pdf-mode', mode);
-        renderPages(pdfDoc, host, mode, cancelToken).catch(function () { /* swallowed: cancelled */ });
+        applyModeClass(host, mode);
       },
       getMode: function () { return currentMode; }
     };
@@ -285,17 +290,40 @@
       return bail('rewrite produced no change — embedIndex / filePath did not match the source markdown',
         { embedIndex: embedIndex, filePath: filePath, contentSnippet: oldContent.slice(0, 200) });
     }
-    // Fire-and-forget — the user already sees the visual change from
-    // the local viewer's setMode + the data-pdf-view attr update;
-    // saveCardEdit handles the CRDT write + sibling-window broadcast.
+    // The user already sees the visual change from the local viewer's
+    // setMode + the data-pdf-view attr update; saveCardEdit handles
+    // the CRDT write + sibling-window broadcast. saveCardEdit is
+    // ASYNC, so the previous try/catch only caught synchronous
+    // throws — a rejected promise was silently swallowed. Log both
+    // paths so a real "save did not land" failure surfaces in the
+    // Log panel + a notification (which the user will actually see
+    // even without opening the panel).
+    function notifyFailure(reason) {
+      if (typeof window.showNotification === 'function') {
+        try { window.showNotification('PDF view-mode save failed: ' + reason); } catch (_) {}
+      }
+    }
     try {
-      ce.saveCardEdit(cardEl, colIndex, fullIdx, newContent);
+      var saveResult = ce.saveCardEdit(cardEl, colIndex, fullIdx, newContent);
       if (typeof window.lexeraLog === 'function') {
-        window.lexeraLog('info', '[pdf-view-persist] saved view=' + mode +
+        window.lexeraLog('info', '[pdf-view-persist] dispatched save: view=' + mode +
           ' for ' + filePath + ' (col=' + colIndex + ' card=' + fullIdx + ')');
       }
+      if (saveResult && typeof saveResult.then === 'function') {
+        saveResult.then(function () {
+          if (typeof window.lexeraLog === 'function') {
+            window.lexeraLog('info', '[pdf-view-persist] save completed for ' + filePath);
+          }
+        }).catch(function (err) {
+          var msg = String(err && err.message ? err.message : err);
+          bail('saveCardEdit promise rejected', { error: msg });
+          notifyFailure(msg);
+        });
+      }
     } catch (e) {
-      bail('saveCardEdit threw', { error: String(e && e.message ? e.message : e) });
+      var syncMsg = String(e && e.message ? e.message : e);
+      bail('saveCardEdit threw synchronously', { error: syncMsg });
+      notifyFailure(syncMsg);
     }
   }
 
