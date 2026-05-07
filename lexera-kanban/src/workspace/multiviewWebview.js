@@ -14,32 +14,11 @@
  *   - "already exists" adoption path (shell-reload recovery)
  *   - LRU lifecycle integration (spawn / touch via window.LexeraMultiview.lifecycle)
  *
- * Type shapes — first slice of the JSDoc-typed-objects effort
- * (TODOs-lexera.md item 6.1). The runtime fields are unchanged; this
- * comment block exists so a later `tsc --noEmit` pass can lint
- * mismatches at the boundaries.
- *
- * @typedef {('pending'|'ready'|'destroying')} TabRecordState
- *   Lifecycle state of one spawned child webview. Strings (not enum)
- *   so the value can travel through JSON / IPC payloads unchanged.
- *
- * @typedef {Object} TabRecord
- * @property {string} url - Source URL the child webview is loading.
- *                          Stable for the life of the record (a re-spawn
- *                          replaces the record entirely).
- * @property {TabRecordState} state - Current lifecycle state. Read by
- *                          dispatch sites to gate IPC ordering (e.g.
- *                          `entry.state !== 'ready'` skips broadcasts).
- * @property {string} label - Tauri webview label this record owns.
- *                          Globally unique across windows; suffixed
- *                          with the shell's bootId to survive reload.
- * @property {number} [attempts] - Spawn-retry counter. Present only on
- *                          records created via the retry loop; absent
- *                          (undefined) on first-shot records.
- *
- * @typedef {Object<string, TabRecord>} TabRecordMap
- *   Keyed by `tab.id` (the layout-tree tab identity, NOT the webview
- *   label). Use `labelForTabId(id)` to bridge between the two.
+ * Type shapes (TabRecordState / TabRecord / TabRecordMap) live in
+ * dedicated typedef blocks below this one — keeping them in
+ * separate comments avoids a TypeScript checkJs quirk where multiple
+ * typedef declarations sharing a single comment with surrounding
+ * prose are treated as duplicate identifiers.
  *
  * Setup contract:
  *   LexeraMultiviewWebview.setup({
@@ -58,6 +37,35 @@
  *   cleanupLocalState(tabId), applyHealth(tabId, state),
  *   reapplyAllHealthDots(), labelForTab(tab), labelForTabId(tabId),
  *   tabIdFromLabel(label), spawnedLabel(tabId), destroyAll().
+ */
+
+/**
+ * @typedef {('pending'|'ready'|'destroying')} TabRecordState
+ *   Lifecycle state of one spawned child webview. Strings (not enum)
+ *   so the value can travel through JSON / IPC payloads unchanged.
+ */
+
+/**
+ * @typedef {Object} TabRecord
+ * @property {string} url - Source URL the child webview is loading.
+ *   Stable for the life of the record (a re-spawn replaces the
+ *   record entirely).
+ * @property {TabRecordState} state - Current lifecycle state. Read
+ *   by dispatch sites to gate IPC ordering (e.g.
+ *   `entry.state !== 'ready'` skips broadcasts).
+ * @property {string} label - Tauri webview label this record owns.
+ *   Globally unique across windows; suffixed with the shell's
+ *   bootId to survive reload.
+ * @property {number} [attempts] - Spawn-retry counter. Present only
+ *   on records created via the retry loop; absent (undefined) on
+ *   first-shot records.
+ */
+
+/**
+ * @typedef {Object<string, TabRecord>} TabRecordMap
+ *   Keyed by `tab.id` (the layout-tree tab identity, NOT the
+ *   webview label). Use `labelForTabId(id)` to bridge between the
+ *   two.
  */
 (function () {
   'use strict';
