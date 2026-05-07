@@ -265,6 +265,38 @@
     return boardHost.getEmbeddedUrlForTab(tab, window.location.href);
   }
 
+  /**
+   * Boot/profile fields of the workspace shell `state`. Phase 6.1 first
+   * slice — narrow JSDoc surface that types only the URL-param-derived
+   * primitives so the IIFE body stays unchanged. Layout-tree fields
+   * (`dockTree`, `sideDocks`, `panelInstances`, etc.) and DOM-handle
+   * fields (`rootEl`, `dockEl`, etc.) are deliberately left untyped
+   * here; later slices add them as the surrounding code stabilises.
+   *
+   * @typedef {Object} WorkspaceShellBootState
+   * @property {boolean} enabled - Result of `isEnabled()` at module load.
+   *   Read by `canHostBoardTabs()` and several render guards.
+   * @property {boolean} mounted - Set true by `mount()`, false by unmount.
+   *   The render loop is a no-op when this is false.
+   * @property {boolean} didRestoreState - True when `layoutPersistence.restore()`
+   *   hydrated a saved layout. False when the shell synthesised defaults.
+   *   Used by callers (e.g. `connection-settings.js`) to decide whether
+   *   to seed initial panels.
+   * @property {('detachedBoard'|'workspace')} profile - `detachedBoard`
+   *   when the URL carries `?profile=detachedBoard`; `workspace`
+   *   otherwise. Steers default dock layout, side-dock visibility,
+   *   and persistence-key scoping.
+   * @property {string} initialPanelKind - Kind to auto-open on first
+   *   render (from `?initialPanel=<kind>`). Empty string = no auto-open.
+   * @property {string} windowRole - From `?windowRole=…` (currently
+   *   only `'hierarchyLauncher'` is recognised). Empty otherwise.
+   * @property {string} windowLabel - This webview's Tauri label.
+   *   Defaults to `'main'` when the URL does not pin a label.
+   * @property {string} hostWindowLabel - Top-level OS window label this
+   *   shell hosts in. Equals `windowLabel` for the main shell; differs
+   *   only for nested / detached shells where the host is a parent
+   *   workspace shell window.
+   */
   var state = {
     enabled: isEnabled(),
     mounted: false,
