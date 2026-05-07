@@ -85,7 +85,7 @@ pub fn format_params(params: &HashMap<String, String>) -> String {
 }
 
 /// Parse a task line (- [ ] or - [x]) and return the card and whether we're collecting description.
-pub(super) fn parse_task_line(line: &str) -> Option<KanbanCard> {
+pub fn parse_task_line(line: &str) -> Option<KanbanCard> {
     if !line.starts_with("- ") {
         return None;
     }
