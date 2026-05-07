@@ -179,7 +179,7 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 
 ### 4. Modularization & Cleanup
 - [ ] Split `lexera-backend/src-tauri/src/sync_client.rs` (48k bytes) into focused modules: `connection_mgr.rs`, `replication.rs`, and `conflict_resolver.rs`.
-- [ ] Decompose `lexera-backend/src-tauri/src/config.rs` (34k bytes) by extracting identity and workspace management into separate files.
+- [ ] (in progress) Decompose `lexera-backend/src-tauri/src/config.rs` (34k bytes) by extracting identity and workspace management into separate files.
 - [x] (done) Remove unused dependencies from `lexera-core/Cargo.toml` and `lexera-backend/src-tauri/Cargo.toml` after the ESM/IPC migrations are complete. Audit found zero orphans: 17 lexera-core deps + 28 lexera-backend deps (incl. dev/build) all have at least one usage site (some via short paths like `hex::encode`, `thiserror::Error`, `uuid::Uuid::new_v4`). Pinned by `cargoNoOrphanDepsContract.test.js` — 47 assertions, fails closed on any future orphan. (commit d137a2fd)
 
 ## IPC Refactoring & Migration
