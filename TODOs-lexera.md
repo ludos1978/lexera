@@ -163,7 +163,7 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 ### 1. Crate & Workspace Refinement
 - [ ] Move the export logic from `lexera-backend/src-tauri/src/export_api.rs` into a new `lexera-export` workspace crate to decouple it from the Tauri app.
 - [ ] Move the collaboration logic from `lexera-backend/src-tauri/src/collab_api.rs` and `sync_ws.rs` into a new `lexera-collab` workspace crate.
-- [ ] Refactor `lexera-core/src/parser.rs` to reduce its size (70k bytes) by extracting list and table parsing into sub-modules.
+- [ ] (in progress) Refactor `lexera-core/src/parser.rs` to reduce its size (70k bytes) by extracting list and table parsing into sub-modules. **First slice (commit 13c2da96):** YAML front-matter parsing extracted to `parser/yaml_meta.rs` (291 lines) — `parse_board_settings`, `update_yaml_with_board_settings`, `parse_generation_meta`, `update_yaml_with_generation_meta`, `body_hash` plus private helpers (`clear_setting`, `strip_yaml_header`, `meta_value_for_key`) and their 3 tests. Parser shrank to 1773 lines. Public surface preserved via `pub use` re-exports. Future slices: `parser/legacy.rs` (parse_legacy_format + helpers), `parser/new_format.rs` (parse_new_format + finalize_task), `parser/params.rs` (parse_params, format_params, parse_task_line).
 - [ ] Standardize error types across the workspace using `thiserror`, creating a shared `lexera-error` crate if necessary for consistent IPC propagation.
 
 ### 2. IPC & Protocol Completion
