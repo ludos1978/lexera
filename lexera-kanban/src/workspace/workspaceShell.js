@@ -546,6 +546,64 @@
    *   `foldedPanes` map, so this signature does NOT carry a `|fold:`
    *   suffix.
    */
+
+  /**
+   * Board metadata + frame-cache fields on `state`. The shell holds
+   * three keyed-by-id stores plus a deferred-load queue + timer that
+   * together implement the "active tab loads now, background tabs
+   * stagger in" board hosting policy. Keys overlap by design:
+   * `frameCache` and `loadedBoardFrames` are both keyed by `tab.id`,
+   * so a single `removeFrame(tabId)` call clears both maps and filters
+   * the queue.
+   *
+   * @typedef {Object} BoardSummary
+   * @property {string} id - Board id (catalog-stable).
+   * @property {string} [title] - Display title; may be empty for
+   *   newly created boards.
+   *
+   * @typedef {Object<string, BoardSummary>} BoardsByIdMap
+   *   Keyed by board id. Rebuilt wholesale by `onBoardsUpdated()`
+   *   from each catalog snapshot (locals + remotes concatenated);
+   *   never mutated in place. Used by `getTabTitle` to resolve a
+   *   board tab's display label and by `pruneMissingBoards()` to
+   *   detect tabs whose backing board disappeared from the catalog.
+   *
+   * @typedef {Object<string, HTMLElement>} FrameCacheMap
+   *   Keyed by `tab.id`. Each value is the placeholder div the shell
+   *   inserts into the dock DOM (`workspace-shell-multiview-placeholder`
+   *   for boards, `workspace-shell-panel-multiview-placeholder` for
+   *   panels). The actual native webview is owned by
+   *   `multiviewWebview.js` and floats above this placeholder via
+   *   the geometry observer. Populated by `getOrCreateFrame` and
+   *   `buildMultiviewPanelPlaceholder`; cleared by `removeFrame`.
+   *   Read by `multiview.setup({ getPlaceholder })` to find the host
+   *   element for a given tab.
+   *
+   * @typedef {Object<string, true>} LoadedBoardFramesMap
+   *   Set-shaped map ("`true` = loaded") keyed by `tab.id`. An entry
+   *   means `multiview.ensure()` has been called for this tab and the
+   *   webview is mounted. Read by `shouldLoadBoardFrame` to gate
+   *   re-loading on subsequent renders. Cleared by `removeFrame`.
+   *   Panel tabs never appear here — only board tabs (boards are the
+   *   only kind subject to deferred-load).
+   *
+   * @typedef {Object} WorkspaceShellBoardCaches
+   * @property {BoardsByIdMap} boardsById - Catalog-derived board
+   *   metadata; rebuilt on every `onBoardsUpdated()`.
+   * @property {FrameCacheMap} frameCache - Per-tab placeholder DOM
+   *   nodes; the dual store paired with multiview's spawned webviews.
+   * @property {LoadedBoardFramesMap} loadedBoardFrames - Tab ids whose
+   *   webview has been spawned at least once.
+   * @property {string[]} deferredBoardLoadQueue - FIFO of `tab.id`
+   *   strings for non-active board tabs awaiting their background
+   *   load. Built by `buildDeferredBoardFrameQueue` from the centre
+   *   dock tree's inactive leaf actives, drained one-per-150ms by
+   *   `pumpDeferredBoardFrameLoads`.
+   * @property {number} deferredBoardLoadTimer - `setTimeout` handle
+   *   for the next pump; `0` when no pump is scheduled. The `0`
+   *   sentinel is the "no timer in flight" check used by
+   *   `clearDeferredBoardFrameLoads` and re-set after each pump.
+   */
   var state = {
     enabled: isEnabled(),
     mounted: false,
