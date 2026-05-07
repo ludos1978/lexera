@@ -362,6 +362,39 @@
    *   The recursive node type. `state.dockTree` and each
    *   `state.sideDocks[dockId]` is a `DockTreeNode | null`.
    */
+
+  /**
+   * Side-dock sizing + per-pane fold state. Three maps keyed by the
+   * three side-dock ids (`left` | `right` | `bottom`) plus a free-form
+   * map of folded centre-split panes.
+   *
+   * `panelDefinitions.js` owns the factories (`createDefaultDockSizes`,
+   * `createDefaultDockRestoreSizes`) and the clamps
+   * (`clampPanelSize`: `[200, 520]` for left/right, `[140, 480]` for
+   * bottom; `normalizeDockSizeValue`: zero or clamped).
+   *
+   * @typedef {Object} DockSizeMap
+   * @property {number} left - Pixel width of the left side dock; `0`
+   *   means the dock is collapsed.
+   * @property {number} right - Pixel width of the right side dock; `0`
+   *   means collapsed.
+   * @property {number} bottom - Pixel height of the bottom side dock;
+   *   `0` means collapsed.
+   *
+   * @typedef {Object} DockRestoreSizeMap
+   * @property {number} left - Pixel width to restore the left dock to
+   *   when it unfolds. Always non-zero in steady state — a zero in
+   *   `dockSizes` triggers `togglePanelSize` to read this map.
+   * @property {number} right - Pixel width to restore the right dock to.
+   * @property {number} bottom - Pixel height to restore the bottom dock to.
+   *
+   * @typedef {Object<string, number>} FoldedPaneRatios
+   *   Per-pane fold state for centre-split panes. Keyed by the pane
+   *   (`DockTreeSplit`) id; value is the original `ratio` captured at
+   *   fold time so `unfoldPane` can restore the split to its previous
+   *   geometry. Only centre-tree splits ever populate this map; side
+   *   docks fold via `dockSizes[dockId] = 0` instead.
+   */
   var state = {
     enabled: isEnabled(),
     mounted: false,
