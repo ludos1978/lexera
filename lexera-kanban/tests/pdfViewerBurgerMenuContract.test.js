@@ -130,6 +130,41 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(embedMenuJs).toMatch(/LexeraPdfViewer\.applyModeToEmbed/);
   });
 
+  it('mountPdfViewer applies the mode class IMMEDIATELY (before fetch+parse) and commits all pages in one DocumentFragment', () => {
+    // User reported "modifies the layout quite a bit after first
+    // rendered". Two reflow sources had to be eliminated:
+    //   (a) mode class applied late ⇒ host briefly rendered against
+    //       the legacy .embed-preview-pdf rule and then resized when
+    //       renderPages added pdf-mode-<X>.
+    //   (b) renderPages appended pages one at a time inside a `.then`
+    //       chain ⇒ N layout reflows for an N-page PDF.
+    //
+    // Pin both fixes:
+    //   - mountPdfViewer must call applyModeClass(host, …) BEFORE
+    //     the fetch starts.
+    //   - renderPages must commit pages via a DocumentFragment
+    //     (single appendChild on the host).
+    const mountMatch = pdfPluginJs.match(
+      /function\s+mountPdfViewer\s*\([^)]*\)\s*\{([\s\S]*?)\n\s\s\}\n/
+    );
+    expect(mountMatch).not.toBeNull();
+    const mountBody = mountMatch[1];
+    const fetchIdx = mountBody.indexOf('fetch(');
+    const applyClassIdx = mountBody.indexOf('applyModeClass');
+    expect(applyClassIdx).toBeGreaterThan(-1);
+    expect(fetchIdx).toBeGreaterThan(-1);
+    expect(applyClassIdx).toBeLessThan(fetchIdx);
+    // renderPages: single fragment commit, no per-page appendChild.
+    const renderMatch = pdfPluginJs.match(
+      /function\s+renderPages\s*\([^)]*\)\s*\{([\s\S]*?)\n\s\s\}\n/
+    );
+    expect(renderMatch).not.toBeNull();
+    const renderBody = renderMatch[1];
+    expect(renderBody).toMatch(/createDocumentFragment\(\)/);
+    expect(renderBody).toMatch(/container\.appendChild\(\s*frag\s*\)/);
+    expect(renderBody).not.toMatch(/container\.appendChild\(\s*pageEl\s*\)/);
+  });
+
   it('setMode is a CSS-only swap — no per-mode page re-render', () => {
     // Earlier each setMode call cancelled the in-flight render and
     // restarted renderPages() at the new mode's intrinsic resolution
