@@ -141,6 +141,23 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(renderFn[0]).not.toMatch(/canvas\.style\.height\s*=/);
   });
 
+  it('overview + stacked override the legacy `width: min(680px, 100%)` cap so the gallery uses every available pixel', () => {
+    // The host element is .embed-preview-pdf — its base rule caps
+    // width at 680 px (carry-over from the iframe styling). Modal
+    // previews and wide cards have far more horizontal room than
+    // that, and the cap was wasting the right ~30 % of the modal in
+    // overview mode. Scrolled keeps the cap because >680 px single-
+    // column hurts read flow; overview + stacked must explicitly
+    // override.
+    const appCss = readFileSync(
+      resolve(__dirname, '..', 'src', 'app.css'),
+      'utf8'
+    );
+    expect(appCss).toMatch(
+      /\.embed-preview-pdf\.pdf-mode-overview[\s\S]{0,80}\.pdf-mode-stacked[\s\S]{0,200}width:\s*100%/
+    );
+  });
+
   it('overview mode CSS uses a small enough column min that narrow cards still pack 2+ columns', () => {
     // User reported "one page in half the width — still no gallery"
     // when the grid track minimum was 140 px: narrow cards (~250 px)
