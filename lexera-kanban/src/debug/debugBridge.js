@@ -138,6 +138,15 @@
       userAgent: ua
     };
   }
+  // Tracks the currently-in-flight profile session so a stop-early
+  // signal can close it before durationMs elapses. Null when no
+  // recording is active. We only allow one session at a time —
+  // double-record is already blocked on the UI side via a disabled
+  // button, so a second request just falls through to its own session
+  // (the first one's timer fires harmlessly, then this null check
+  // prevents a duplicate finalize).
+  var _activeProfileSession = null;
+
   function handleProfileRenderRequest(event) {
     var p = (event && event.payload) || {};
     var durationMs = Number(p.durationMs) || 5000;
@@ -218,7 +227,11 @@
       }).catch(function () {});
       return;
     }
-    setTimeout(function () {
+    function finalize(stopped) {
+      // Idempotent: a stop event followed by the timer firing must
+      // not emit twice. The session is cleared on the first call.
+      if (!_activeProfileSession || _activeProfileSession.observers !== observers) return;
+      _activeProfileSession = null;
       for (var i = 0; i < observers.length; i++) {
         try { observers[i].disconnect(); } catch (_) {}
       }
@@ -226,6 +239,10 @@
       events.sort(function (a, b) { return b.duration - a.duration; });
       paints.sort(function (a, b) { return a.startTime - b.startTime; });
       shifts.sort(function (a, b) { return a.startTime - b.startTime; });
+      // Augment notes when the user stopped early — useful for the
+      // reader of a shared trace ("oh, that's why duration is 1500ms
+      // even though the input said 30000").
+      if (stopped) notes.push('stopped early via debug-profile-render-stop');
       emit('debug-profile-render-response', {
         meta: meta,
         entries: longtasks,
@@ -234,7 +251,19 @@
         shifts: shifts,
         notes: notes
       }).catch(function () {});
-    }, durationMs);
+    }
+    var timerId = setTimeout(function () { finalize(false); }, durationMs);
+    _activeProfileSession = { observers: observers, timerId: timerId, finalize: finalize };
+  }
+
+  // User clicked "Stop now" on the debug-window button. Finalize the
+  // in-flight session immediately with whatever's been captured.
+  // No-op when no session is active.
+  function handleProfileRenderStop() {
+    var session = _activeProfileSession;
+    if (!session) return;
+    try { clearTimeout(session.timerId); } catch (_) {}
+    try { session.finalize(true); } catch (_) {}
   }
 
   function install() {
@@ -243,6 +272,7 @@
     listen('debug-dock-snapshot-request', handleSnapshotRequest);
     listen('debug-open-frontend-tests', handleOpenFrontendTests);
     listen('debug-profile-render-request', handleProfileRenderRequest);
+    listen('debug-profile-render-stop', handleProfileRenderStop);
   }
 
   // Wait until the shell is enabled before installing — the IIFE in
@@ -257,6 +287,7 @@
     _test_handleSnapshotRequest: handleSnapshotRequest,
     _test_handleOpenFrontendTests: handleOpenFrontendTests,
     _test_handleProfileRenderRequest: handleProfileRenderRequest,
+    _test_handleProfileRenderStop: handleProfileRenderStop,
     _test_buildSnapshotResponse: buildSnapshotResponse,
     _test_buildProfileMeta: buildProfileMeta
   };

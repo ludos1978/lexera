@@ -115,8 +115,16 @@
       el.textContent = text;
       el.setAttribute('data-state', isRunning ? 'hidden' : 'visible');
     }
+    // While recording, the button doubles as a Stop — same DOM node,
+    // changes label + behaviour. We never disable it during recording
+    // because we WANT the user to be able to stop early. The handler
+    // routes off the data-debug-action attribute.
     var btn = document.querySelector('[data-debug-action="profile-render"]');
-    if (btn) btn.disabled = !!isRunning;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = isRunning ? 'Stop now' : 'Record render trace';
+      btn.setAttribute('data-debug-recording', isRunning ? '1' : '0');
+    }
   }
   // Reads the duration input, clamps to 1..60 seconds, returns ms.
   // Falls back to 5000 if the input is missing or unparseable so the
@@ -162,6 +170,18 @@
     setProfileStatusUi('clipboard unavailable — JSON shown below', false);
   }
 
+  function stopRenderProfile() {
+    if (!_profileState.running) return;
+    // Bridge will emit the response with whatever it captured; the
+    // existing response listener handles status reset + UI render.
+    emit('debug-profile-render-stop', {}).catch(function (err) {
+      // If the emit itself fails the bridge will eventually finalize
+      // when the timer fires, so this is a soft failure.
+      var out = document.querySelector('[data-debug-profile-output]');
+      if (out) out.textContent = 'emit debug-profile-render-stop failed: ' +
+        (err && err.message ? err.message : String(err));
+    });
+  }
   function startRenderProfile() {
     if (_profileState.running) return;
     _profileState.running = true;
@@ -317,7 +337,10 @@
       if (action === 'toggle-overlays') return toggleOverlays();
       if (action === 'refresh-snapshots') return refreshSnapshots();
       if (action === 'open-frontend-tests') return openFrontendTests();
-      if (action === 'profile-render') return startRenderProfile();
+      if (action === 'profile-render') {
+        // Same button doubles as Stop while recording — pick by state.
+        return _profileState.running ? stopRenderProfile() : startRenderProfile();
+      }
       if (action === 'profile-copy-json') return copyProfileAsJson();
     });
   }
@@ -345,6 +368,7 @@
     _test_openFrontendTests: openFrontendTests,
     _test_setOverlayStatusUi: setOverlayStatusUi,
     _test_startRenderProfile: startRenderProfile,
+    _test_stopRenderProfile: stopRenderProfile,
     _test_profileState: _profileState,
     _test_readProfileDurationMs: readProfileDurationMs,
     _test_copyProfileAsJson: copyProfileAsJson

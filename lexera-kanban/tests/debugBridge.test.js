@@ -281,6 +281,70 @@ describe('debugBridge — shell-side translator for the --debug window', () => {
     }
   });
 
+  it('debug-profile-render-stop finalizes the in-flight session immediately with whatever was captured', async () => {
+    // User clicks "Stop now" mid-window. Bridge clears its
+    // setTimeout, disconnects the observers, and emits the response
+    // synchronously with the entries captured up to that moment.
+    // The response carries a "stopped early" note so a reader of a
+    // shared trace knows why the duration looks short.
+    const emit = vi.fn(() => Promise.resolve());
+    const observed = [];
+    class FakePO {
+      constructor(cb) { this._cb = cb; }
+      observe(opts) {
+        const t = opts.entryTypes && opts.entryTypes[0];
+        observed.push(t);
+        if (t === 'longtask') {
+          this._cb({ getEntries: () => [{ name: 'self', duration: 75, startTime: 500 }] });
+        }
+      }
+      disconnect() { this._disconnected = true; }
+    }
+    globalThis.PerformanceObserver = FakePO;
+    const { window } = loadBridge({
+      shell: { isEnabled: () => true, handleBoardAction: () => {}, getWindowLabel: () => 'main' },
+      emitSpy: emit
+    });
+    vi.useFakeTimers();
+    try {
+      window.LexeraDebugBridge._test_handleProfileRenderRequest({ payload: { durationMs: 30000 } });
+      // No response yet — the timer is still pending.
+      let preStop = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-response');
+      expect(preStop).toBeFalsy();
+      // User clicks Stop. Response fires synchronously.
+      window.LexeraDebugBridge._test_handleProfileRenderStop();
+      const responseCall = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-response');
+      expect(responseCall).toBeTruthy();
+      expect(responseCall[1].entries).toHaveLength(1);
+      expect(responseCall[1].notes).toEqual(expect.arrayContaining([
+        expect.stringMatching(/stopped early/i)
+      ]));
+      // Subsequent timer fire is a no-op — the session was cleared,
+      // so finalize() bails before emitting a duplicate.
+      const callsBefore = emit.mock.calls.length;
+      vi.advanceTimersByTime(60000);
+      expect(emit.mock.calls.length).toBe(callsBefore);
+    } finally {
+      vi.useRealTimers();
+      delete globalThis.PerformanceObserver;
+    }
+  });
+
+  it('debug-profile-render-stop is a no-op when no session is active', () => {
+    // No request was ever issued. The stop handler must not throw,
+    // must not emit, must not blow up.
+    const emit = vi.fn(() => Promise.resolve());
+    const { window } = loadBridge({
+      shell: { isEnabled: () => true, handleBoardAction: () => {} },
+      emitSpy: emit
+    });
+    expect(() => {
+      window.LexeraDebugBridge._test_handleProfileRenderStop();
+    }).not.toThrow();
+    const responseCall = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-response');
+    expect(responseCall).toBeFalsy();
+  });
+
   it('debug-profile-render-request emits a notes-only response when EVERY entryType is refused', async () => {
     // If the WebKit version is so old that no observer type is
     // accepted, the handler still needs to emit a response (so the
