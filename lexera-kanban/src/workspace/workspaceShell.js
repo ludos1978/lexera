@@ -395,6 +395,17 @@
    *   geometry. Only centre-tree splits ever populate this map; side
    *   docks fold via `dockSizes[dockId] = 0` instead.
    */
+
+  /**
+   * @typedef {Object<string, boolean>} PanelVisibilityMap
+   *   Per-panel-instance visibility flag. Keyed by panel id (each key
+   *   matches a key in `state.panelInstances`); value is `true` when
+   *   the panel is currently shown in the layout, `false` when hidden.
+   *   Initialised by `panelDefinitions.createDefaultPanelVisibility(profile)`
+   *   from the `DEFAULT_PANEL_VISIBILITY` table; mutated in-place at
+   *   show/hide/toggle sites and via `delete` when a panel instance
+   *   is destroyed.
+   */
   var state = {
     enabled: isEnabled(),
     mounted: false,
