@@ -127,6 +127,36 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(embedMenuJs).toMatch(/LexeraPdfViewer\.applyModeToEmbed/);
   });
 
+  it('setMode is a CSS-only swap — no per-mode page re-render', () => {
+    // Earlier each setMode call cancelled the in-flight render and
+    // restarted renderPages() at the new mode's intrinsic resolution
+    // (overview = 220 px, scrolled/stacked = 720 px). For an N-page
+    // doc that meant N × ~300 ms before the new layout settled, with
+    // pages flickering in one at a time. The user reported the lag
+    // as "redraws after a long time, first vertically stacked, then
+    // side-by-side".
+    //
+    // Fix: pages render once at RENDER_WIDTH_PX and CSS sizes them
+    // for display per mode, so setMode can just swap the class. Pin
+    // both halves so a future "let's render at the optimal mode
+    // resolution" patch can't quietly bring back the lag.
+    // Match `setMode: function (mode) { … }` by walking up to the
+    // first `},` after the opening brace. Greedy regex over JS code
+    // is fragile; this windowed match covers the whole body up to a
+    // reasonable cap.
+    const setModeMatch = pdfPluginJs.match(
+      /setMode\s*:\s*function\s*\([^)]*\)\s*\{([\s\S]{0,800}?)\},/
+    );
+    expect(setModeMatch).not.toBeNull();
+    const setModeBody = setModeMatch[1];
+    expect(setModeBody).not.toMatch(/renderPages\(/);
+    expect(setModeBody).toMatch(/applyModeClass\s*\(/);
+    // The single intrinsic-resolution constant must still exist.
+    expect(pdfPluginJs).toMatch(/RENDER_WIDTH_PX\s*=\s*\d+/);
+    // And the per-mode width map must be gone (the old foot-gun).
+    expect(pdfPluginJs).not.toMatch(/PAGE_WIDTH_BY_MODE/);
+  });
+
   it('renderPageToCanvas does NOT set inline canvas.style.height (preserves aspect ratio in narrow containers)', () => {
     // Setting BOTH inline width AND inline height squashes the rendered
     // page when `max-width: 100%` clamps the displayed width — the user
