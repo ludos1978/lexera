@@ -297,6 +297,23 @@
    *   only for nested / detached shells where the host is a parent
    *   workspace shell window.
    */
+
+  /**
+   * One row of `state.panelInstances`. Keyed by `id`, where the id is
+   * either the panel kind itself (the singleton case — `'logs'`,
+   * `'hierarchy'`, etc.) or `<kind>-panel-<seq>-<rand>` for duplicates
+   * created via `splitLeafWithPanel` on a duplicable kind.
+   *
+   * @typedef {Object} PanelInstance
+   * @property {string} id - Stable identifier; matches the map key.
+   * @property {string} kind - Normalised panel kind (one of the keys
+   *   in `panelDefinitions.PANEL_DEFINITIONS`).
+   *
+   * @typedef {Object<string, PanelInstance>} PanelInstanceMap
+   *   Returned by `panelDefinitions.createDefaultPanelInstances()` and
+   *   `normalizePanelInstances(raw)`. New duplicates land here via
+   *   `createPanelInstance(kind)`.
+   */
   var state = {
     enabled: isEnabled(),
     mounted: false,
