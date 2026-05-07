@@ -85,35 +85,43 @@
   // rasterized at RENDER_WIDTH_PX intrinsic — CSS sizes the canvas
   // for display in each mode, so this only runs once per PDF (per
   // mount) regardless of how many times the user switches modes.
-  // Cancels any in-flight render via the `cancelled` token if the
-  // host is destroyed mid-render.
+  //
+  // Pages are rendered in parallel and appended in a single
+  // DocumentFragment commit so the host's height changes exactly
+  // once (one layout reflow) instead of N times as pages stream in.
+  // The user reported "modifies the layout quite a bit after first
+  // rendered" — that was the per-page reflow chain.
+  //
+  // Cancellation: the host's parent is detached (e.g. card
+  // re-render) — checking `cancelled.flag` before the final commit
+  // avoids appending into a dead host. PDF.js itself can't cancel
+  // an in-flight `page.render()`, so we let those complete and
+  // throw the canvases away.
   function renderPages(pdf, container, mode, cancelled) {
     container.innerHTML = '';
     applyModeClass(container, mode);
+    var pageCount = pdf.numPages;
     var loaders = [];
-    for (var i = 1; i <= pdf.numPages; i++) {
-      loaders.push(pdf.getPage(i));
-    }
+    for (var i = 1; i <= pageCount; i++) loaders.push(pdf.getPage(i));
     return Promise.all(loaders).then(function (pages) {
-      function next(idx) {
-        if (cancelled.flag) return Promise.resolve();
-        if (idx >= pages.length) return Promise.resolve();
-        return renderPageToCanvas(pages[idx], RENDER_WIDTH_PX).then(function (canvas) {
-          if (cancelled.flag) return;
-          var pageEl = document.createElement('div');
-          pageEl.className = 'pdf-page';
-          // Page number is shown as a CSS-positioned label only in
-          // overview mode — gives the contact-sheet a clear "page 1
-          // of N" identity that scrolled and stacked deliberately
-          // omit. Plain `data-` attribute so the CSS rule can pick it
-          // up without the JS having to know about styling.
-          pageEl.setAttribute('data-pdf-page-num', String(idx + 1));
-          pageEl.appendChild(canvas);
-          container.appendChild(pageEl);
-          return next(idx + 1);
-        });
+      var canvasPromises = pages.map(function (page) {
+        return renderPageToCanvas(page, RENDER_WIDTH_PX);
+      });
+      return Promise.all(canvasPromises);
+    }).then(function (canvases) {
+      if (cancelled.flag) return;
+      var frag = document.createDocumentFragment();
+      for (var idx = 0; idx < canvases.length; idx++) {
+        var pageEl = document.createElement('div');
+        pageEl.className = 'pdf-page';
+        // Page number — surfaced via the CSS `::after` rule that's
+        // active only in overview mode (gives the contact-sheet a
+        // clear "page N of M" identity).
+        pageEl.setAttribute('data-pdf-page-num', String(idx + 1));
+        pageEl.appendChild(canvases[idx]);
+        frag.appendChild(pageEl);
       }
-      return next(0);
+      container.appendChild(frag);
     });
   }
 
@@ -126,6 +134,15 @@
     }
     host.classList.add('pdf-viewer');
     host.setAttribute('data-pdf-mode', initialMode);
+    // Apply the mode class IMMEDIATELY at mount, BEFORE fetch starts.
+    // Without this the host first renders against the legacy
+    // `.embed-preview-pdf` rule (`width: min(680px, 100%); height:
+    // min(360px, 50vh); overflow: auto`) and only switches to the
+    // mode override (e.g. `pdf-mode-stacked { width: 100%; height:
+    // auto }`) once `renderPages` runs after fetch+parse — which is
+    // a visible host-size jump the user reported as "modifies the
+    // layout quite a bit after first rendered".
+    applyModeClass(host, initialMode);
     var loadingEl = document.createElement('div');
     loadingEl.className = 'pdf-viewer-loading';
     loadingEl.textContent = 'Loading PDF…';
