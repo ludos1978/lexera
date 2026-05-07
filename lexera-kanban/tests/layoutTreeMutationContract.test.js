@@ -15,9 +15,9 @@
 //
 // This test pins which files are allowed to do the direct mutation:
 //   - `workspace/layoutTree.js`     — the wrapper implementation itself.
-//   - `workspace/workspaceShell.js` — in-flight 3.2 migration; sites
-//     will shrink to zero as the migration completes. Until then it
-//     keeps freedom.
+//   - `workspace/treeRegistry.js`   — `setTreeRoot(treeId, root)` is
+//     the blessed wrapper that the rest of the codebase calls; MUST
+//     assign through `holder[key]` to do its job.
 //   - `workspace/layoutPersistence.js` — hydrate-from-JSON path; this
 //     is legitimate I/O at boot, not a runtime mutation.
 //
@@ -40,9 +40,6 @@ const ALLOWED_FILES = new Set([
   // the blessed wrapper that the rest of the codebase calls. It MUST
   // assign to `state.dockTree` / `state.sideDocks[id]` to do its job.
   'workspace/treeRegistry.js',
-  // In-flight 3.2 splice migration; allowlist will shrink to zero
-  // (or this entry will move out) when the migration completes.
-  'workspace/workspaceShell.js',
   // Hydrate-from-JSON I/O at boot. Reads persisted `dockTree` /
   // `sideDocks[…]` and assigns them onto state — legitimate boot
   // path, not a runtime mutation.

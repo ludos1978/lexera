@@ -959,7 +959,7 @@
     var panelId = getPrimaryPanelId(normalizedKind) || createPanelInstance(normalizedKind, normalizedKind);
     var targetLeaf = leaf || state.dockTree;
     if (!targetLeaf || targetLeaf.type !== 'tabs') {
-      state.dockTree = createTabsetNode([]);
+      layoutTree.replaceTreeRoot(state, 'dockTree', createTabsetNode([]));
       targetLeaf = state.dockTree;
     }
     state.panelVisibility[panelId] = true;
@@ -1006,7 +1006,7 @@
 
     var leaf = getActiveLeaf() || getFirstLeaf(state.dockTree);
     if (!leaf || leaf.type !== 'tabs') {
-      state.dockTree = createTabsetNode([]);
+      layoutTree.replaceTreeRoot(state, 'dockTree', createTabsetNode([]));
       leaf = state.dockTree;
     }
     var tab = createPanelTab(normalized);
@@ -1035,7 +1035,7 @@
     normalizeTreeAt(state, 'dockTree', true);
     var leaf = getActiveLeaf();
     if (!leaf) {
-      state.dockTree = createTabsetNode([]);
+      layoutTree.replaceTreeRoot(state, 'dockTree', createTabsetNode([]));
       leaf = state.dockTree;
     }
     state.activeLeafId = leaf.id;
@@ -1313,10 +1313,10 @@
         else firstLeaf.tabs.push(tab);
         if (activate) firstLeaf.activeTabId = tab.id;
       } else {
-        state.sideDocks[dockId] = createTabsetNode([tab]);
+        layoutTree.replaceTreeRoot(state.sideDocks, dockId, createTabsetNode([tab]));
       }
     } else {
-      state.sideDocks[dockId] = createTabsetNode([tab]);
+      layoutTree.replaceTreeRoot(state.sideDocks, dockId, createTabsetNode([tab]));
     }
   }
 
@@ -2457,10 +2457,7 @@
     // `layoutTree.extractTabAtIndex`, which encodes the
     // "fall through to left neighbour" activeTabId rule that
     // `removeTabFromLeaf`'s "fall through to first tab" rule does
-    // not satisfy. After this slice, workspaceShell.js has zero
-    // direct `.tabs.splice(` sites — `state.dockTree =` /
-    // `state.sideDocks[…] =` assignments are the remaining 3.2
-    // category.
+    // not satisfy.
     var ids = allTreeIds();
     for (var t = 0; t < ids.length; t++) {
       var root = getTreeRoot(ids[t]);
@@ -4508,7 +4505,7 @@
     }
     var targetLeaf = getActiveLeaf() || getFirstLeaf(state.dockTree);
     if (!targetLeaf) {
-      state.dockTree = createTabsetNode([]);
+      layoutTree.replaceTreeRoot(state, 'dockTree', createTabsetNode([]));
       targetLeaf = state.dockTree;
     }
     var tab = createBoardTab(boardId, desiredView);
