@@ -25,6 +25,13 @@ describe('card auto-size contract', () => {
     expect(cardContentRule).toContain('overflow: visible;');
   });
 
+  it('lets the browser skip off-screen card layout via content-visibility + intrinsic-size estimate', () => {
+    const cardRule = getRuleBody(appCss, '.card');
+
+    expect(cardRule).toContain('content-visibility: auto;');
+    expect(cardRule).toMatch(/contain-intrinsic-size:\s*auto\s+\d+px;/);
+  });
+
   it('remeasures cards after post-render size changes', () => {
     expect(appJs).toContain('function flushCardAutoSizeSync() {');
     expect(appJs).toContain('function queueCardAutoSizeSync(colIndex, options) {');

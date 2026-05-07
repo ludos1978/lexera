@@ -3740,6 +3740,8 @@ u {
 }
 
 .card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100px;
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-left: var(--spine-card-width) solid transparent;
