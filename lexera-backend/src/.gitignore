@@ -19,6 +19,7 @@ panelDefinitions.js
 treeRegistry.js
 layoutPersistence.js
 tabDragController.js
+geometryObserver.js
 sharedPanels.js
 workspaceShell.js
 workspaceShell.css

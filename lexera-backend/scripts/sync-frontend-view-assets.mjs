@@ -24,6 +24,7 @@ const assets = [
   ['workspace/treeRegistry.js', 'treeRegistry.js'],
   ['workspace/layoutPersistence.js', 'layoutPersistence.js'],
   ['workspace/tabDragController.js', 'tabDragController.js'],
+  ['workspace/geometryObserver.js', 'geometryObserver.js'],
   ['workspace/sharedPanels.js', 'sharedPanels.js'],
   ['workspace/workspaceShell.js', 'workspaceShell.js'],
   ['workspace/workspaceShell.css', 'workspaceShell.css']

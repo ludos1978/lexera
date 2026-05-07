@@ -45,6 +45,7 @@ const REQUIRED_SHELL_DEPS = [
   'treeRegistry.js',
   'layoutPersistence.js',
   'tabDragController.js',
+  'geometryObserver.js',
   'sharedPanels.js',
 ];
 

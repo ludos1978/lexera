@@ -65,6 +65,10 @@
   if (!tabDragController) {
     throw new Error('LexeraTabDragController global is required before workspaceShell.js');
   }
+  var geometryObserverFactory = (typeof window !== 'undefined' && window.LexeraGeometryObserver) || null;
+  if (!geometryObserverFactory) {
+    throw new Error('LexeraGeometryObserver global is required before workspaceShell.js');
+  }
   var SIDE_DOCK_DIVIDER_SIZE_PX = 5;
   var BOTTOM_DOCK_DIVIDER_SIZE_PX = 5;
   var SPLIT_DIVIDER_SIZE_PX = 5;
@@ -2369,106 +2373,23 @@
   }
 
   // ── Tab overflow: fold tabs that don't fit into a dropdown ──
-
-  var _tabOverflowObserver = null;
-
-  /** Recalculate which tabs are visible and which overflow into the dropdown. */
-  function updateTabOverflow(headerEl) {
-    var tabsEl = headerEl.querySelector('.ws-view-tabs');
-    var overflowBtn = headerEl.querySelector('.ws-tab-overflow-btn');
-    if (!tabsEl || !overflowBtn) return;
-    var tabs = tabsEl.querySelectorAll('.ws-view-tab');
-    if (tabs.length === 0) { overflowBtn.classList.remove('is-visible'); return; }
-
-    // Reset: show all tabs, hide overflow button
-    for (var r = 0; r < tabs.length; r++) tabs[r].classList.remove('is-tab-overflowed');
-    overflowBtn.classList.remove('is-visible');
-
-    // Measure available width: tabs container width
-    var containerWidth = tabsEl.clientWidth;
-    if (containerWidth <= 0) return;
-
-    // First check: do all tabs fit without the overflow button?
-    var totalTabWidth = 0;
-    for (var t = 0; t < tabs.length; t++) totalTabWidth += tabs[t].offsetWidth;
-    if (totalTabWidth <= containerWidth) return; // All tabs fit, no overflow needed
-
-    // Measure overflow button width (unhide temporarily to measure)
-    overflowBtn.classList.add('is-visible');
-    var btnWidth = overflowBtn.offsetWidth || 32;
-    overflowBtn.classList.remove('is-visible');
-
-    // Walk tabs left-to-right, accumulate widths, mark overflowing ones
-    var usedWidth = 0;
-    var overflowCount = 0;
-    var activeOverflowed = false;
-    for (var i = 0; i < tabs.length; i++) {
-      var tabWidth = tabs[i].offsetWidth;
-      // If this tab would push beyond available space (minus room for overflow btn),
-      // mark it and all subsequent tabs as overflowed
-      if (overflowCount > 0 || usedWidth + tabWidth > containerWidth - btnWidth) {
-        tabs[i].classList.add('is-tab-overflowed');
-        overflowCount++;
-        if (tabs[i].classList.contains('is-active')) activeOverflowed = true;
-      } else {
-        usedWidth += tabWidth;
-      }
-    }
-
-    // If the active tab got overflowed, swap it with the last visible tab
-    if (activeOverflowed && overflowCount < tabs.length) {
-      var lastVisibleIdx = tabs.length - overflowCount - 1;
-      if (lastVisibleIdx >= 0) {
-        tabs[lastVisibleIdx].classList.add('is-tab-overflowed');
-        for (var a = 0; a < tabs.length; a++) {
-          if (tabs[a].classList.contains('is-active')) {
-            tabs[a].classList.remove('is-tab-overflowed');
-            break;
-          }
-        }
-      }
-    }
-
-    if (overflowCount > 0) {
-      overflowBtn.classList.add('is-visible');
-      var countEl = overflowBtn.querySelector('.ws-tab-overflow-count');
-      if (countEl) countEl.textContent = '+' + overflowCount;
-    }
-
-    // Close any open overflow menu since the tab layout changed
-    closeTabOverflowMenus();
-  }
-
-  /** Ensure a ResizeObserver is watching all .ws-view-tabs elements. */
-  function ensureTabOverflowObserver() {
-    if (_tabOverflowObserver) return;
-    if (typeof ResizeObserver === 'undefined') return;
-    var _tabOverflowRafId = 0;
-    _tabOverflowObserver = new ResizeObserver(function (entries) {
-      // Defer DOM mutations to the next frame to avoid triggering another
-      // ResizeObserver notification within the same observation loop.
-      if (_tabOverflowRafId) return;
-      var headers = [];
-      for (var i = 0; i < entries.length; i++) {
-        var tabsEl = entries[i].target;
-        var headerEl = tabsEl.closest('.ws-view-header');
-        if (headerEl && headers.indexOf(headerEl) === -1) headers.push(headerEl);
-      }
-      _tabOverflowRafId = requestAnimationFrame(function () {
-        _tabOverflowRafId = 0;
-        for (var j = 0; j < headers.length; j++) updateTabOverflow(headers[j]);
-      });
+  // Lazy because closeTabOverflowMenus is hoisted but defined below; the
+  // observer is also only needed once a header gets rendered.
+  var _geometryObserver = null;
+  function getGeometryObserver() {
+    if (_geometryObserver) return _geometryObserver;
+    _geometryObserver = geometryObserverFactory.create({
+      onTabsLayoutChanged: function () { closeTabOverflowMenus(); }
     });
+    return _geometryObserver;
   }
 
-  /** Attach overflow observation to a header element. */
+  function updateTabOverflow(headerEl) {
+    getGeometryObserver().updateTabOverflow(headerEl);
+  }
+
   function observeTabOverflow(headerEl) {
-    var tabsEl = headerEl.querySelector('.ws-view-tabs');
-    if (!tabsEl) return;
-    ensureTabOverflowObserver();
-    if (_tabOverflowObserver) _tabOverflowObserver.observe(tabsEl);
-    // Initial calculation after layout settles
-    requestAnimationFrame(function () { updateTabOverflow(headerEl); });
+    getGeometryObserver().observeTabOverflow(headerEl);
   }
 
   /** Close any open tab overflow menu. */
