@@ -77,12 +77,47 @@ describe('rewriteEmbedView', () => {
 
   it('preserves other attributes when replacing view=', () => {
     const out = rewriteEmbedView(
-      '![](Media/sample.pdf){width=400 view=scrolled height=200}',
+      '![](Media/sample.pdf){width=400 view=overview height=200}',
       'Media/sample.pdf',
       0,
       'stacked'
     );
     expect(out).toBe('![](Media/sample.pdf){width=400 view=stacked height=200}');
+  });
+
+  it('REMOVES view= when the picked mode is the implicit default (scrolled)', () => {
+    // User rule: "if there is no option we use the default rendering
+    // (scrolled), it needs a parameter to show in overview or stacked
+    // mode." So picking scrolled must DROP the attribute, not write
+    // `view=scrolled`. With no other attributes, the entire `{…}`
+    // block is dropped too.
+    const out = rewriteEmbedView(
+      '![](Media/sample.pdf){view=overview}',
+      'Media/sample.pdf',
+      0,
+      'scrolled'
+    );
+    expect(out).toBe('![](Media/sample.pdf)');
+  });
+
+  it('REMOVES only view= when scrolled is picked, preserving other attrs', () => {
+    const out = rewriteEmbedView(
+      '![](Media/sample.pdf){width=400 view=stacked height=200}',
+      'Media/sample.pdf',
+      0,
+      'scrolled'
+    );
+    expect(out).toBe('![](Media/sample.pdf){width=400 height=200}');
+  });
+
+  it('is a no-op when the picked mode is scrolled and no view= attribute exists', () => {
+    const out = rewriteEmbedView(
+      '![](Media/sample.pdf)',
+      'Media/sample.pdf',
+      0,
+      'scrolled'
+    );
+    expect(out).toBe('![](Media/sample.pdf)');
   });
 
   it('only rewrites the embed at the given target index — others are byte-identical', () => {

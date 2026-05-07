@@ -73,14 +73,7 @@ var LexeraSettings = (function () {
     //     per-window UX, not a global setting) ---
 
     // --- Custom URLs ---
-    mermaidUrl:           { key: 'lexera-mermaid-url',            type: 'string',  default: '' },
-
-    // --- PDF preview view-mode (single global preference set from the
-    //     embed burger menu). Valid values: 'scrolled' | 'overview'
-    //     | 'stacked'. Anything else is treated as 'scrolled' by the
-    //     consumer. Stored as a string so the existing settings-store
-    //     migration path applies. ---
-    pdfViewMode:          { key: 'lexera-pdf-view-mode',          type: 'string',  default: 'scrolled' }
+    mermaidUrl:           { key: 'lexera-mermaid-url',            type: 'string',  default: '' }
   };
 
   // Per-board key templates: the {boardId} placeholder is replaced at runtime

@@ -90,15 +90,18 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(pdfPluginJs).toMatch(/stacked\s*:\s*1/);
   });
 
-  it('pdf view-mode persistence routes through LexeraSettings (not raw localStorage)', () => {
-    // Per the project-wide localStorageGuardrailContract: every new
-    // file MUST go through LexeraSettings. Pin both that the plugin
-    // uses the settings API and that the corresponding `pdfViewMode`
-    // DEF is registered with the canonical storage key.
+  it('pdf plugin does NOT touch localStorage or LexeraSettings — view mode lives entirely in the markdown source', () => {
+    // The original implementation routed view-mode through a
+    // LexeraSettings flag. After the user clarified that scrolled is
+    // the implicit default and `{view=…}` is the only configurable
+    // signal, the global setting became misleading dead code. Pin
+    // its absence so a future "let's add a global default" patch is
+    // explicit instead of quietly bringing back the divergence.
     expect(pdfPluginJs).not.toMatch(/localStorage\.(getItem|setItem)/);
-    expect(pdfPluginJs).toMatch(/LexeraSettings/);
-    expect(pdfPluginJs).toMatch(/['"]pdfViewMode['"]/);
-    expect(settingsStoreJs).toMatch(/pdfViewMode\s*:\s*\{[^}]*lexera-pdf-view-mode/);
+    expect(pdfPluginJs).not.toMatch(/LexeraSettings/);
+    expect(pdfPluginJs).not.toMatch(/['"]pdfViewMode['"]/);
+    expect(settingsStoreJs).not.toMatch(/pdfViewMode/);
+    expect(settingsStoreJs).not.toMatch(/lexera-pdf-view-mode/);
   });
 
   it('embedMenu.js inserts PDF view-mode items into the burger menu (showEmbedMenu) for previewKind === pdf', () => {

@@ -4284,13 +4284,13 @@ var LexeraEmbedMenu = (function () {
         typeof window !== 'undefined' && window.LexeraPdfViewer) {
       // The check-mark next to the current mode reflects the
       // PER-EMBED choice (from `data-pdf-view` on the container,
-      // populated from the markdown's `{view=…}` attribute) when one
-      // is set, falling back to the global LexeraSettings default
-      // for unconfigured embeds.
+      // populated from the markdown's `{view=…}` attribute). Absence
+      // of the attribute means scrolled — that's the hard-coded
+      // fallback, there is no global override.
       var perEmbedMode = String(container.getAttribute('data-pdf-view') || '').toLowerCase();
       var currentMode = window.LexeraPdfViewer.VALID_MODES[perEmbedMode]
         ? perEmbedMode
-        : window.LexeraPdfViewer.readMode();
+        : window.LexeraPdfViewer.DEFAULT_MODE;
       function pdfItem(id, label, modeKey) {
         return { id: id, label: (currentMode === modeKey ? '✓ ' : '   ') + label };
       }

@@ -2,40 +2,22 @@
   if (typeof LexeraPluginRegistry === 'undefined' || typeof LexeraFileFormatHelpers === 'undefined') return;
   var H = LexeraFileFormatHelpers;
 
-  // PDF view modes — picked by the user from the embed burger menu and
-  // persisted via LexeraSettings as a single global preference (per
-  // the user's "minimal changes" directive: one setting for all PDFs).
+  // PDF view modes. Picked per-embed via the burger menu and
+  // persisted as a `{view=…}` Pandoc-style attribute on the source
+  // markdown's `![..](path){…}` embed. Absence of the attribute means
+  // scrolled — there is no global default override; scrolled is the
+  // hard-coded fallback.
   //
-  //   scrolled  — vertical scroll, one page tall, the legacy default.
-  //   overview  — every page rendered at a small fixed width and laid
-  //               out in a wrap-grid so the whole document is visible
-  //               at once (still scrolls if the doc is huge).
+  //   scrolled  — vertical scroll, one page tall, the implicit default.
+  //   overview  — every page rendered as a small thumbnail laid out
+  //               in a CSS-grid contact-sheet so the whole document
+  //               is visible at once.
   //   stacked   — every page rendered at full container width, stacked
   //               vertically with NO inner scroll (the document grows
   //               the parent — useful inside a card body that already
   //               has its own scroll context).
-  //
-  // Settings key `pdfViewMode` is registered in core/settingsStore.js
-  // (storage key: `lexera-pdf-view-mode`).
   var DEFAULT_MODE = 'scrolled';
   var VALID_MODES = { scrolled: 1, overview: 1, stacked: 1 };
-
-  function settingsApi() {
-    return (typeof window !== 'undefined' && window.LexeraSettings) || null;
-  }
-  function readMode() {
-    var s = settingsApi();
-    if (s && typeof s.get === 'function') {
-      var v = s.get('pdfViewMode');
-      if (v && VALID_MODES[v]) return v;
-    }
-    return DEFAULT_MODE;
-  }
-  function writeMode(mode) {
-    if (!VALID_MODES[mode]) return;
-    var s = settingsApi();
-    if (s && typeof s.set === 'function') s.set('pdfViewMode', mode);
-  }
 
   // Set the worker source exactly once. The worker file is vendored
   // alongside `pdf.min.js` under `src/vendor/pdfjs/`. Resolved against
@@ -210,11 +192,18 @@
 
   // Rewrite the source markdown of `card.cards[fullIdx].content` so the
   // `targetIndex`-th `![alt](path){…}` whose path matches `filePath`
-  // carries `view=mode` in its attribute block. Used by the burger
-  // menu's per-embed picker to persist the user's choice in the
-  // markdown itself, so the mode survives reloads + appears in
-  // exported markdown. Existing attributes other than `view=` are
-  // preserved verbatim.
+  // carries the picked view mode.
+  //
+  // Mode semantics — scrolled is the implicit default:
+  //   - mode === 'scrolled'           ⇒ REMOVE `view=…` from the attrs
+  //                                     block (and remove the whole
+  //                                     `{…}` if it becomes empty), so
+  //                                     a card without `{view=…}` reads
+  //                                     scrolled the way the user wants.
+  //   - mode === 'overview' | 'stacked' ⇒ add or replace `view=mode`
+  //                                     inside the attrs block,
+  //                                     preserving every other attr
+  //                                     verbatim.
   function rewriteEmbedView(content, filePath, targetIndex, mode) {
     var idx = -1;
     return String(content).replace(
@@ -229,21 +218,20 @@
         var titleMatch = rawSrc.match(/^(.+?)\s+["'][^"']*["']\s*$/);
         if (titleMatch) srcPath = titleMatch[1].trim();
         if (srcPath !== filePath) return match;
-        var newAttrs;
-        if (attrsBlock) {
-          var inner = attrsBlock.slice(1, -1).trim();
-          if (/(^|\s)view\s*=\s*\S+/.test(inner)) {
-            inner = inner.replace(
-              /(^|\s)view\s*=\s*\S+/,
-              function (_m, lead) { return lead + 'view=' + mode; }
-            );
-          } else {
-            inner = (inner ? inner + ' ' : '') + 'view=' + mode;
-          }
-          newAttrs = '{' + inner + '}';
+        var inner = attrsBlock ? attrsBlock.slice(1, -1).trim() : '';
+        if (mode === DEFAULT_MODE) {
+          // Strip any existing `view=…` so the embed falls back to
+          // scrolled via the absence-of-attribute rule.
+          inner = inner.replace(/(^|\s)view\s*=\s*\S+/g, '').trim();
+        } else if (/(^|\s)view\s*=\s*\S+/.test(inner)) {
+          inner = inner.replace(
+            /(^|\s)view\s*=\s*\S+/,
+            function (_m, lead) { return lead + 'view=' + mode; }
+          );
         } else {
-          newAttrs = '{view=' + mode + '}';
+          inner = (inner ? inner + ' ' : '') + 'view=' + mode;
         }
+        var newAttrs = inner ? '{' + inner + '}' : '';
         return '![' + alt + '](' + rawSrc + ')' + newAttrs;
       }
     );
@@ -333,8 +321,6 @@
     window.LexeraPdfViewer = window.LexeraPdfViewer || {
       VALID_MODES: VALID_MODES,
       DEFAULT_MODE: DEFAULT_MODE,
-      readMode: readMode,
-      writeMode: writeMode,
       mount: mountPdfViewer,
       _test_rewriteEmbedView: rewriteEmbedView,
       // Apply a mode to ONE specific embed and persist the choice into
@@ -434,12 +420,12 @@
 
       // Per-embed `{view=…}` attribute (parsed from the source markdown
       // by inlineRenderer.js → emitted as `data-pdf-view` on the embed
-      // container) overrides the global default. Falls back to
-      // LexeraSettings.pdfViewMode for embeds without an explicit view.
+      // container). Absence of the attribute means scrolled — there is
+      // no global default-override, scrolled is the hard-coded fallback.
       var perEmbedView = container && container.getAttribute
         ? String(container.getAttribute('data-pdf-view') || '').toLowerCase()
         : '';
-      var initialMode = VALID_MODES[perEmbedView] ? perEmbedView : readMode();
+      var initialMode = VALID_MODES[perEmbedView] ? perEmbedView : DEFAULT_MODE;
       var ctrl = mountPdfViewer(host, url, initialMode);
       host.__lexeraPdfController = ctrl;
       return Promise.resolve(true);
