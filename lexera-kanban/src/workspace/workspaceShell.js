@@ -604,6 +604,172 @@
    *   sentinel is the "no timer in flight" check used by
    *   `clearDeferredBoardFrameLoads` and re-set after each pump.
    */
+
+  /**
+   * Aggregator typedef tying every documented `state.*` field group
+   * together. The shell's single `state` object literal flattens
+   * eleven logical groups into one bag — this typedef makes the
+   * grouping explicit without restructuring the literal (the field
+   * order in the literal is preserved verbatim by the property order
+   * here for grep-friendliness).
+   *
+   * Conceptually the groups are:
+   * - **boot config** (URL-derived, immutable after `mount`):
+   *   `enabled`, `profile`, `windowLabel`, `hostWindowLabel`,
+   *   `windowRole`, `originWindow`, `panelOnlyKind`, `panelOnlyId`,
+   *   `initialPanelKind` — see {@link WorkspaceShellBootState}.
+   * - **lifecycle flags**: `mounted`, `didRestoreState`.
+   * - **layout tree**: `dockTree`, `sideDocks` — see
+   *   {@link DockTreeNode}.
+   * - **panel registry**: `panelInstances`, `panelVisibility`,
+   *   `activePanelId`, `activeLeafId`, `panelElements` — see
+   *   {@link PanelInstanceMap}, {@link PanelVisibilityMap},
+   *   {@link PanelElementMap}.
+   * - **dock geometry**: `dockSizes`, `dockRestoreSizes`,
+   *   `foldedPanes` — see {@link DockSizeMap},
+   *   {@link FoldedPaneRatios}.
+   * - **board caches**: `boardsById`, `frameCache`,
+   *   `loadedBoardFrames`, `deferredBoardLoadQueue`,
+   *   `deferredBoardLoadTimer`, `lastNotifiedBoardId` — see
+   *   {@link WorkspaceShellBoardCaches}.
+   * - **DOM handles** (mounted/unmounted as a unit): `rootEl`,
+   *   `bodyEl`, `mainRowEl`, `leftDockEl`, `leftDividerEl`, `dockEl`,
+   *   `rightDividerEl`, `rightDockEl`, `bottomDividerEl`,
+   *   `bottomDockEl`, `panelDropOverlayEl` — see
+   *   {@link WorkspaceShellDomHandles}.
+   * - **render cache** (signature comparators): `lastStructureSignature`,
+   *   `lastLeafTopology`, `lastSideDockSignatures` — see
+   *   {@link WorkspaceShellRenderCache}.
+   * - **catalog snapshot**: `backendConnected`, `catalogSnapshot`.
+   * - **drag state**: `dragTabId`, `dragDroppedInternally`,
+   *   `dragHoverLeafId`, `dragHoverZone`, `dragHoverDock`,
+   *   `dragHoverTabIndex`, `dragPanelId`, `pointerDrag`,
+   *   `dragLastX`, `dragLastY` — see {@link WorkspaceShellDragState}.
+   * - **callback hooks + pending focus**: `hooks`,
+   *   `pendingFocusTargets`.
+   *
+   * @typedef {Object} WorkspaceShellState
+   * @property {boolean} enabled - Result of `isEnabled()`; the
+   *   master kill switch. `false` makes `mount()` a no-op.
+   * @property {boolean} mounted - `true` between successful `mount()`
+   *   and `unmount()`. Read by event handlers and timers to bail when
+   *   the shell has gone away.
+   * @property {boolean} didRestoreState - `true` after the first
+   *   `restoreFromPersistence()` call has run; prevents double-restore
+   *   on accidental remount.
+   * @property {('workspace'|'detachedBoard')} profile - Window profile
+   *   from URL `?profile=`; selects the default panel set + side dock
+   *   layout. See {@link WorkspaceShellBootState.profile}.
+   * @property {string} panelOnlyKind - URL `?panelKind=` (legacy
+   *   panel-only window mode, now `b23ce211`-disabled — see
+   *   {@link WorkspaceShellBootState.panelOnlyKind}).
+   * @property {string} panelOnlyId - Resolved panel instance id when
+   *   `panelOnlyKind` is set; `''` otherwise.
+   * @property {string} initialPanelKind - URL `?initialPanel=`; the
+   *   panel to focus on first render.
+   * @property {string} windowRole - URL `?windowRole=`; free-form
+   *   role marker used by external windows.
+   * @property {string} windowLabel - URL `?windowLabel=`; defaults to
+   *   `'main'`. Matches the Tauri WebviewWindow label.
+   * @property {string} hostWindowLabel - URL
+   *   `?workspaceShellHostLabel=` falling back to `windowLabel`. The
+   *   parent shell's label when this window is a detached panel.
+   * @property {string} originWindow - URL `?originWindow=`. Set by
+   *   `open_new_window(origin_window=…)` for panel-only windows;
+   *   used by `dockToMainWindow` to broadcast back to the originator.
+   * @property {DockTreeNode} dockTree - Centre dock layout tree. Never
+   *   null after construction (an empty tabset is created at boot).
+   * @property {PanelInstanceMap} panelInstances - All registered panel
+   *   instances by id.
+   * @property {{left: DockTreeNode|null, right: DockTreeNode|null, bottom: DockTreeNode|null}} sideDocks
+   *   Per-side-dock layout trees; `null` when the dock has no panels.
+   * @property {DockSizeMap} dockSizes - Pixel widths/heights of side
+   *   docks; `0` = collapsed.
+   * @property {DockRestoreSizeMap} dockRestoreSizes - Last non-zero
+   *   `dockSizes` values, restored on un-collapse.
+   * @property {PanelVisibilityMap} panelVisibility - Per-panel
+   *   visibility flags.
+   * @property {string} activePanelId - Id of the currently focused
+   *   panel; `''` in detachedBoard profile or when no panel is active.
+   * @property {string} activeLeafId - Id of the centre-tree leaf
+   *   currently holding focus; `''` between renders.
+   * @property {string} lastNotifiedBoardId - Last boardId broadcast
+   *   through `hooks.onActiveBoardChanged`; debounce key against
+   *   redundant notifications.
+   * @property {BoardsByIdMap} boardsById - Catalog-derived board
+   *   metadata.
+   * @property {FrameCacheMap} frameCache - Per-tab placeholder DOM
+   *   nodes.
+   * @property {LoadedBoardFramesMap} loadedBoardFrames - Tab ids
+   *   whose webview has spawned at least once.
+   * @property {string[]} deferredBoardLoadQueue - FIFO of background
+   *   board tab.ids awaiting load.
+   * @property {number} deferredBoardLoadTimer - `setTimeout` handle
+   *   for the next pump; `0` when none.
+   * @property {Object} hooks - Caller-supplied callback bag passed to
+   *   `mount(target, hooks)`. Optional methods: `onActiveBoardChanged`,
+   *   `openWindow`, `getPanelElements`, `onAfterRender`,
+   *   `refreshBoardHierarchy`, `refreshDashboard`, `showNativeMenu`,
+   *   `getAllowedPanelKinds`, `getMainContent`. Each call site uses
+   *   the `state.hooks && typeof state.hooks.<name> === 'function'`
+   *   guard so missing hooks no-op silently.
+   * @property {HTMLElement|null} rootEl - Shell mount root; see
+   *   {@link WorkspaceShellDomHandles}.
+   * @property {HTMLElement|null} bodyEl - Body wrapper.
+   * @property {HTMLElement|null} mainRowEl - CSS-grid row.
+   * @property {HTMLElement|null} leftDockEl - Left side-dock host.
+   * @property {HTMLElement|null} leftDividerEl - Left/centre divider.
+   * @property {HTMLElement|null} dockEl - Centre dock host.
+   * @property {HTMLElement|null} rightDividerEl - Centre/right divider.
+   * @property {HTMLElement|null} rightDockEl - Right side-dock host.
+   * @property {HTMLElement|null} bottomDividerEl - Centre/bottom
+   *   divider.
+   * @property {HTMLElement|null} bottomDockEl - Bottom side-dock host.
+   * @property {HTMLElement|null} panelDropOverlayEl - Drag-drop
+   *   overlay.
+   * @property {string} lastStructureSignature - See
+   *   {@link WorkspaceShellRenderCache.lastStructureSignature}.
+   * @property {string} lastLeafTopology - See
+   *   {@link WorkspaceShellRenderCache.lastLeafTopology}.
+   * @property {{left: string, right: string, bottom: string}} lastSideDockSignatures
+   *   See {@link WorkspaceShellRenderCache.lastSideDockSignatures}.
+   * @property {FoldedPaneRatios} foldedPanes - Centre-split fold
+   *   ratios.
+   * @property {boolean} backendConnected - Last received backend
+   *   connection state; drives the connected badge.
+   * @property {{boards: BoardSummary[], remoteBoards: BoardSummary[], workspaces: Object[]}} catalogSnapshot
+   *   Last received normalised catalog snapshot from
+   *   `messageBridge.normalizeCatalog`. The three arrays are flattened
+   *   into `boardsById` by `onBoardsUpdated` and re-broadcast to
+   *   sub-app webviews via `broadcastCatalogSnapshot`.
+   * @property {PanelElementMap|null} panelElements - Per-kind panel
+   *   DOM hosts; `null` until `ensurePanelElements()` runs.
+   * @property {string} dragTabId - See
+   *   {@link WorkspaceShellDragState.dragTabId}.
+   * @property {boolean} dragDroppedInternally - See
+   *   {@link WorkspaceShellDragState.dragDroppedInternally}.
+   * @property {string} dragHoverLeafId - See
+   *   {@link WorkspaceShellDragState.dragHoverLeafId}.
+   * @property {('before'|'after'|'center'|'')} dragHoverZone - See
+   *   {@link WorkspaceShellDragState.dragHoverZone}.
+   * @property {string} dragHoverDock - See
+   *   {@link WorkspaceShellDragState.dragHoverDock}.
+   * @property {number} dragHoverTabIndex - See
+   *   {@link WorkspaceShellDragState.dragHoverTabIndex}.
+   * @property {string} dragPanelId - See
+   *   {@link WorkspaceShellDragState.dragPanelId}.
+   * @property {PointerDragState|null} pointerDrag - See
+   *   {@link WorkspaceShellDragState.pointerDrag}.
+   * @property {number} dragLastX - See
+   *   {@link WorkspaceShellDragState.dragLastX}.
+   * @property {number} dragLastY - See
+   *   {@link WorkspaceShellDragState.dragLastY}.
+   * @property {Object<string, {target: string, options: Object}>} pendingFocusTargets
+   *   Per-tab focus delivery queue. Keyed by `tab.id`; populated when
+   *   `activateTab` requests a focus that the placeholder webview
+   *   isn't ready to receive yet, drained when the embedded board
+   *   announces ready via `data.pane === <tabId>`.
+   */
   var state = {
     enabled: isEnabled(),
     mounted: false,
