@@ -179,7 +179,7 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 
 ### 4. Modularization & Cleanup
 - [ ] Split `lexera-backend/src-tauri/src/sync_client.rs` (48k bytes) into focused modules: `connection_mgr.rs`, `replication.rs`, and `conflict_resolver.rs`.
-- [ ] (in progress) Decompose `lexera-backend/src-tauri/src/config.rs` (34k bytes) by extracting identity and workspace management into separate files.
+- [x] (done) ~~Decompose `lexera-backend/src-tauri/src/config.rs` (34k bytes) by extracting identity and workspace management into separate files.~~ Split into `config.rs` (605 lines — types, defaults, load/save, resolve_templates_path, get_backend_url) + `config/identity.rs` (149 lines — `load_or_create_identity`, `persist_identity`, `os_username`, `create_and_persist_identity`, `backup_corrupt_identity` plus 3 tests) + `config/workspace_setup.rs` (231 lines — `normalize_workspace_setup`, `ensure_default_workspace`, `canonicalize_*` helpers plus 3 tests). Public surface preserved via `pub use` re-exports — all call sites in `lib.rs`, `collab_api.rs`, `api/board.rs` keep working unchanged. 280 backend tests + 161 frontend tests pass clean. (commit be5a9463)
 - [x] (done) Remove unused dependencies from `lexera-core/Cargo.toml` and `lexera-backend/src-tauri/Cargo.toml` after the ESM/IPC migrations are complete. Audit found zero orphans: 17 lexera-core deps + 28 lexera-backend deps (incl. dev/build) all have at least one usage site (some via short paths like `hex::encode`, `thiserror::Error`, `uuid::Uuid::new_v4`). Pinned by `cargoNoOrphanDepsContract.test.js` — 47 assertions, fails closed on any future orphan. (commit d137a2fd)
 
 ## IPC Refactoring & Migration
