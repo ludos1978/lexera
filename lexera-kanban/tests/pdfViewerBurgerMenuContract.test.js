@@ -156,6 +156,32 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     );
   });
 
+  it('inlineRenderer emits data-pdf-view on the embed container when the markdown carries {view=…}', () => {
+    // Per-embed view-mode override syntax: `![](sample.pdf){view=stacked}`.
+    // The renderer must:
+    //   - validate the value (only scrolled/overview/stacked are emitted)
+    //   - serialize as `data-pdf-view="<value>"` on the embed container
+    // A typo or unknown value silently falls back to the global default
+    // — the data-attribute is never emitted in that case.
+    const inlineJs = readFileSync(
+      resolve(__dirname, '..', 'src', 'render', 'inlineRenderer.js'),
+      'utf8'
+    );
+    expect(inlineJs).toMatch(/imageAttrs\.values\.view/);
+    expect(inlineJs).toMatch(/['"]scrolled['"]\s*\|\|/);
+    expect(inlineJs).toMatch(/['"]overview['"]\s*\|\|/);
+    expect(inlineJs).toMatch(/['"]stacked['"]\s*\)/);
+    expect(inlineJs).toMatch(/data-pdf-view=/);
+  });
+
+  it('pdf.js plugin honours data-pdf-view as the initial-mode override', () => {
+    // The plugin reads `container.getAttribute('data-pdf-view')` and
+    // prefers it over the global LexeraSettings.pdfViewMode default.
+    // Empty / invalid values fall through to readMode().
+    expect(pdfPluginJs).toMatch(/getAttribute\(\s*['"]data-pdf-view['"]\s*\)/);
+    expect(pdfPluginJs).toMatch(/VALID_MODES\[\s*perEmbedView\s*\]\s*\?/);
+  });
+
   it('embedMenu.js does NOT wire pdf-view-* into the right-click contextmenu path', () => {
     // The right-click handler builds menuItems literally inline; we
     // catch any future regression that adds pdf-view items there.

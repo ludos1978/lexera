@@ -281,11 +281,20 @@ var LexeraInlineRenderer = (function () {
         var previewPageAttr = /^\d+$/.test(String(previewPageValue || ''))
           ? ' data-preview-page="' + escapeAttr(String(Math.max(1, parseInt(previewPageValue, 10)))) + '"'
           : '';
+        // PDF view-mode override: `![](sample.pdf){view=stacked}` overrides
+        // the global LexeraSettings.pdfViewMode for this one embed. Only
+        // emit the attribute when the value is in the valid set, so a
+        // typo in the markdown silently falls back to the global default
+        // instead of poisoning the data-attribute pipeline.
+        var pdfViewValue = String(imageAttrs.values.view || '').toLowerCase();
+        var pdfViewAttr = (pdfViewValue === 'scrolled' || pdfViewValue === 'overview' || pdfViewValue === 'stacked')
+          ? ' data-pdf-view="' + escapeAttr(pdfViewValue) + '"'
+          : '';
         var containerClass = 'embed-container' + (preKnownMissing ? ' embed-broken' : '');
         var embedHtml = '<span class="' + containerClass + '" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '" data-embed-index="' + escapeAttr(String(embedIndex)) + '"' +
           ' data-alt-text="' + escapeAttr(decodeHtmlEntities(alt || '')) + '"' +
           ' data-embed-caption="' + escapeAttr(titleText || '') + '"' +
-          previewPageAttr + '>' +
+          previewPageAttr + pdfViewAttr + '>' +
           inner +
           '<button class="embed-menu-btn" title="Embed actions"><span class="burger-lines" aria-hidden="true"></span></button>' +
           '</span>';

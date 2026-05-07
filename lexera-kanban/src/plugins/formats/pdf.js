@@ -286,7 +286,15 @@
       );
       container.appendChild(host);
 
-      var ctrl = mountPdfViewer(host, url, readMode());
+      // Per-embed `{view=…}` attribute (parsed from the source markdown
+      // by inlineRenderer.js → emitted as `data-pdf-view` on the embed
+      // container) overrides the global default. Falls back to
+      // LexeraSettings.pdfViewMode for embeds without an explicit view.
+      var perEmbedView = container && container.getAttribute
+        ? String(container.getAttribute('data-pdf-view') || '').toLowerCase()
+        : '';
+      var initialMode = VALID_MODES[perEmbedView] ? perEmbedView : readMode();
+      var ctrl = mountPdfViewer(host, url, initialMode);
       host.__lexeraPdfController = ctrl;
       return Promise.resolve(true);
     }
