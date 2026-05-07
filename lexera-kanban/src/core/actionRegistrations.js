@@ -606,16 +606,6 @@
       if (d.isCanvasBoardLayout()) { d.applyCanvasZoom(1); d.resetCanvasPan(); } else { d.applyUiScale(1); d.showNotification('Zoom 100%'); }
     });
 
-    // Navigation
-    ActionRegistry.register('board', 'show-recent-boards', function () {
-      var items = document.querySelectorAll('.sidebar-board-item');
-      if (items.length > 0) items[0].scrollIntoView({ behavior: 'smooth' });
-    });
-    ActionRegistry.register('board', 'focus-next-card', function () { d.navigateCards('ArrowDown'); });
-    ActionRegistry.register('board', 'focus-prev-card', function () { d.navigateCards('ArrowUp'); });
-    ActionRegistry.register('board', 'focus-next-column', function () { d.navigateCards('ArrowRight'); });
-    ActionRegistry.register('board', 'focus-prev-column', function () { d.navigateCards('ArrowLeft'); });
-
     // Stats
     ActionRegistry.register('board', 'toggle-board-stats', function () { d.toggleBoardStatsBar(); });
     ActionRegistry.register('board', 'show-keyboard-shortcuts', function () { d.showKeyboardShortcutsHelp(); });

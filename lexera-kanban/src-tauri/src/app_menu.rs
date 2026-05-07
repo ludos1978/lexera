@@ -277,16 +277,6 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .item(&layout_preset_sub)
         .build()?;
 
-    // ── Go menu ──
-    let go_menu = SubmenuBuilder::new(app, "Go")
-        .item(&MenuItemBuilder::with_id("go-recent-boards", "Recent Boards…").build(app)?)
-        .separator()
-        .item(&MenuItemBuilder::with_id("go-next-card", "Next Card").build(app)?)
-        .item(&MenuItemBuilder::with_id("go-prev-card", "Previous Card").build(app)?)
-        .item(&MenuItemBuilder::with_id("go-next-column", "Next Column").build(app)?)
-        .item(&MenuItemBuilder::with_id("go-prev-column", "Previous Column").build(app)?)
-        .build()?;
-
     // ── Board menu ──
     let sort_sub = SubmenuBuilder::new(app, "Sort All Cards")
         .item(&MenuItemBuilder::with_id("board-sort-title", "By Title").build(app)?)
@@ -322,7 +312,6 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .item(&edit_menu)
         .item(&view_menu)
         .item(&format_menu)
-        .item(&go_menu)
         .item(&board_menu)
         .item(&help_menu)
         .build()?;
@@ -483,12 +472,6 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     // Format – layout preset
     ("fmt-preset-normal", "set-layout-preset:normal"),
     ("fmt-preset-spacious", "set-layout-preset:spacious"),
-    // Go
-    ("go-recent-boards", "show-recent-boards"),
-    ("go-next-card", "focus-next-card"),
-    ("go-prev-card", "focus-prev-card"),
-    ("go-next-column", "focus-next-column"),
-    ("go-prev-column", "focus-prev-column"),
     // Board
     ("board-new-row", "add-row"),
     ("board-new-stack", "add-stack"),
