@@ -223,8 +223,18 @@
 
       function renderLongTasks() {
         if (entries.length === 0) {
+          // Distinguish "you didn't interact" from "you interacted
+          // but nothing blocked ≥50ms" — the second case is a real
+          // diagnostic finding (main thread isn't the bottleneck).
+          if (events.length > 0) {
+            return 'No Long Tasks (≥50ms) recorded.\n  ' +
+              events.length + ' input event' + (events.length === 1 ? '' : 's') +
+              ' fired but each handler stayed below the 50ms threshold.\n  ' +
+              'Main thread isn\'t the bottleneck — check rendering / compositing / GPU.';
+          }
           return 'No Long Tasks (≥50ms) recorded.\n  ' +
-            'The board may not be re-rendering during this sample. ' +
+            'No input events fired either — the board may not be receiving ' +
+            'interaction during this sample.\n  ' +
             'Hold mouse, type in a card, or scroll to provoke renders, then re-record.';
         }
         var top = entries.slice(0, 30);

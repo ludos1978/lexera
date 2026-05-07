@@ -213,6 +213,46 @@ describe('debug-window controller (views/debug/debug.js)', () => {
     expect(profileStatus.textContent).toMatch(/clipboard unavailable/);
   });
 
+  it('the no-Long-Tasks message distinguishes "no activity" from "activity but no main-thread block"', () => {
+    // Two scenarios share entries.length === 0:
+    //   (a) nothing happened — user didn't scroll/drag/type. The
+    //       message should nudge them to interact.
+    //   (b) events fired but every handler stayed <50ms. That's
+    //       a real finding ("main thread isn't your bottleneck").
+    //
+    // Drive the registered debug-profile-render-response handler
+    // directly with crafted payloads and assert the output pane
+    // text picks the right message.
+    function findResponseHandler(listen) {
+      const call = listen.mock.calls.find(
+        (c) => c[0] === 'debug-profile-render-response'
+      );
+      return call && call[1];
+    }
+
+    // (a) no entries + no events → "no activity" wording.
+    let res = loadController();
+    let handler = findResponseHandler(res.listen);
+    expect(typeof handler).toBe('function');
+    handler({ payload: { entries: [], events: [], paints: [], shifts: [], notes: [] } });
+    expect(res.profileOutput.textContent).toMatch(/No input events fired/);
+    expect(res.profileOutput.textContent).toMatch(/may not be receiving/);
+
+    // (b) no entries + has events → "main thread isn't bottleneck".
+    res = loadController();
+    handler = findResponseHandler(res.listen);
+    handler({ payload: {
+      entries: [],
+      events: [
+        { name: 'wheel', duration: 12, startTime: 100 },
+        { name: 'wheel', duration: 8, startTime: 200 }
+      ],
+      paints: [], shifts: [], notes: []
+    } });
+    expect(res.profileOutput.textContent).toMatch(/2 input events fired/);
+    expect(res.profileOutput.textContent).toMatch(/Main thread isn't the bottleneck/);
+  });
+
   it('copyProfileAsJson() falls back to output pane when clipboard.writeText is rejected', async () => {
     const writeText = vi.fn(() => Promise.reject(new Error('NotAllowed')));
     const { window, profileOutput, profileStatus } = loadController({ clipboard: { writeText } });
