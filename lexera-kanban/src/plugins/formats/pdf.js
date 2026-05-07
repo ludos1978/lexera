@@ -248,31 +248,55 @@
   // source and dispatching the existing card-save flow. The local
   // viewer was already updated by `applyModeToEmbed`, so this is a
   // background persistence step — the UI doesn't wait on it.
+  // Every silent failure path logs to the in-app Log panel via
+  // lexeraLog('warn', 'pdf.viewmode.persist', …) so the user can see
+  // exactly why a save did not land instead of having to guess.
   function writeViewToCardMarkdown(embedContainer, mode) {
+    function bail(reason, extra) {
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        var msg = '[pdf-view-persist] ' + reason;
+        if (extra) {
+          try { msg += ' ' + JSON.stringify(extra); } catch (_) { /* ignore */ }
+        }
+        window.lexeraLog('warn', msg);
+      }
+    }
     if (typeof window === 'undefined') return;
-    if (!VALID_MODES[mode] || !embedContainer) return;
+    if (!VALID_MODES[mode] || !embedContainer) return bail('invalid args', { mode: mode, hasContainer: !!embedContainer });
     var cardEl = embedContainer.closest && embedContainer.closest('.card');
-    if (!cardEl) return;
+    if (!cardEl) return bail('no .card ancestor');
     var bds = window.LexeraBoardDataStore;
     var ce = window.CardEditor;
-    if (!bds || !ce || typeof ce.saveCardEdit !== 'function') return;
+    if (!bds) return bail('window.LexeraBoardDataStore missing');
+    if (!ce || typeof ce.saveCardEdit !== 'function') return bail('window.CardEditor.saveCardEdit missing');
     var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
     var visibleIdx = parseInt(cardEl.getAttribute('data-card-index') || '-1', 10);
-    if (colIndex < 0 || visibleIdx < 0) return;
+    if (colIndex < 0 || visibleIdx < 0) return bail('card data attrs missing', { colIndex: colIndex, visibleIdx: visibleIdx });
     var col = typeof bds.getFullColumn === 'function' ? bds.getFullColumn(colIndex) : null;
-    if (!col || !col.cards) return;
+    if (!col || !col.cards) return bail('full column not resolvable', { colIndex: colIndex });
     var fullIdx = typeof bds.getFullCardIndex === 'function' ? bds.getFullCardIndex(col, visibleIdx) : visibleIdx;
-    if (fullIdx < 0 || !col.cards[fullIdx]) return;
+    if (fullIdx < 0 || !col.cards[fullIdx]) return bail('full card index not resolvable', { colIndex: colIndex, visibleIdx: visibleIdx, fullIdx: fullIdx });
     var oldContent = col.cards[fullIdx].content || '';
     var embedIndex = parseInt(embedContainer.getAttribute('data-embed-index') || '0', 10);
     var filePath = embedContainer.getAttribute('data-file-path') || '';
-    if (!filePath) return;
+    if (!filePath) return bail('embed has no data-file-path');
     var newContent = rewriteEmbedView(oldContent, filePath, embedIndex, mode);
-    if (newContent === oldContent) return;
+    if (newContent === oldContent) {
+      return bail('rewrite produced no change — embedIndex / filePath did not match the source markdown',
+        { embedIndex: embedIndex, filePath: filePath, contentSnippet: oldContent.slice(0, 200) });
+    }
     // Fire-and-forget — the user already sees the visual change from
     // the local viewer's setMode + the data-pdf-view attr update;
     // saveCardEdit handles the CRDT write + sibling-window broadcast.
-    try { ce.saveCardEdit(cardEl, colIndex, fullIdx, newContent); } catch (_) {}
+    try {
+      ce.saveCardEdit(cardEl, colIndex, fullIdx, newContent);
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('info', '[pdf-view-persist] saved view=' + mode +
+          ' for ' + filePath + ' (col=' + colIndex + ' card=' + fullIdx + ')');
+      }
+    } catch (e) {
+      bail('saveCardEdit threw', { error: String(e && e.message ? e.message : e) });
+    }
   }
 
   // Surfaced on window so the burger menu can find the active viewer

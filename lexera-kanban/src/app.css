@@ -4647,6 +4647,17 @@ img[data-lazy-src] {
   height: min(72vh, 760px);
 }
 
+/* Overview + stacked want EVERY pixel of the parent card-body / modal
+ * width — the legacy `width: min(680px, 100%)` cap was wasting the
+ * right ~30% of any modal preview wider than 680 px. Scrolled keeps
+ * the cap because a single column wider than 680 px hurts readability;
+ * gallery and stacked benefit from extra width unambiguously. */
+.embed-preview-pdf.pdf-mode-overview,
+.embed-preview-pdf.pdf-mode-stacked {
+  width: 100%;
+  max-width: 100%;
+}
+
 .pdf-viewer-loading,
 .pdf-viewer-error {
   padding: 16px;
