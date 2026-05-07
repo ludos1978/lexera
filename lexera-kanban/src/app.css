@@ -4628,13 +4628,93 @@ img[data-lazy-src] {
   color: var(--text-primary);
 }
 
+/* PDF.js-rendered preview (replaced the legacy <iframe> that pulled in
+ * WKWebView's built-in PDF viewer with its non-suppressible floating
+ * mini-toolbar). The host element is BOTH `.embed-preview-pdf` AND
+ * `.pdf-viewer` — three view modes (scrolled/overview/stacked) are
+ * picked from the burger menu, persisted via LexeraSettings, and
+ * toggled by the `.pdf-mode-*` class on this same element. */
 .embed-preview-pdf {
   display: block;
   width: min(680px, 100%);
   height: min(360px, 50vh);
-  pointer-events: none;
   border: none;
   background: #fff;
+  overflow: auto;
+}
+
+.embed-preview-pdf.embed-preview-modal {
+  height: min(72vh, 760px);
+}
+
+.pdf-viewer-loading,
+.pdf-viewer-error {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.pdf-viewer-error {
+  color: var(--danger-fg, #c0392b);
+}
+
+.pdf-page {
+  display: block;
+  margin: 0 auto;
+  background: #fff;
+}
+/* Canvas keeps its intrinsic aspect ratio: only `style.width` is set
+ * inline (see renderPageToCanvas), height is `auto` here so a narrow
+ * container doesn't squash the page. */
+.pdf-page-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Mode 1 — scrolled: pages stack vertically, container scrolls. */
+.pdf-viewer.pdf-mode-scrolled .pdf-page {
+  margin: 0 auto 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Mode 2 — overview: small thumbnails wrapped in a grid; whole doc
+ * visible at a glance. Container scrolls only if the doc is huge. */
+.pdf-viewer.pdf-mode-overview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-content: flex-start;
+  justify-content: center;
+  padding: 8px;
+}
+.pdf-viewer.pdf-mode-overview .pdf-page {
+  margin: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* Mode 3 — stacked: every page rendered at full host width, no inner
+ * scroll. The host is `.embed-preview-pdf` AND `.pdf-viewer`, so the
+ * mode-class override clears the legacy fixed `height: min(360px, 50vh)`
+ * and `overflow: auto` so all pages can render visibly. Without this
+ * override pages 2..N rendered into the host but were clipped behind
+ * the 360 px box and only page 1 was ever visible. */
+.embed-preview-pdf.pdf-mode-stacked,
+.embed-preview-pdf.embed-preview-modal.pdf-mode-stacked {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+.pdf-viewer.pdf-mode-stacked .pdf-page {
+  margin: 0 0 8px;
+}
+/* Stacked: canvas fills the host width, height auto so the intrinsic
+ * `canvas.width × canvas.height` aspect ratio drives the rendered
+ * height. (The earlier inline `style.height` was overriding this and
+ * squashing pages — it's no longer set in renderPageToCanvas.) */
+.pdf-viewer.pdf-mode-stacked .pdf-page-canvas {
+  width: 100%;
+  height: auto;
 }
 
 /* Office document preview */

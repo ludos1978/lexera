@@ -56,6 +56,12 @@
   }
 
   // Render one PDF page into a fresh <canvas> at the requested CSS width.
+  // Only the CSS *width* is set inline; height is left to `height: auto`
+  // in CSS so the intrinsic `canvas.width × canvas.height` aspect ratio
+  // is preserved when the canvas shrinks to fit a narrow container
+  // (e.g. a card body smaller than the requested cssWidthPx). Setting
+  // both inline width AND inline height was squashing the rendered
+  // page when `max-width: 100%` clamped the displayed width.
   function renderPageToCanvas(page, cssWidthPx) {
     var unscaled = page.getViewport({ scale: 1 });
     var scale = cssWidthPx / unscaled.width;
@@ -67,7 +73,6 @@
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
     canvas.style.width = Math.round(viewport.width / dpr) + 'px';
-    canvas.style.height = Math.round(viewport.height / dpr) + 'px';
     var ctx = canvas.getContext('2d');
     return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
       return canvas;
