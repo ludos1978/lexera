@@ -1699,7 +1699,7 @@ var LexeraDashboard = (function () {
             var trace = '';
             try { throw new Error('scroll-drift'); } catch (e) { trace = e.stack || ''; }
             try {
-              logFrontendIssue('error', 'scroll-drift',
+              logFrontendIssue('debug', 'scroll-drift',
                 'dx=' + dx + ' dy=' + dy +
                 ' left=' + newLeft + ' top=' + newTop +
                 ' scrollWidth=' + el.scrollWidth + ' clientWidth=' + el.clientWidth +
