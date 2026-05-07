@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-07):** ✓ 2568 passed | 2 skipped — `./run-lexera-tests.sh --unit` (209 test files, full vitest suite). Update this line after each `--unit` run.
+**Last run (2026-05-07):** ✓ 2580 passed | 2 skipped — `./run-lexera-tests.sh --unit` (210 test files, full vitest suite). Update this line after each `--unit` run.
 
 ## Open Tasks
 
@@ -178,7 +178,7 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 - [x] (done) Implement a background task for periodic `loro` CRDT compaction to prevent state growth over time. `CrdtStore::compact_change_store` exposes the loro 1.10 method; `LocalStorage::compact_loaded_crdts` walks every loaded board; backend spawns `spawn_crdt_compaction_task` running every 600s. Two unit tests: zero-board no-op + 2-board round-trip preserves all column titles. (commit b5d6ab1e)
 
 ### 4. Modularization & Cleanup
-- [ ] (in progress) Split `lexera-backend/src-tauri/src/sync_client.rs` (48k bytes) into focused modules: `connection_mgr.rs`, `replication.rs`, and `conflict_resolver.rs`.
+- [ ] (in progress) Split `lexera-backend/src-tauri/src/sync_client.rs` (48k bytes) into focused modules: `connection_mgr.rs`, `replication.rs`, and `conflict_resolver.rs`. **First slice (commit 790d6b4b):** HTTP media sync extracted to `sync_client/media.rs` (204 lines: `fetch_remote_media_manifest`, `download_media_file`, `upload_media_file`, `sync_media`). Shared `friendly_error` helper widened to `pub(super)` so the new submodule can call it. sync_client.rs shrunk by ~196 lines. Future slices: `connection_mgr.rs` (SyncClientManager + spawn_sync_connection + register_remote_user + run_sync_client_with_reconnect), `replication.rs` (run_sync_client WS message loop + fetch_remote_board_snapshot + RemoteBoardColumnsResponse).
 - [x] (done) ~~Decompose `lexera-backend/src-tauri/src/config.rs` (34k bytes) by extracting identity and workspace management into separate files.~~ Split into `config.rs` (605 lines — types, defaults, load/save, resolve_templates_path, get_backend_url) + `config/identity.rs` (149 lines — `load_or_create_identity`, `persist_identity`, `os_username`, `create_and_persist_identity`, `backup_corrupt_identity` plus 3 tests) + `config/workspace_setup.rs` (231 lines — `normalize_workspace_setup`, `ensure_default_workspace`, `canonicalize_*` helpers plus 3 tests). Public surface preserved via `pub use` re-exports — all call sites in `lib.rs`, `collab_api.rs`, `api/board.rs` keep working unchanged. 280 backend tests + 161 frontend tests pass clean. (commit be5a9463)
 - [x] (done) Remove unused dependencies from `lexera-core/Cargo.toml` and `lexera-backend/src-tauri/Cargo.toml` after the ESM/IPC migrations are complete. Audit found zero orphans: 17 lexera-core deps + 28 lexera-backend deps (incl. dev/build) all have at least one usage site (some via short paths like `hex::encode`, `thiserror::Error`, `uuid::Uuid::new_v4`). Pinned by `cargoNoOrphanDepsContract.test.js` — 47 assertions, fails closed on any future orphan. (commit d137a2fd)
 
@@ -224,5 +224,6 @@ Locked down by `lexera-kanban/tests/*.test.js` so future drift fails at test tim
 - `cargoNoOrphanDepsContract.test.js` (47 assertions) — every Cargo.toml dep has a usage site
 - `backendStatusBridge.test.js` (12 assertions) — backend-status bridge describe/render/install
 - `indexHtmlScriptTagsContract.test.js` (4 assertions) — every `<script src>` resolves, non-empty, non-duplicated
+- `managementLogViewerScriptTagContract.test.js` (12 assertions) — every host HTML loading `management.js` also loads `managementLogViewer.js` first
 
 ## Open Tasks
