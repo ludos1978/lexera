@@ -123,6 +123,39 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(embedMenuJs).toMatch(/LexeraPdfViewer\.applyModeToAll/);
   });
 
+  it('renderPageToCanvas does NOT set inline canvas.style.height (preserves aspect ratio in narrow containers)', () => {
+    // Setting BOTH inline width AND inline height squashes the rendered
+    // page when `max-width: 100%` clamps the displayed width — the user
+    // reported "bad image aspect ratio" in stacked mode. Fix: only set
+    // inline width; CSS uses `height: auto` so the intrinsic
+    // `canvas.width × canvas.height` attributes drive the height.
+    const renderFn = pdfPluginJs.match(
+      /function\s+renderPageToCanvas\s*\([^)]*\)\s*\{[\s\S]*?\n\s\s\}/
+    );
+    expect(renderFn).not.toBeNull();
+    expect(renderFn[0]).toMatch(/canvas\.style\.width\s*=/);
+    expect(renderFn[0]).not.toMatch(/canvas\.style\.height\s*=/);
+  });
+
+  it('stacked mode CSS lets the host grow (height: auto) so all pages are visible without inner scroll', () => {
+    // The host element is BOTH `.embed-preview-pdf` (fixed height,
+    // overflow:auto inherited from the legacy iframe styling) AND
+    // `.pdf-viewer`. Without a mode-class override on
+    // `.embed-preview-pdf.pdf-mode-stacked`, pages 2..N rendered into
+    // the host but were clipped behind the 360 px box and only page 1
+    // was visible.
+    const appCss = readFileSync(
+      resolve(__dirname, '..', 'src', 'app.css'),
+      'utf8'
+    );
+    expect(appCss).toMatch(
+      /\.embed-preview-pdf\.pdf-mode-stacked[^{]*\{[\s\S]*?height:\s*auto/
+    );
+    expect(appCss).toMatch(
+      /\.embed-preview-pdf\.pdf-mode-stacked[^{]*\{[\s\S]*?overflow:\s*visible/
+    );
+  });
+
   it('embedMenu.js does NOT wire pdf-view-* into the right-click contextmenu path', () => {
     // The right-click handler builds menuItems literally inline; we
     // catch any future regression that adds pdf-view items there.
