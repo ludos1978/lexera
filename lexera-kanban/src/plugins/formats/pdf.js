@@ -81,15 +81,16 @@
 
   // Pixel widths used per mode when sizing each page canvas.
   //   scrolled — single tall column, comfortable read width.
-  //   overview — small contact-sheet thumbnails. CSS grid with
-  //              `auto-fill, minmax(140px, 1fr)` packs as many columns
-  //              as the host can hold, so a wide modal shows a 5-up
-  //              grid while a narrow card still gets 2-up — visually
-  //              distinct from scrolled even in tight cards.
+  //   overview — contact-sheet thumbnails. Renders at a higher
+  //              intrinsic resolution (220 px) so the CSS
+  //              `width: 100%` rule in app.css can scale each canvas
+  //              up to fill its grid cell (which itself adapts via
+  //              `minmax(100px, 1fr)`) without going blurry. Two
+  //              columns fit even in narrow ~250 px cards.
   //   stacked  — full host width, no inner scroll.
   var PAGE_WIDTH_BY_MODE = {
     scrolled: 720,
-    overview: 140,
+    overview: 220,
     stacked: 720
   };
 

@@ -4678,19 +4678,22 @@ img[data-lazy-src] {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* Mode 2 — overview: contact-sheet of every page. Real CSS grid (not
- * a flex column), tinted backdrop, and a page-number badge under
- * each thumbnail so the user can read it as "page 3 of N" at a
- * glance. Visually distinct from scrolled even in narrow cards
- * (where overview shows 2 columns vs scrolled's single column). */
+/* Mode 2 — overview: contact-sheet of every page. CSS grid with a
+ * SMALL minimum column width (100 px) so a narrow card body still
+ * fits 2-3 columns instead of collapsing to a single column with
+ * the canvas centred (which looked like "one page in half the
+ * width"). The canvas fills its grid cell via `width: 100%` and
+ * keeps its aspect ratio via `height: auto`; the renderer hands it
+ * an intrinsic resolution of 220 px (PAGE_WIDTH_BY_MODE.overview)
+ * so the scaled-up display stays crisp. */
 .pdf-viewer.pdf-mode-overview {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
-  padding: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  padding: 8px;
   background: var(--bg-secondary, #f5f5f7);
   align-items: start;
-  justify-items: center;
+  justify-items: stretch;
 }
 .pdf-viewer.pdf-mode-overview .pdf-page {
   margin: 0;
@@ -4710,8 +4713,9 @@ img[data-lazy-src] {
   font-variant-numeric: tabular-nums;
 }
 .pdf-viewer.pdf-mode-overview .pdf-page-canvas {
-  max-width: 100%;
+  width: 100%;
   height: auto;
+  max-width: 100%;
 }
 
 /* Mode 3 — stacked: every page rendered at full host width, no inner
