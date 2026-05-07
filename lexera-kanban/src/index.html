@@ -404,6 +404,10 @@
   })();
   </script>
 
+  <!-- PDF preview via pdfjs-dist (UMD bundle, sets window.pdfjsLib).
+       Worker is loaded lazily by the plugin via GlobalWorkerOptions. -->
+  <script src="vendor/pdfjs/pdf.min.js"></script>
+
   <!-- Office document preview (docx, xlsx, pptx) -->
   <script src="vendor/office/jszip.min.js"></script>
   <script src="vendor/office/docx-preview.min.js"></script>

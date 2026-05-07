@@ -3647,6 +3647,8 @@ u {
 }
 
 .column {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 500px;
   background: var(--surface-column-bg);
   border: 1px solid var(--surface-column-border);
   border-radius: var(--surface-column-radius);

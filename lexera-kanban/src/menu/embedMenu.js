@@ -4252,6 +4252,25 @@ var LexeraEmbedMenu = (function () {
     if (!isExternal) {
       items = items.filter(Boolean);
     }
+    // PDF view-mode picker — only the burger menu can switch modes
+    // (per the user's "settings in burger-dropdown menu, not as right
+    // click or hover element" rule). Writing the choice to
+    // localStorage AND broadcasting via LexeraPdfViewer.applyModeToAll
+    // keeps every PDF viewer in the document in sync without touching
+    // a per-card data attribute.
+    if (!isExternal && previewKind === 'pdf' &&
+        typeof window !== 'undefined' && window.LexeraPdfViewer) {
+      var currentMode = window.LexeraPdfViewer.readMode();
+      function pdfItem(id, label, modeKey) {
+        return { id: id, label: (currentMode === modeKey ? '✓ ' : '   ') + label };
+      }
+      items = [
+        pdfItem('pdf-view-scrolled', 'PDF View: Scrolled', 'scrolled'),
+        pdfItem('pdf-view-overview', 'PDF View: Overview', 'overview'),
+        pdfItem('pdf-view-stacked',  'PDF View: Stacked (no scroll)', 'stacked'),
+        { separator: true }
+      ].concat(items);
+    }
     if (!isExternal && !filePath) return;
     if (isExternal && !embedUrl) return;
     showNativeMenu(items, btnRect.right, btnRect.bottom).then(function (action) {
@@ -4272,7 +4291,16 @@ var LexeraEmbedMenu = (function () {
     var isExternal = isExternalEmbedContainer(container);
     var fileRef = parseLocalFileReference(filePath);
 
-    if (action === 'replace-document') {
+    if (action === 'pdf-view-scrolled' || action === 'pdf-view-overview' || action === 'pdf-view-stacked') {
+      closeEmbedMenu();
+      var pdfMode = action.substring('pdf-view-'.length);
+      if (typeof window !== 'undefined' && window.LexeraPdfViewer) {
+        window.LexeraPdfViewer.writeMode(pdfMode);
+        window.LexeraPdfViewer.applyModeToAll(pdfMode);
+      }
+      return;
+
+    } else if (action === 'replace-document') {
       closeEmbedMenu();
       showReplaceDocumentOverlay(container);
 

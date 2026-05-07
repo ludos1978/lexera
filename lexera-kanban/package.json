@@ -11,6 +11,7 @@
   "devDependencies": {
     "jscpd": "^4.0.9",
     "knip": "^6.7.0",
+    "pdfjs-dist": "^3.11.174",
     "vitest": "^3.0.0"
   },
   "dependencies": {
