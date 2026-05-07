@@ -130,7 +130,30 @@
     var cancelToken = { flag: false };
     var pdfDoc = null;
 
-    window.pdfjsLib.getDocument({ url: url }).promise.then(function (pdf) {
+    // Pre-fetch the bytes ourselves and hand PDF.js a Uint8Array via
+    // `data:` instead of letting it `fetch()` the URL itself. Reasons:
+    //   1. PDF.js's internal fetch performs Range requests (HTTP 206)
+    //      to stream large docs. Tauri's `lexera-asset://` custom
+    //      protocol returns status 0 for those preflight-style probes
+    //      — the user reported "Failed to load PDF: Unexpected server
+    //      response (0)" against this protocol.
+    //   2. A direct `fetch()` against the same URL DOES work (CSP
+    //      allows `connect-src lexera-asset:` and the Rust handler
+    //      streams the body in one shot).
+    // Bypassing the range-request path keeps the load on the single
+    // GET that the protocol already handles for `<img>`/`<video>`.
+    fetch(url, { cache: 'no-store' }).then(function (response) {
+      if (!response.ok) {
+        throw new Error('HTTP ' + response.status + ' ' + (response.statusText || ''));
+      }
+      return response.arrayBuffer();
+    }).then(function (buf) {
+      return window.pdfjsLib.getDocument({
+        data: new Uint8Array(buf),
+        disableRange: true,
+        disableStream: true
+      }).promise;
+    }).then(function (pdf) {
       pdfDoc = pdf;
       if (loadingEl.parentNode) loadingEl.parentNode.removeChild(loadingEl);
       return renderPages(pdf, host, currentMode, cancelToken);
