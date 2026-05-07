@@ -212,6 +212,75 @@ describe('debugBridge — shell-side translator for the --debug window', () => {
     }
   });
 
+  it('debug-profile-render-request includes a self-describing meta block on every response', async () => {
+    // When a JSON trace is shared (Copy as JSON button), the reader
+    // needs to know WHEN it was captured, for how long, in which
+    // webview, and on which UA — otherwise the numbers float
+    // context-free. Pin: every code path that emits
+    // debug-profile-render-response includes a `meta` block with
+    // recordedAt + durationMs + webviewLabel + userAgent.
+    const emit = vi.fn(() => Promise.resolve());
+    // (a) PerformanceObserver unavailable path
+    delete globalThis.PerformanceObserver;
+    let res = loadBridge({
+      shell: { isEnabled: () => true, handleBoardAction: () => {}, getWindowLabel: () => 'main' },
+      emitSpy: emit
+    });
+    res.window.LexeraDebugBridge._test_handleProfileRenderRequest({ payload: { durationMs: 7000 } });
+    let call = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-response');
+    expect(call[1].meta).toBeTruthy();
+    expect(call[1].meta.durationMs).toBe(7000);
+    expect(call[1].meta.webviewLabel).toBe('main');
+    expect(typeof call[1].meta.recordedAt).toBe('string');
+    expect(call[1].meta.recordedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    // (b) every-entryType-refused path — meta still present.
+    emit.mockClear();
+    class RefusingPO {
+      observe() { throw new Error('refused'); }
+      disconnect() {}
+    }
+    globalThis.PerformanceObserver = RefusingPO;
+    res = loadBridge({
+      shell: { isEnabled: () => true, handleBoardAction: () => {}, getWindowLabel: () => 'kanban-3' },
+      emitSpy: emit
+    });
+    res.window.LexeraDebugBridge._test_handleProfileRenderRequest({ payload: { durationMs: 200 } });
+    call = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-response');
+    expect(call[1].meta).toBeTruthy();
+    expect(call[1].meta.durationMs).toBe(200);
+    expect(call[1].meta.webviewLabel).toBe('kanban-3');
+
+    // (c) successful capture path — meta also present.
+    emit.mockClear();
+    class FakePO {
+      constructor(cb) { this._cb = cb; }
+      observe(opts) {
+        if (opts.entryTypes[0] === 'longtask') {
+          this._cb({ getEntries: () => [] });
+        }
+      }
+      disconnect() {}
+    }
+    globalThis.PerformanceObserver = FakePO;
+    res = loadBridge({
+      shell: { isEnabled: () => true, handleBoardAction: () => {}, getWindowLabel: () => 'main' },
+      emitSpy: emit
+    });
+    vi.useFakeTimers();
+    try {
+      res.window.LexeraDebugBridge._test_handleProfileRenderRequest({ payload: { durationMs: 50 } });
+      vi.advanceTimersByTime(60);
+      call = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-response');
+      expect(call[1].meta).toBeTruthy();
+      expect(call[1].meta.durationMs).toBe(50);
+      expect(call[1].meta.webviewLabel).toBe('main');
+    } finally {
+      vi.useRealTimers();
+      delete globalThis.PerformanceObserver;
+    }
+  });
+
   it('debug-profile-render-request emits a notes-only response when EVERY entryType is refused', async () => {
     // If the WebKit version is so old that no observer type is
     // accepted, the handler still needs to emit a response (so the

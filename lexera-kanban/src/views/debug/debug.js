@@ -270,8 +270,21 @@
         return 'Notes:\n  - ' + notes.join('\n  - ');
       }
 
+      function renderMeta() {
+        var meta = payload.meta;
+        if (!meta || typeof meta !== 'object') return '';
+        var dur = Number(meta.durationMs) || 0;
+        var seconds = (dur / 1000).toFixed(1);
+        var lines = ['Recorded: ' + (meta.recordedAt || '?') +
+          '  duration: ' + seconds + 's' +
+          '  webview: ' + (meta.webviewLabel || '?')];
+        if (meta.userAgent) lines.push('UA: ' + meta.userAgent);
+        return lines.join('\n');
+      }
+
       try {
         var sections = [
+          renderMeta(),
           renderLongTasks(),
           renderEvents(),
           renderPaints(),

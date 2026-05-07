@@ -108,11 +108,43 @@
   // The `notes` array surfaces the reasons unsupported types were
   // skipped, so the debug window can show "no event data because
   // this WebKit version refused".
+  // Collects a self-describing `meta` block included on every
+  // profile-render-response. When a JSON trace is shared in a bug
+  // report, this is the difference between "120ms long task at
+  // t=3120ms" floating context-free and "120ms long task at
+  // t=3120ms in the shell webview, recorded for 5s on macOS Safari
+  // 17.5 at 2026-05-07T08:14:32Z" — the reader can immediately tell
+  // where it came from.
+  function buildProfileMeta(durationMs) {
+    var label = '';
+    try {
+      var shell = window.LexeraWorkspaceShell;
+      if (shell && typeof shell.getWindowLabel === 'function') {
+        label = String(shell.getWindowLabel() || '');
+      }
+    } catch (_) { /* shell may not be enabled in non-shell webviews */ }
+    var ua = '';
+    try {
+      if (typeof navigator !== 'undefined' && navigator.userAgent) {
+        ua = String(navigator.userAgent);
+      }
+    } catch (_) {}
+    var recordedAt = '';
+    try { recordedAt = new Date().toISOString(); } catch (_) {}
+    return {
+      recordedAt: recordedAt,
+      durationMs: Number(durationMs) || 0,
+      webviewLabel: label,
+      userAgent: ua
+    };
+  }
   function handleProfileRenderRequest(event) {
     var p = (event && event.payload) || {};
     var durationMs = Number(p.durationMs) || 5000;
+    var meta = buildProfileMeta(durationMs);
     if (typeof PerformanceObserver !== 'function') {
       emit('debug-profile-render-response', {
+        meta: meta,
         entries: [],
         events: [],
         paints: [],
@@ -174,6 +206,7 @@
 
     if (observers.length === 0) {
       emit('debug-profile-render-response', {
+        meta: meta,
         entries: [],
         events: [],
         paints: [],
@@ -194,6 +227,7 @@
       paints.sort(function (a, b) { return a.startTime - b.startTime; });
       shifts.sort(function (a, b) { return a.startTime - b.startTime; });
       emit('debug-profile-render-response', {
+        meta: meta,
         entries: longtasks,
         events: events,
         paints: paints,
@@ -223,6 +257,7 @@
     _test_handleSnapshotRequest: handleSnapshotRequest,
     _test_handleOpenFrontendTests: handleOpenFrontendTests,
     _test_handleProfileRenderRequest: handleProfileRenderRequest,
-    _test_buildSnapshotResponse: buildSnapshotResponse
+    _test_buildSnapshotResponse: buildSnapshotResponse,
+    _test_buildProfileMeta: buildProfileMeta
   };
 })();
