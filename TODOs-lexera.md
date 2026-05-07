@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-07):** ✓ 2554 passed | 2 skipped — `./run-lexera-tests.sh --unit` (207 test files, full vitest suite). Update this line after each `--unit` run.
+**Last run (2026-05-07):** ✓ 2568 passed | 2 skipped — `./run-lexera-tests.sh --unit` (209 test files, full vitest suite). Update this line after each `--unit` run.
 
 ## Open Tasks
 
