@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { loadIIFE } from './load-iife.js';
 
 function loadManagementUI() {
-  return loadIIFE('management.js', 'ManagementUI', {
+  return loadIIFE(['managementLogViewer.js', 'management.js'], 'ManagementUI', {
     window, document,
     console: { log() {}, warn() {}, error() {}, info() {} },
     setTimeout, clearTimeout,

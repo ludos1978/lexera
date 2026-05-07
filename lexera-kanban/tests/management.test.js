@@ -61,7 +61,7 @@ async function flush() {
 
 describe('management workspace invite permissions', () => {
   it('removes the empty configuration tab from shared presets while keeping config deep links compatible', async () => {
-    const ManagementUI = loadIIFE('management.js', 'ManagementUI', {
+    const ManagementUI = loadIIFE(['managementLogViewer.js', 'management.js'], 'ManagementUI', {
       window: {},
       document: {
         createElement: (tagName) => createElement(tagName),
@@ -117,7 +117,7 @@ describe('management workspace invite permissions', () => {
       delete: vi.fn()
     };
 
-    const ManagementUI = loadIIFE('management.js', 'ManagementUI', {
+    const ManagementUI = loadIIFE(['managementLogViewer.js', 'management.js'], 'ManagementUI', {
       window: {},
       document,
       console,

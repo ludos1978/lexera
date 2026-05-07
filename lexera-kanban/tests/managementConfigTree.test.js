@@ -17,7 +17,7 @@ function loadTreeView() {
 }
 
 function loadManagementUI() {
-  return loadIIFE('management.js', 'ManagementUI', {
+  return loadIIFE(['managementLogViewer.js', 'management.js'], 'ManagementUI', {
     window,
     document,
     console,

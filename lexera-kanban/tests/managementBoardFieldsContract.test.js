@@ -24,9 +24,11 @@ function loadFields() {
     throw new Error('Could not find ManagementUI IIFE start in management.js');
   }
   const prelude = source.slice(0, cutAt);
-  const sandbox = {};
-  const factory = new Function(`${prelude}\n; return BOARD_SETTINGS_FIELDS;`);
-  return factory.call(sandbox);
+  // The prelude reads `window.LexeraManagementLogHelpers`, so a minimal
+  // stub satisfies the runtime guard without booting the actual helper.
+  const stubWindow = { LexeraManagementLogHelpers: { MAX_RENDERED_LOG_ENTRIES: 500 } };
+  const factory = new Function('window', `${prelude}\n; return BOARD_SETTINGS_FIELDS;`);
+  return factory(stubWindow);
 }
 
 describe('BOARD_SETTINGS_FIELDS contract', () => {
