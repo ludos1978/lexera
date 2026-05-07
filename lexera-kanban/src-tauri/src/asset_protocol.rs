@@ -269,6 +269,19 @@ fn build_response(
     for (name, value) in &headers {
         builder = builder.header(name.as_str(), value.as_slice());
     }
+    // CORS: WKWebView's `fetch()` API rejects responses from a custom
+    // URI scheme that don't include `Access-Control-Allow-Origin`,
+    // even when CSP allows the connection. Without this the front-end
+    // can hand `<img src="lexera-asset://…">` and `<video src="…">`
+    // tags the URL just fine (DOM src loads bypass CORS) but pdfjs's
+    // `fetch(url).then(r => r.arrayBuffer())` fails with
+    // "TypeError: Load failed" / "Unexpected server response (0)".
+    // Allow-listing `*` is safe here: the asset protocol is in-process
+    // on the user's own machine and the response body is already
+    // gated by `parse_asset_url` + the IPC backend's path check.
+    builder = builder.header("Access-Control-Allow-Origin", "*");
+    builder = builder.header("Access-Control-Allow-Headers", "Range, If-None-Match");
+    builder = builder.header("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, ETag");
     builder
         .body(body)
         .map_err(|e| format!("response build: {}", e))
@@ -278,6 +291,11 @@ fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
     Response::builder()
         .status(status)
         .header("content-type", "text/plain; charset=utf-8")
+        // CORS — see `build_response` for rationale. Errors must be
+        // CORS-readable too so a fetch() rejection surfaces the
+        // backend's status (404, 403, …) instead of a generic
+        // "Load failed".
+        .header("Access-Control-Allow-Origin", "*")
         .body(message.as_bytes().to_vec())
         .unwrap_or_else(|_| Response::new(Vec::new()))
 }
@@ -341,5 +359,47 @@ mod tests {
     fn url_empty_values_rejected() {
         assert!(parse_asset_url("lexera-asset://localhost/?b=&k=m&v=x").is_err());
         assert!(parse_asset_url("lexera-asset://localhost/?b=x&k=m&v=").is_err());
+    }
+
+    /// CORS pin: WKWebView's fetch() against this custom scheme silently
+    /// fails with "TypeError: Load failed" when the response lacks
+    /// `Access-Control-Allow-Origin`. Pdfjs's `getDocument({ url })` and
+    /// the front-end fetch fallback both rely on it. Any future cleanup
+    /// that drops the header will be caught here before users see
+    /// "Failed to load PDF" again.
+    #[test]
+    fn build_response_emits_cors_headers() {
+        let resp = build_response(200, vec![("content-type".into(), b"application/pdf".to_vec())], vec![1, 2, 3])
+            .expect("build_response");
+        let headers = resp.headers();
+        assert_eq!(
+            headers
+                .get("Access-Control-Allow-Origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("*"),
+            "asset protocol must include Access-Control-Allow-Origin: * for fetch() to work"
+        );
+        assert!(
+            headers.get("Access-Control-Allow-Headers").is_some(),
+            "Access-Control-Allow-Headers required so Range / If-None-Match preflight passes"
+        );
+        assert!(
+            headers.get("Access-Control-Expose-Headers").is_some(),
+            "Access-Control-Expose-Headers required so JS can read Content-Length / Content-Range"
+        );
+    }
+
+    #[test]
+    fn error_response_emits_cors_header() {
+        // Errors must be CORS-readable too: without Access-Control-Allow-Origin
+        // the front-end gets a generic "Load failed" instead of the backend's
+        // 404 / 403 status, masking real bugs.
+        let resp = error_response(StatusCode::NOT_FOUND, "missing");
+        assert_eq!(
+            resp.headers()
+                .get("Access-Control-Allow-Origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("*")
+        );
     }
 }
