@@ -141,6 +141,16 @@
     return layoutTree.createSplitNode(axis, first, second, ratio, nextId);
   }
   function withNormalizedLeaves(node, isRoot) { return layoutTree.withNormalizedLeaves(node, isRoot, nextId); }
+  // Normalize-in-place wrapper. The 8 `holder[key] = withNormalizedLeaves(holder[key], …)`
+  // sites all reduce to this; replacing them removes a class of typo
+  // ("normalized one tree, assigned to a different key") and clears
+  // workspaceShell.js from the layoutTreeMutationContract allowlist
+  // for the assignment-pattern half (the other half — wholesale tree
+  // replacement via createTabsetNode — still uses direct assignment).
+  function normalizeTreeAt(holder, key, isRoot) {
+    if (!holder || !key) return;
+    holder[key] = withNormalizedLeaves(holder[key], isRoot !== false);
+  }
   function findLeafContainingPanel(node, panelId) {
     return layoutTree.findLeafContainingPanel(node, panelId, resolvePanelTarget);
   }
@@ -959,7 +969,7 @@
     targetLeaf.activeTabId = tab.id;
     state.activeLeafId = targetLeaf.id;
     state.activePanelId = panelId;
-    state.dockTree = withNormalizedLeaves(state.dockTree, true);
+    normalizeTreeAt(state, 'dockTree', true);
     return true;
   }
 
@@ -989,7 +999,7 @@
       state.activeLeafId = groupedTarget.leaf.id;
       state.activePanelId = normalized;
       state.panelVisibility[normalized] = true;
-      state.dockTree = withNormalizedLeaves(state.dockTree, true);
+      normalizeTreeAt(state, 'dockTree', true);
       render();
       return true;
     }
@@ -1005,7 +1015,7 @@
     state.activeLeafId = leaf.id;
     state.activePanelId = normalized;
     state.panelVisibility[normalized] = true;
-    state.dockTree = withNormalizedLeaves(state.dockTree, true);
+    normalizeTreeAt(state, 'dockTree', true);
     render();
     return true;
   }
@@ -1022,7 +1032,7 @@
   }
 
   function ensureActiveLeaf() {
-    state.dockTree = withNormalizedLeaves(state.dockTree, true);
+    normalizeTreeAt(state, 'dockTree', true);
     var leaf = getActiveLeaf();
     if (!leaf) {
       state.dockTree = createTabsetNode([]);
@@ -2089,7 +2099,7 @@
           found.leaf.activeTabId = found.leaf.tabs[0].id;
         }
       }
-      state.sideDocks[dockIds[i]] = withNormalizedLeaves(tree, false);
+      normalizeTreeAt(state.sideDocks, dockIds[i], false);
     }
     return changed;
   }
@@ -2161,7 +2171,7 @@
     if (panelTab) {
       extractTab(panelTab.tab.id);
       removeFrame(panelTab.tab.id);
-      state.dockTree = withNormalizedLeaves(state.dockTree, true);
+      normalizeTreeAt(state, 'dockTree', true);
       ensureActiveLeaf();
     }
     // Add to target side dock
@@ -2187,7 +2197,7 @@
     if (sourceInCenter) {
       extractTab(sourceInCenter.tab.id);
       removeFrame(sourceInCenter.tab.id);
-      state.dockTree = withNormalizedLeaves(state.dockTree, true);
+      normalizeTreeAt(state, 'dockTree', true);
       ensureActiveLeaf();
     }
     // Add to target's leaf
@@ -2609,7 +2619,7 @@
     if (!extracted) return false;
     handleRemovedPanelTab(extracted.tab);
     removeFrame(tabId);
-    state.dockTree = withNormalizedLeaves(state.dockTree, true);
+    normalizeTreeAt(state, 'dockTree', true);
     ensureActiveLeaf();
     ensurePanelDockActives();
     render();
@@ -4467,7 +4477,7 @@
       layoutTree.removeTabById(state.dockTree, idsToPrune[p].id);
     }
     if (idsToPrune.length > 0) {
-      state.dockTree = withNormalizedLeaves(state.dockTree, true);
+      normalizeTreeAt(state, 'dockTree', true);
       ensureActiveLeaf();
       return true;
     }
