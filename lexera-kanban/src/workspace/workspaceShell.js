@@ -451,6 +451,64 @@
    *   missing kind resolves to `undefined` and `getPanelElement` returns
    *   null in that case.
    */
+
+  /**
+   * Drag-state fields on `state`. All are written by
+   * `workspace/tabDragController.js` (pointer-based tab/panel drag) and
+   * read by `render()` to gate the drop-overlay paint and by the
+   * lifecycle reconciler to skip frame destruction during a drag.
+   * Sentinel "no drag in progress" values: empty string for ids,
+   * `-1` for `dragHoverTabIndex`, `false` for `dragDroppedInternally`,
+   * `null` for `pointerDrag`, `0` for `dragLastX`/`dragLastY`. Reading
+   * `state.dragTabId === ''` is the canonical "no drag" check used at
+   * render() entry.
+   *
+   * @typedef {Object} PointerDragState
+   * @property {string} tabId - Dragged tab id (empty when dragging a
+   *   bare panel via `dragPanelId`).
+   * @property {string} panelId - Dragged panel id (empty when dragging
+   *   a tab via `tabId`).
+   * @property {number} pointerId - PointerEvent.pointerId captured by
+   *   `setPointerCapture`; matched on subsequent move/up events.
+   * @property {number} startX - Client-X at pointerdown; baseline for
+   *   the detach-arming distance threshold.
+   * @property {number} startY - Client-Y at pointerdown.
+   * @property {number} lastX - Most recent pointermove client-X;
+   *   mirrored to `state.dragLastX` for cross-module reads.
+   * @property {number} lastY - Most recent pointermove client-Y.
+   * @property {boolean} detachArmed - True once the pointer has moved
+   *   far enough from start to permit a detach-to-window drop.
+   * @property {boolean} started - True after the first pointermove
+   *   crossed the slop threshold; differentiates a click from a drag.
+   * @property {HTMLElement} sourceEl - The tab strip element the drag
+   *   originated from; restored to its origin on cancel.
+   * @property {HTMLElement|null} ghost - Floating ghost element that
+   *   follows the pointer; `null` until the first move past slop.
+   *
+   * @typedef {Object} WorkspaceShellDragState
+   * @property {string} dragTabId - Id of the tab being dragged
+   *   (`''` when none). Empty string is the canonical "no drag" check.
+   * @property {boolean} dragDroppedInternally - True if the drop
+   *   landed inside this window; gates whether
+   *   `finishTabPointerDrag` detaches to a new window.
+   * @property {string} dragHoverLeafId - Centre-tree leaf currently
+   *   hovered for a tab drop (`''` when not over a leaf).
+   * @property {('before'|'after'|'center'|'')} dragHoverZone - Drop
+   *   sub-zone within the hovered leaf; empty when not over a leaf.
+   * @property {string} dragHoverDock - Side-dock id currently hovered
+   *   (`'left'` / `'right'` / `'bottom'` / `''`); empty when not over
+   *   a side dock. Note: the dock id, not the dock leaf id.
+   * @property {number} dragHoverTabIndex - Insertion index within the
+   *   hovered leaf's tab strip (`-1` when not over a tab strip).
+   * @property {string} dragPanelId - Id of the panel being dragged
+   *   (`''` when dragging a tab via `dragTabId`).
+   * @property {PointerDragState|null} pointerDrag - Active pointer-drag
+   *   record; `null` between drags. Owned by `tabDragController.js`.
+   * @property {number} dragLastX - Most recent pointermove client-X
+   *   (`0` between drags); mirrors `pointerDrag.lastX`.
+   * @property {number} dragLastY - Most recent pointermove client-Y
+   *   (`0` between drags).
+   */
   var state = {
     enabled: isEnabled(),
     mounted: false,
