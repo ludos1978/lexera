@@ -509,6 +509,43 @@
    * @property {number} dragLastY - Most recent pointermove client-Y
    *   (`0` between drags).
    */
+
+  /**
+   * Render-cache signature fields on `state`. The `render()` loop
+   * compares these with freshly-built signatures to decide between a
+   * lightweight DOM patch (`syncDomState()`), a leaf-internal swap
+   * (`syncLeafDom`), and a full `innerHTML = ''` + `renderNode` rebuild.
+   * Each is the empty string `''` at boot and after `unmount()` /
+   * `__resetState()`; an empty signature forces a full rebuild on the
+   * next render. Sentinel `''` is also the canonical "I have no cached
+   * structure" check at render entry.
+   *
+   * @typedef {Object} WorkspaceShellRenderCache
+   * @property {string} lastStructureSignature - Output of
+   *   `buildStructureSignature(state.dockTree)` from the previous
+   *   render, suffixed with `|fold:<sortedFoldedPaneKeys>` when any
+   *   centre-split panes are folded. Captures full split structure +
+   *   tab order + active-tab indices; an exact match plus a non-empty
+   *   `dockEl` lets `syncDomState` patch in place. In panel-only
+   *   windows this holds the sentinel `'panel-only:<panelId|kind>'`
+   *   instead so subsequent renders short-circuit on identity.
+   * @property {string} lastLeafTopology - Output of
+   *   `buildLeafTopologySignature(state.dockTree)` from the previous
+   *   render, with the same `|fold:` suffix. Coarser than
+   *   `lastStructureSignature`: matches when the split tree's leaf
+   *   topology is unchanged but tab membership inside leaves moved,
+   *   enabling the targeted `syncLeafDom` add/remove path (analogous
+   *   to refreshTargetedElements in app.js).
+   * @property {{left: string, right: string, bottom: string}} lastSideDockSignatures
+   *   Per-side-dock structure signatures from
+   *   `buildSideDockStructureSignature(dockId)`. Keyed by dock id
+   *   (`left` / `right` / `bottom`). Each value is the empty string
+   *   when the dock is empty or hidden; an exact match drives the
+   *   `syncSideDockDom` lightweight patch. Side docks fold via
+   *   `dockSizes[dockId] = 0` rather than the centre-tree
+   *   `foldedPanes` map, so this signature does NOT carry a `|fold:`
+   *   suffix.
+   */
   var state = {
     enabled: isEnabled(),
     mounted: false,
