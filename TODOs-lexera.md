@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-08):** ✓ 2626 passed | 2 skipped — `./run-lexera-tests.sh --unit` (213 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK (covers titleHelpers.js + workspace/workspaceShell.js + workspace/multiviewWebview.js).
+**Last run (2026-05-08):** ✓ 2641 passed | 2 skipped — `./run-lexera-tests.sh --unit` (215 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK (covers titleHelpers.js + workspace/geometryObserver.js + workspace/workspaceShell.js + workspace/multiviewWebview.js).
 
 ## Open Tasks
 
@@ -67,6 +67,10 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 #### Backend management view (2026-05-06)
 
 - [x] (done) ~~**backend management window rendered empty**~~ — user reported "the backend management view doesnt show anything at all! just an empty window!". Root cause: since the workspace-shell module split (Apr 26-28, commits 3d713daf + 27d5c446), `lexera-kanban/src/workspace/workspaceShell.js` throws at parse time if any of its global deps (`LexeraLayoutTree`, `LexeraTreeRegistry`, `LexeraBoardHost`, ...) are missing. `lexera-backend/src/connection-settings.html` only loaded the shell + `sharedPanels.js` — none of the 11 dep files. Throw aborted boot before `connection-settings.js` could `mountManagementShell()`. Fix: extended `sync-frontend-view-assets.mjs` to copy `titleHelpers.js` + the 10 `workspace/*.js` deps into `lexera-backend/src/`, added matching `<script>` tags before `workspaceShell.js` in `connection-settings.html`, extended the `.gitignore`. Pinned by `backendConnectionSettingsShellDepsContract.test.js` (26 assertions — every dep is loaded BEFORE workspaceShell.js AND declared in the sync script). (commit 1ff5bf75)
+
+#### Sub-app card title (2026-05-08)
+
+- [x] (done) ~~**all cards show '(no title)' in workspace tree + hierarchy panel**~~ — user reported "all cards show 'no title' (the title of a card is defined by the first text line (non empty or special character) of the card!)". `nodeLabel(card)` in [views/hierarchy/hierarchy.js](lexera-kanban/src/views/hierarchy/hierarchy.js) and [views/workspaces/workspaces.js](lexera-kanban/src/views/workspaces/workspaces.js) was delegating to `LexeraTitleHelpers.resolveBoardLabel` — a board-specific resolver looking at `meta.title → filePath → name`. `KanbanCard` ([lexera-core/src/types.rs:33-47](lexera-core/src/types.rs#L33-L47)) has no `title` field, so the kanban-view title is derived from `content` via `getCardTitle()` in app.js — but the sub-app webviews don't load app.js. Fix: added `LexeraTitleHelpers.resolveCardLabel(card)` mirroring `getCardTitle`'s algorithm (first non-empty line of content, skip image-only lines, strip H1/H2/H3 markers, HTML comments, and `#hidden-internal-*` tags). Honors a pre-derived `card.title` if a caller (e.g. boardCleanup) stashed one. Both `buildCardNode` call sites switched to it. Pinned by `titleHelpersCardLabel.test.js` (12 cases) + typedef interface updated. (commit 833fc6ad)
 
 #### Card-edit scroll drift (2026-05-08)
 
