@@ -19,6 +19,43 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: lexera-shared/dialogs.js (synced into each app's src/ via
+ * sync-runtime-assets; window.LexeraDialogs = api). Replaces native
+ * window.confirm/prompt — using those is forbidden in this codebase
+ * (memory: feedback_no_native_browser_popups).
+ */
+interface LexeraDialogsChooseOption<V = unknown> {
+  /** Returned by the choose() promise when the user clicks this row. */
+  value: V;
+  /** Visible row label; falls back to `value` when omitted. */
+  label?: string;
+  /** Secondary line under the label. */
+  hint?: string;
+}
+
+interface LexeraDialogsApi {
+  /** Modal "Cancel / OK" confirm. Resolves true on OK, false on
+   *  Cancel / Escape / overlay click. Routed through the multiview
+   *  modal-as-window helper when available so it composites above
+   *  child Tauri webviews. */
+  confirm(message: string | null | undefined): Promise<boolean>;
+  /** Modal text prompt. Resolves the typed string on OK, `null` on
+   *  Cancel / Escape / overlay click. Initial value optional. */
+  prompt(
+    message: string | null | undefined,
+    initialValue?: string | null,
+    opts?: { title?: string }
+  ): Promise<string | null>;
+  /** Modal one-of-N picker. Resolves the matching option's `value`
+   *  when clicked; `null` on Cancel / Escape / overlay click. */
+  choose<V = unknown>(
+    message: string | null | undefined,
+    options: ReadonlyArray<LexeraDialogsChooseOption<V>>,
+    opts?: { title?: string }
+  ): Promise<V | null>;
+}
+
+/**
  * Source: src/workspace/geometryObserver.js (IIFE;
  * window.LexeraGeometryObserver = api). Factory + a per-instance
  * stateful API that wraps a single shared ResizeObserver watching
@@ -130,7 +167,7 @@ declare global {
     LexeraHierarchyDragBridge: any;
     LexeraKeybindingRegistry: any;
     LexeraRuntime: any;
-    LexeraDialogs: any;
+    LexeraDialogs: LexeraDialogsApi;
 
     // Logging diagnostics.
     getLogFoldedStatusData: any;
