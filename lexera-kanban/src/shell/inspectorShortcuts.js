@@ -22,6 +22,9 @@
    *  - F12
    *  - Cmd/Ctrl + Shift + I  (no Alt)
    *  - Alt + I  (no Cmd/Ctrl)
+   *
+   * @param {KeyboardEvent|null|undefined} e
+   * @returns {boolean}
    */
   function isInspectorShortcut(e) {
     if (!e) return false;
@@ -38,6 +41,9 @@
    * (Cmd/Ctrl + Alt + Shift + I). Strict superset of the single-window
    * combo, so callers MUST test this BEFORE isInspectorShortcut to win
    * the precedence race.
+   *
+   * @param {KeyboardEvent|null|undefined} e
+   * @returns {boolean}
    */
   function isInspectorAllShortcut(e) {
     if (!e) return false;

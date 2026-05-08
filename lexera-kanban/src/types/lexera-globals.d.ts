@@ -411,6 +411,7 @@ declare global {
     LexeraKeybindingRegistry: LexeraKeybindingRegistryApi;
     LexeraRuntime: any;
     LexeraDialogs: LexeraDialogsApi;
+    LexeraInspectorShortcuts: any;
 
     // Logging diagnostics.
     getLogFoldedStatusData: any;
