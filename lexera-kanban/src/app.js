@@ -476,7 +476,7 @@ var LexeraDashboard = (function () {
     getCardTitle: function(content) { return getCardTitle(content); },
     stripInternalHiddenTags: function(content) { return stripInternalHiddenTags(content); },
     replaceNthMarkdownEmbed: function(c, i, r) { return replaceNthMarkdownEmbed(c, i, r); },
-    preserveBoardScroll: function() { return preserveBoardScroll(); },
+    preserveBoardScroll: function(label) { return preserveBoardScroll(label); },
     lexeraLog: function(level, msg) { lexeraLog(level, msg); },
     logFrontendIssue: function(level, tag, msg, err) { logFrontendIssue(level, tag, msg, err); },
     getInlineCardEditor: function() { return InlineCardEditorModule ? InlineCardEditorModule.getCurrentInlineCardEditor() : null; },
@@ -5378,14 +5378,32 @@ var LexeraDashboard = (function () {
    * (refreshTargetedElements), so card-edit saves, checkbox toggles, and any
    * other mutation share the same behavior.
    */
-  function preserveBoardScroll() {
+  function preserveBoardScroll(label) {
     var cc = getElColumnsContainer();
     if (!cc) return function () {};
     var savedLeft = cc.scrollLeft;
     var savedTop = cc.scrollTop;
+    var debug = false;
+    try {
+      debug = typeof localStorage !== 'undefined'
+        && localStorage.getItem('LEXERA_SCROLL_DRIFT_DEBUG') === '1';
+    } catch (_) { /* localStorage may throw in sandboxed contexts */ }
+    var tag = label || 'unlabeled';
     return function restore() {
-      if (cc.scrollLeft !== savedLeft) cc.scrollLeft = savedLeft;
-      if (cc.scrollTop !== savedTop) cc.scrollTop = savedTop;
+      var beforeLeft = cc.scrollLeft;
+      var beforeTop = cc.scrollTop;
+      if (beforeLeft !== savedLeft) cc.scrollLeft = savedLeft;
+      if (beforeTop !== savedTop) cc.scrollTop = savedTop;
+      if (debug && (beforeLeft !== savedLeft || beforeTop !== savedTop)) {
+        var dxL = beforeLeft - savedLeft;
+        var dyT = beforeTop - savedTop;
+        var msg = '[scroll-drift] label=' + tag
+          + ' savedLeft=' + savedLeft + ' beforeLeft=' + beforeLeft + ' deltaLeft=' + dxL
+          + ' savedTop=' + savedTop + ' beforeTop=' + beforeTop + ' deltaTop=' + dyT;
+        if (typeof logFrontendIssue === 'function') {
+          logFrontendIssue('debug', 'render.scrollDrift', msg);
+        }
+      }
     };
   }
 
@@ -5558,7 +5576,9 @@ var LexeraDashboard = (function () {
     var needsSidebar = false;
     var needsStructuralVs = false;
 
-    var restoreBoardScroll = preserveBoardScroll();
+    var rtScrollLabel = 'refreshTargetedElements:'
+      + targets.map(function (t) { return t && t.type ? t.type : '?'; }).join(',');
+    var restoreBoardScroll = preserveBoardScroll(rtScrollLabel);
 
     for (var t = 0; t < targets.length; t++) {
       var target = targets[t];
@@ -8464,7 +8484,7 @@ var LexeraDashboard = (function () {
     // Preserve board scroll across the whole batch. renderCardDisplayState
     // also does its own per-call preservation, but capturing once up-front
     // is the true "before" position and avoids N queued rAF callbacks.
-    var restoreScroll = preserveBoardScroll();
+    var restoreScroll = preserveBoardScroll('refreshAllRenderedCards');
     for (var i = 0; i < cards.length; i++) {
       var cardEl = cards[i];
       var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
@@ -8556,7 +8576,7 @@ var LexeraDashboard = (function () {
     _rcMark('afterCleanup');
     // Preserve scroll position before destroying DOM (see preserveBoardScroll).
     var cc = getElColumnsContainer();
-    var restoreBoardScroll = preserveBoardScroll();
+    var restoreBoardScroll = preserveBoardScroll('renderColumns');
 
     // ─────────────────────────────────────────────────────────────────
     // PRESERVE LIVE IFRAMES ACROSS THE REBUILD (by src URL)

@@ -631,7 +631,7 @@ var CardEditor = (function () {
   function renderCardDisplayState(cardEl, content) {
     if (!cardEl) return;
     var restoreScroll = typeof _deps.preserveBoardScroll === 'function'
-      ? _deps.preserveBoardScroll() : null;
+      ? _deps.preserveBoardScroll('renderCardDisplayState') : null;
     var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
     var resolved = _deps.getIncludeResolvedContent(content, colIndex);
     var activeBoardId = _deps.getActiveBoardId();
