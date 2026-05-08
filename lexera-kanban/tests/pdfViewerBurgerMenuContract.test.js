@@ -130,6 +130,35 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(embedMenuJs).toMatch(/LexeraPdfViewer\.applyModeToEmbed/);
   });
 
+  it('parsed pdfDoc is cached per URL so a re-mount (after card re-render) skips fetch + getDocument', () => {
+    // The user reported "the layout still changes a while after first
+    // rendered" — the lag was the second mount triggered by the
+    // burger picker's save flow re-fetching + re-parsing the same
+    // file. Pin the cache so a future cleanup that moves cache logic
+    // around can't quietly bring back the lag.
+    expect(pdfPluginJs).toMatch(/_pdfDocCache\s*=\s*\{\s*\}/);
+    expect(pdfPluginJs).toMatch(/_pdfDocCache\s*\[\s*url\s*\]/);
+    // A cache HIT path must short-circuit before fetch.
+    expect(pdfPluginJs).toMatch(
+      /if\s*\(\s*_pdfDocCache\[\s*url\s*\]\s*\)[\s\S]{0,80}Promise\.resolve\(\s*_pdfDocCache\[\s*url\s*\]\s*\)/
+    );
+  });
+
+  it('loading state reserves a min-height so the loading → rendered transition does not push parent layout', () => {
+    // Without a min-height on `.pdf-viewer-loading`, the host shrank
+    // to ~30px (just the text) during fetch+parse and then expanded
+    // to ~360px (or full doc height in stacked mode) once pages
+    // committed — visibly pulling the surrounding card layout up
+    // and then down again.
+    const appCss = readFileSync(
+      resolve(__dirname, '..', 'src', 'app.css'),
+      'utf8'
+    );
+    expect(appCss).toMatch(
+      /\.pdf-viewer-loading[\s\S]{0,600}min-height:\s*\d+px/
+    );
+  });
+
   it('mountPdfViewer applies the mode class IMMEDIATELY (before fetch+parse) and commits all pages in one DocumentFragment', () => {
     // User reported "modifies the layout quite a bit after first
     // rendered". Two reflow sources had to be eliminated:
