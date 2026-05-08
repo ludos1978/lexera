@@ -82,7 +82,7 @@ body { display: flex; flex-direction: column; height: 100%; }
 .log-panel-tab, .log-panel-btn, .connection-status-btn {
   padding: 2px 8px;
   background: var(--bg-tertiary, #2a2a32);
-  color: var(--text-secondary, #ccc);
+  color: var(--text-secondary, var(--text-primary, #ccc));
   border: 1px solid var(--border, #3a3a42);
   border-radius: 2px;
   cursor: pointer;
@@ -92,6 +92,7 @@ body { display: flex; flex-direction: column; height: 100%; }
 }
 .log-panel-tab:hover, .log-panel-btn:hover, .connection-status-btn:hover {
   background: var(--bg-hover, #3a3a42);
+  color: var(--text-primary, #e8e8ec);
 }
 
 .connection-status-btn.connected #connection-dot { background: var(--success); }
