@@ -1,12 +1,36 @@
 (function () {
   'use strict';
 
+  /**
+   * @typedef {Object} PanelHostSetupDeps
+   * @property {string} [bootId] - Per-shell boot id appended to panel
+   *   webview labels. Optional — when absent, labels fall back to the
+   *   un-suffixed `panel-tab-<tabId>` form (currently only the unit
+   *   tests).
+   */
+
+  /**
+   * @typedef {Object} PanelHostTab
+   *   The narrow subset of `DockTreePanelTab` this module reads. Kept
+   *   structural so the host stays decoupled from the umbrella
+   *   `DockTreeNode` typedef in workspaceShell.js / layoutTree.js.
+   * @property {string} id - The tab id used in the webview label.
+   * @property {string} [panelId] - The panel instance id; when
+   *   missing, falls through to the panel kind in the `panel=` query
+   *   param so the sub-app gets a usable instance handle.
+   */
+
   // Per-shell boot id, used as a uniqueness suffix in panel-tab webview
   // labels. See `boardHost.js` for full rationale — Tauri webview
   // labels are GLOBAL across windows, so two shells handing out the
   // same tab id would otherwise collide.
+  /** @type {string} */
   var _bootId = '';
 
+  /**
+   * @param {PanelHostSetupDeps} [deps]
+   * @returns {void}
+   */
   function setup(deps) {
     if (deps && typeof deps.bootId === 'string') {
       _bootId = deps.bootId;
@@ -44,6 +68,10 @@
     logs: 'log'
   });
 
+  /**
+   * @param {string|null|undefined} panelKind
+   * @returns {string}
+   */
   function viewDirForKind(panelKind) {
     if (!panelKind) return '';
     var override = KIND_VIEW_DIR_OVERRIDES[panelKind];
@@ -53,6 +81,8 @@
   /**
    * Returns true if the given panel kind should be hosted as a child
    * webview (Workstream P) rather than as an in-shell DOM element.
+   * @param {string|null|undefined} kind
+   * @returns {boolean}
    */
   function isPanelKindOnWebviewAllowlist(kind) {
     return !!(kind && PANEL_WEBVIEW_KINDS[kind] === true);
@@ -68,6 +98,9 @@
    * Format: `panel-tab-<bootId>-<tabId>` (or `panel-tab-<tabId>` if
    * the module wasn't initialised — only happens in unit tests).
    * The bootId guarantees the label is unique across windows.
+   *
+   * @param {string} tabId
+   * @returns {string}
    */
   function panelLabelForTab(tabId) {
     var safeTabId = String(tabId);
@@ -79,6 +112,9 @@
    * Inverse of `panelLabelForTab`. Recovers the tabId from a panel
    * webview label, accounting for the optional bootId suffix.
    * Returns '' when the label doesn't have the panel-tab prefix.
+   *
+   * @param {string|null|undefined} label
+   * @returns {string}
    */
   function tabIdFromPanelLabel(label) {
     var raw = String(label || '');
@@ -90,6 +126,12 @@
     return rest;
   }
 
+  /**
+   * @param {URL} fromUrl
+   * @param {URL} toUrl
+   * @param {string} childLabel
+   * @returns {void}
+   */
   function applyChildWindowContext(fromUrl, toUrl, childLabel) {
     if (!fromUrl || !toUrl || !childLabel) return;
     var hostWindowLabel = fromUrl.searchParams.get('windowLabel') || 'main';
@@ -114,6 +156,11 @@
    *   - `panel=<panelInstanceId>` — instance id for duplicable panels.
    *
    * Returns '' if the inputs are missing required pieces.
+   *
+   * @param {PanelHostTab|null|undefined} tab
+   * @param {string|null|undefined} panelKind
+   * @param {string|null|undefined} locationHref
+   * @returns {string}
    */
   function panelUrlForTab(tab, panelKind, locationHref) {
     if (!tab || !panelKind || !locationHref) return '';
