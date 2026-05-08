@@ -19,6 +19,33 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: src/workspace/tabDragController.js (IIFE;
+ * window.LexeraTabDragController = api). Pointer-based tab/panel
+ * drag controller — owns the pointermove/pointerup listeners,
+ * drop-zone highlight DOM, ghost element, and the
+ * `state.pointerDrag` record (see WorkspaceShellDragState).
+ *
+ * Setup is keyed on a long deps bag the shell hands over; the
+ * runtime API (handlePointerDown, clearDropZones) is what the
+ * shell calls during normal drag flow.
+ */
+interface LexeraTabDragControllerApi {
+  /** Wire the controller against the shell's helpers + state.
+   *  Must be called once at boot before any handlePointerDown.
+   *  Throws if any of the required dep keys is missing. */
+  setup(deps: Record<string, unknown>): void;
+  /** Pointer-down handler the shell installs on the tab-strip
+   *  containers. Decides whether the gesture is a click vs the
+   *  start of a drag and arms a global pointermove/pointerup
+   *  pair when the latter is plausible. */
+  handlePointerDown(event: PointerEvent): void;
+  /** Reset every active drop-zone highlight + clear the tab-insert
+   *  marker DOM. Exposed so the shell's `clearPanelDropTargets()`
+   *  can call it without reaching into module internals. */
+  clearDropZones(): void;
+}
+
+/**
  * Source: src/keybindingRegistry.js (IIFE;
  * window.LexeraKeybindingRegistry = api). User-keybinding store +
  * matcher + dispatcher. Keybindings are loaded once at boot from
@@ -290,7 +317,7 @@ declare global {
     LexeraMultiview: any;
     LexeraMessageBridge: any;
     LexeraLayoutPersistence: any;
-    LexeraTabDragController: any;
+    LexeraTabDragController: LexeraTabDragControllerApi;
     LexeraGeometryObserver: LexeraGeometryObserverApi;
     LexeraPanelDefinitions: any;
     LexeraTreeRegistry: LexeraTreeRegistryApi;
