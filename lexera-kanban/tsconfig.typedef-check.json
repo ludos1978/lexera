@@ -28,6 +28,7 @@
     "src/types/lexera-globals.d.ts",
     "src/titleHelpers.js",
     "src/workspace/geometryObserver.js",
+    "src/workspace/layoutPersistence.js",
     "src/workspace/layoutTree.js",
     "src/workspace/lifecycleReconciler.js",
     "src/workspace/messageBridge.js",

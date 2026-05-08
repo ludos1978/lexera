@@ -33,8 +33,91 @@
 (function () {
   'use strict';
 
+  /**
+   * @typedef {Object} LayoutPersistenceState
+   *   The subset of `state` (workspace shell) this module reads + writes.
+   *   Kept structural so persistence stays decoupled from the umbrella
+   *   `WorkspaceShellState` typedef in workspaceShell.js.
+   * @property {boolean} mounted
+   * @property {string} windowLabel
+   * @property {string} profile
+   * @property {*} dockTree - Centre dock (`DockTreeNode | null`).
+   * @property {{left: *, right: *, bottom: *}} sideDocks
+   * @property {Object<string, number>} dockSizes
+   * @property {Object<string, number>} dockRestoreSizes
+   * @property {Object<string, boolean>} panelVisibility
+   * @property {Object<string, *>} panelInstances
+   * @property {Object<string, number>} foldedPanes
+   * @property {string} activePanelId
+   * @property {string} activeLeafId
+   * @property {{getPersistenceKey?: function(): string}} [hooks]
+   */
+
+  /**
+   * @typedef {function(string): string} NextIdFn
+   *   Shared id factory the shell hands the persistence layer so
+   *   restored nodes mint ids from the same monotonic counter as new
+   *   ones.
+   */
+
+  /**
+   * @typedef {function(string|null|undefined): string} ResolvePanelTargetFn
+   */
+
+  /**
+   * @typedef {Object} LayoutPersistenceSetupDeps
+   * @property {LayoutPersistenceState} state - Live reference to the
+   *   shell state.
+   * @property {*} layoutTree - `window.LexeraLayoutTree`.
+   * @property {*} panelDefs - `window.LexeraPanelDefinitions`.
+   * @property {NextIdFn} nextId
+   * @property {ResolvePanelTargetFn} resolvePanelTarget
+   * @property {function(): void} syncIntegratedPanelVisibility
+   * @property {function(): void} ensureActiveLeaf
+   */
+
+  /**
+   * @typedef {Object} SerializedTab
+   * @property {string} id
+   * @property {('board'|'panel')} kind
+   * @property {string} [boardId]
+   * @property {string} [panelId]
+   * @property {string} [viewKind]
+   */
+
+  /**
+   * @typedef {Object} SerializedTabsNode
+   * @property {'tabs'} type
+   * @property {string} id
+   * @property {string} activeTabId
+   * @property {Array<SerializedTab>} tabs
+   */
+
+  /**
+   * @typedef {Object} SerializedSplitNode
+   * @property {'split'} type
+   * @property {string} id
+   * @property {('horizontal'|'vertical')} axis
+   * @property {number} ratio
+   * @property {SerializedNode|null} first
+   * @property {SerializedNode|null} second
+   */
+
+  /**
+   * @typedef {(SerializedTabsNode|SerializedSplitNode)} SerializedNode
+   *   The wire shape produced by `serialize` and consumed by `hydrate`.
+   *   Mirrors `DockTreeNode` but kept distinct so the persistence layer
+   *   can tolerate version drift without leaking partial shapes back
+   *   into runtime trees.
+   */
+
+  /** @type {LayoutPersistenceSetupDeps|null} */
   var deps = null;
 
+  /**
+   * @param {LayoutPersistenceSetupDeps} setupDeps
+   * @returns {void}
+   */
   function setup(setupDeps) {
     if (!setupDeps) throw new Error('LexeraLayoutPersistence.setup requires deps');
     var required = ['state', 'layoutTree', 'panelDefs', 'nextId',
@@ -47,6 +130,9 @@
     deps = setupDeps;
   }
 
+  /**
+   * @returns {string}
+   */
   function getWorkspaceIdFromUrl() {
     try {
       return String(new URLSearchParams(window.location.search || '').get('workspace') || '');
@@ -55,17 +141,24 @@
     }
   }
 
+  /**
+   * @returns {Storage}
+   */
   function getPersistenceStorage() {
     // Workspace-pinned windows + the boot main window persist across
     // sessions (localStorage). Detached panel-only windows and other
     // transient secondary windows stay in sessionStorage so their
     // ad-hoc layouts don't pollute persistent storage.
     if (getWorkspaceIdFromUrl()) return window.localStorage;
-    if (deps.state.windowLabel === 'main') return window.localStorage;
+    if (deps && deps.state.windowLabel === 'main') return window.localStorage;
     return window.sessionStorage;
   }
 
+  /**
+   * @returns {string}
+   */
   function getPersistenceKey() {
+    if (!deps) return 'lexera-workspace-shell:unbound';
     var hooks = deps.state.hooks;
     if (hooks && typeof hooks.getPersistenceKey === 'function') {
       var hookKey = hooks.getPersistenceKey();
@@ -81,13 +174,21 @@
     return 'lexera-workspace-shell:' + deps.state.windowLabel;
   }
 
+  /**
+   * @param {*} value
+   * @returns {number}
+   */
   function clampRatio(value) {
     if (typeof value !== 'number' || !isFinite(value)) return 0.5;
     return Math.max(0.18, Math.min(0.82, value));
   }
 
+  /**
+   * @param {*} node - A `DockTreeNode | null` from the live tree.
+   * @returns {SerializedNode|null}
+   */
   function serialize(node) {
-    if (!node) return null;
+    if (!node || !deps) return null;
     if (node.type === 'tabs') {
       return {
         type: 'tabs',
@@ -120,8 +221,13 @@
     };
   }
 
+  /**
+   * @param {*} raw - The serialized payload to hydrate.
+   * @param {Object<string, *>} [panelInstances]
+   * @returns {*} A live `DockTreeNode | null`.
+   */
   function hydrate(raw, panelInstances) {
-    if (!raw || typeof raw !== 'object') return null;
+    if (!raw || typeof raw !== 'object' || !deps) return null;
     var instances = panelInstances || deps.state.panelInstances;
     if (raw.type === 'tabs') {
       var tabs = [];
@@ -170,7 +276,11 @@
     };
   }
 
+  /**
+   * @returns {void}
+   */
   function persist() {
+    if (!deps) return;
     var state = deps.state;
     if (!state.mounted) return;
     try {
@@ -197,7 +307,12 @@
     }
   }
 
+  /**
+   * @returns {boolean} true on successful restore, false when nothing
+   *   was found, the version doesn't match, or the profile differs.
+   */
   function restore() {
+    if (!deps) return false;
     var state = deps.state;
     var layoutTree = deps.layoutTree;
     var panelDefs = deps.panelDefs;
