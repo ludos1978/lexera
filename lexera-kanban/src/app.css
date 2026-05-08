@@ -4664,6 +4664,14 @@ img[data-lazy-src] {
   text-align: center;
   color: var(--text-muted);
   font-size: var(--font-size-sm);
+  /* Reserve approximate viewer height during the fetch+parse phase
+   * so the loading→rendered transition does not shrink or grow the
+   * surrounding card/modal layout. The actual rendered content
+   * absorbs this min-height seamlessly once pages are committed. */
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .pdf-viewer-error {
   color: var(--danger-fg, #c0392b);

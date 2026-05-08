@@ -19,6 +19,22 @@
   var DEFAULT_MODE = 'scrolled';
   var VALID_MODES = { scrolled: 1, overview: 1, stacked: 1 };
 
+  // Module-level cache of parsed PDF documents, keyed by the asset
+  // URL the plugin fetches from. After the user picks a view mode in
+  // the burger menu, applyModeToEmbed → saveCardEdit →
+  // persistBoardMutation → refreshTargetedElements re-renders the
+  // card, which destroys the embed and re-mounts a fresh viewer.
+  // Without this cache the re-mount fetches the file again, re-runs
+  // pdfjsLib.getDocument (CPU), and only THEN re-renders pages — the
+  // user sees the embed go blank, then partial, then settled "a while
+  // after first rendering". Caching pdfDoc skips the network + parse
+  // on the re-mount; only the canvas re-render runs.
+  //
+  // Memory: PDF.js documents hold parsed page objects. For typical
+  // boards with 1-5 PDFs in view this is well under a MB; if memory
+  // becomes a concern an LRU bound can replace the plain map.
+  var _pdfDocCache = {};
+
   // Set the worker source exactly once. The worker file is vendored
   // alongside `pdf.min.js` under `src/vendor/pdfjs/`. Resolved against
   // window.location so subapp webviews under `views/<kind>/` can find
@@ -164,18 +180,32 @@
     //      streams the body in one shot).
     // Bypassing the range-request path keeps the load on the single
     // GET that the protocol already handles for `<img>`/`<video>`.
-    fetch(url, { cache: 'no-store' }).then(function (response) {
-      if (!response.ok) {
-        throw new Error('HTTP ' + response.status + ' ' + (response.statusText || ''));
-      }
-      return response.arrayBuffer();
-    }).then(function (buf) {
-      return window.pdfjsLib.getDocument({
-        data: new Uint8Array(buf),
-        disableRange: true,
-        disableStream: true
-      }).promise;
-    }).then(function (pdf) {
+    // Cache hit: skip fetch + parse, go straight to render. This is
+    // the common case after the burger-menu picker triggers a card
+    // re-render. The pdfDoc is the EXACT same parsed object that
+    // backed the previous mount, so render output is byte-identical.
+    var docPromise;
+    if (_pdfDocCache[url]) {
+      docPromise = Promise.resolve(_pdfDocCache[url]);
+    } else {
+      docPromise = fetch(url, { cache: 'no-store' }).then(function (response) {
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status + ' ' + (response.statusText || ''));
+        }
+        return response.arrayBuffer();
+      }).then(function (buf) {
+        return window.pdfjsLib.getDocument({
+          data: new Uint8Array(buf),
+          disableRange: true,
+          disableStream: true
+        }).promise;
+      }).then(function (pdf) {
+        _pdfDocCache[url] = pdf;
+        return pdf;
+      });
+    }
+
+    docPromise.then(function (pdf) {
       pdfDoc = pdf;
       if (loadingEl.parentNode) loadingEl.parentNode.removeChild(loadingEl);
       return renderPages(pdf, host, currentMode, cancelToken);
