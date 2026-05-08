@@ -19,6 +19,32 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: src/debug/debugApi.js (IIFE; window.LexeraDebug = api).
+ * Runtime debug helpers reachable from DevTools — the user can flip
+ * native-webview visibility, query the suppression state, or grab a
+ * dock snapshot without rebuilding the app. Wraps existing
+ * primitives (LexeraMultiviewWebview.setAllVisible +
+ * LexeraWorkspaceShell._test_inspectDock).
+ */
+interface LexeraDebugApi {
+  /** Hide (true) or restore (false) every child webview that floats
+   *  above shell DOM. Returns ok=true when the multiview helper was
+   *  available; ok=false + reason string when not (test/embedded
+   *  contexts where LexeraMultiviewWebview is missing). */
+  hideAllOverlays(hide: boolean): { ok: true; hidden: boolean }
+                                | { ok: false; reason: string };
+  /** Current suppression state (`true` = hidden, `false` = visible).
+   *  `null` when the multiview helper is unavailable. */
+  isOverlaysHidden(): boolean | null;
+  /** Snapshot of one dock's resolved DOM/state for diagnostic
+   *  output. Returns the shell's `_test_inspectDock` payload or
+   *  ok=false + reason when the shell isn't mounted. */
+  dockSnapshot(
+    dockId: 'left' | 'right' | 'bottom' | string
+  ): unknown;
+}
+
+/**
  * Source: lexera-shared/dialogs.js (synced into each app's src/ via
  * sync-runtime-assets; window.LexeraDialogs = api). Replaces native
  * window.confirm/prompt — using those is forbidden in this codebase
@@ -155,7 +181,7 @@ declare global {
     LexeraSharedPanels: any;
     LexeraWorkspaceShell: any;
     LexeraDashboard: any;
-    LexeraDebug: any;
+    LexeraDebug: LexeraDebugApi;
     LexeraEmbedMenu: any;
     LexeraThemeBridge: any;
     LexeraCatalogBridge: any;
