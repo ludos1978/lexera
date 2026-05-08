@@ -1,5 +1,40 @@
 (function () {
   'use strict';
+
+  /**
+   * @typedef {function(string): HTMLElement} PanelFactory
+   *   Factory shape every per-kind builder follows: takes an
+   *   instanceId, returns the panel's root DOM element with all
+   *   shell-recognised classes + data-attrs in place.
+   */
+
+  /**
+   * @typedef {Object<string, PanelFactory>} PanelFactoryMap
+   *   The panel-kind → factory dispatch table.
+   */
+
+  /**
+   * @typedef {Object<string, HTMLElement>} PanelInstancesPerKind
+   *   For one panel kind, instanceId → root element. Used by
+   *   `getRoots(kind)` to enumerate live duplicable panels.
+   */
+
+  /**
+   * @typedef {Object<string, PanelInstancesPerKind>} InstancesByKindMap
+   *   The full instance registry, keyed by panel kind.
+   */
+
+  /**
+   * @typedef {Object} PanelCreatedEventDetail
+   *   The payload of the `lexera-shared-panel-created` CustomEvent
+   *   the shell dispatches on `window` whenever a duplicable panel
+   *   is materialised.
+   * @property {string} kind
+   * @property {string} instanceId
+   * @property {HTMLElement} element
+   */
+
+  /** @type {Object<string, true>} */
   var DUPLICABLE_PANEL_KINDS = {
     hierarchy: true,
     dashboard: true,
@@ -13,6 +48,7 @@
     frontendTests: true
   };
 
+  /** @type {InstancesByKindMap} */
   var instancesByKind = {
     hierarchy: {},
     dashboard: {},
@@ -26,6 +62,12 @@
     frontendTests: {}
   };
 
+  /**
+   * @param {string} className
+   * @param {string} kind
+   * @param {string} instanceId
+   * @returns {HTMLDivElement}
+   */
   function createPanelRoot(className, kind, instanceId) {
     var root = document.createElement('div');
     root.className = className;
@@ -516,6 +558,7 @@
     return root;
   }
 
+  /** @type {PanelFactoryMap} */
   var PANEL_FACTORIES = {
     hierarchy: createHierarchyPanelElement,
     dashboard: createDashboardPanelElement,
@@ -529,17 +572,32 @@
     frontendTests: createFrontendTestsPanelElement
   };
 
+  /**
+   * @param {string} kind
+   * @param {string} instanceId
+   * @returns {HTMLElement|null}
+   */
   function createPanelElement(kind, instanceId) {
     var factory = PANEL_FACTORIES[kind];
     return factory ? factory(instanceId) : null;
   }
 
+  /**
+   * @param {string} kind
+   * @param {string} instanceId
+   * @param {HTMLElement|null} element
+   * @returns {HTMLElement|null}
+   */
   function registerInstance(kind, instanceId, element) {
     if (!DUPLICABLE_PANEL_KINDS[kind] || !instanceId || !element) return null;
     instancesByKind[kind][instanceId] = element;
     return element;
   }
 
+  /**
+   * @param {string} instanceId
+   * @returns {void}
+   */
   function unregisterInstance(instanceId) {
     if (!instanceId) return;
     var kinds = Object.keys(instancesByKind);
@@ -551,6 +609,10 @@
     }
   }
 
+  /**
+   * @param {string} kind
+   * @returns {Array<HTMLElement>}
+   */
   function getRoots(kind) {
     if (!DUPLICABLE_PANEL_KINDS[kind]) return [];
     return Object.keys(instancesByKind[kind]).map(function (instanceId) {
