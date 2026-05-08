@@ -31,6 +31,98 @@
 (function () {
   'use strict';
 
+  /**
+   * @typedef {('left'|'right'|'bottom')} DockId
+   *   The three side-dock slots. Centre dock is keyed elsewhere.
+   */
+
+  /**
+   * @typedef {('workspace'|'detachedBoard'|string)} Profile
+   *   Workspace shell profile. `'workspace'` is the default; the
+   *   factories below treat anything else as workspace except
+   *   `'detachedBoard'` which has its own zero-dock defaults.
+   */
+
+  /**
+   * @typedef {Object} PanelDefinition
+   *   Static metadata for a panel kind. Keys mirror the table at the
+   *   top of the IIFE.
+   * @property {string} id - Same as the table key.
+   * @property {string} title - Display label.
+   * @property {DockId} defaultDock - Where the panel lands by default.
+   * @property {boolean} duplicable - Whether multiple instances of
+   *   this kind can co-exist (currently every defined kind opts in).
+   * @property {boolean} integratedHeader - Whether the panel renders
+   *   its own dock-header chrome.
+   */
+
+  /**
+   * @typedef {Object<string, PanelDefinition>} PanelDefinitionTable
+   *   The runtime registry shape — keyed by panel kind.
+   */
+
+  /**
+   * @typedef {Object} PanelInstance
+   * @property {string} id - Panel instance id (kind by default; user
+   *   duplicates carry instance-specific suffixes).
+   * @property {string} kind - The panel's underlying kind (must be a
+   *   key in `PANEL_DEFINITIONS`).
+   */
+
+  /**
+   * @typedef {Object<string, PanelInstance>} PanelInstanceMap
+   *   Returned by `createDefaultPanelInstances` /
+   *   `normalizePanelInstances`. Keys are instance ids.
+   */
+
+  /**
+   * @typedef {Object} DockSizeMap
+   * @property {number} left - Pixel width of the left side dock; `0`
+   *   means collapsed.
+   * @property {number} right - Pixel width of the right side dock; `0`
+   *   means collapsed.
+   * @property {number} bottom - Pixel height of the bottom side dock;
+   *   `0` means collapsed.
+   */
+
+  /**
+   * @typedef {Object} DockRestoreSizeMap
+   * @property {number} left - Last non-zero left width (so a collapsed
+   *   dock can spring back to its prior size).
+   * @property {number} right - Last non-zero right width.
+   * @property {number} bottom - Last non-zero bottom height.
+   */
+
+  /**
+   * @typedef {Object<string, boolean>} PanelVisibilityMap
+   *   Per-panel-instance "show in dock" toggle.
+   */
+
+  /**
+   * @typedef {Object} PanelDockGroups
+   * @property {Array<Array<string>>} left - Each inner array is one
+   *   tabset group of panel ids.
+   * @property {Array<Array<string>>} right
+   * @property {Array<Array<string>>} bottom
+   */
+
+  /**
+   * @typedef {Object} SideDocksMap
+   * @property {*} left - `DockTreeNode | null` — opaque here.
+   * @property {*} right
+   * @property {*} bottom
+   */
+
+  /**
+   * @typedef {function(string): string} NextIdFn
+   *   The shared `idFactory` from `LexeraLayoutTree.createIdFactory`.
+   */
+
+  /**
+   * @typedef {Object} PanelDefinitionsSetupDeps
+   * @property {NextIdFn} nextId
+   */
+
   var layoutTree = (typeof window !== 'undefined' && window.LexeraLayoutTree) || null;
   if (!layoutTree) {
     throw new Error('LexeraLayoutTree global is required before panelDefinitions.js');
@@ -62,9 +154,15 @@
     frontendTests: false
   };
 
+  /** @type {Array<string>} */
   var runtimeAllowedPanelKinds = Object.keys(PANEL_DEFINITIONS);
+  /** @type {NextIdFn|null} */
   var nextId = null;
 
+  /**
+   * @param {PanelDefinitionsSetupDeps} deps
+   * @returns {void}
+   */
   function setup(deps) {
     if (!deps || typeof deps.nextId !== 'function') {
       throw new Error('LexeraPanelDefinitions.setup requires a nextId factory');
@@ -72,18 +170,33 @@
     nextId = deps.nextId;
   }
 
+  /**
+   * @returns {Array<string>}
+   */
   function getAllowedPanelKinds() {
     return runtimeAllowedPanelKinds.slice();
   }
 
+  /**
+   * @param {string|null|undefined} kind
+   * @returns {boolean}
+   */
   function isPanelKindAllowed(kind) {
     return !!(kind && Object.prototype.hasOwnProperty.call(PANEL_DEFINITIONS, kind) && runtimeAllowedPanelKinds.indexOf(kind) !== -1);
   }
 
+  /**
+   * @param {string|null|undefined} kind
+   * @returns {boolean}
+   */
   function isPanelKindAllowedFromDefinitions(kind) {
     return !!(kind && Object.prototype.hasOwnProperty.call(PANEL_DEFINITIONS, kind));
   }
 
+  /**
+   * @param {Array<string>|null|undefined} allowedKinds
+   * @returns {void}
+   */
   function configureAllowedPanelKinds(allowedKinds) {
     if (!Array.isArray(allowedKinds) || allowedKinds.length === 0) {
       runtimeAllowedPanelKinds = Object.keys(PANEL_DEFINITIONS);
@@ -98,6 +211,9 @@
     runtimeAllowedPanelKinds = filtered.length > 0 ? filtered : Object.keys(PANEL_DEFINITIONS);
   }
 
+  /**
+   * @returns {PanelDockGroups}
+   */
   function getDefaultDockGroups() {
     var leftGroup = [];
     if (isPanelKindAllowed('hierarchy')) leftGroup.push('hierarchy');
@@ -111,15 +227,26 @@
     };
   }
 
+  /**
+   * @returns {string}
+   */
   function getFirstAllowedPanelKind() {
     return runtimeAllowedPanelKinds.length > 0 ? runtimeAllowedPanelKinds[0] : '';
   }
 
+  /**
+   * @param {string|null|undefined} value
+   * @returns {string}
+   */
   function normalizePanelKind(value) {
-    return isPanelKindAllowed(value) ? value : '';
+    return isPanelKindAllowed(value) ? /** @type {string} */ (value) : '';
   }
 
+  /**
+   * @returns {PanelInstanceMap}
+   */
   function createDefaultPanelInstances() {
+    /** @type {PanelInstanceMap} */
     var result = {};
     for (var i = 0; i < runtimeAllowedPanelKinds.length; i++) {
       var kind = runtimeAllowedPanelKinds[i];
@@ -128,9 +255,14 @@
     return result;
   }
 
+  /**
+   * @param {*} raw
+   * @returns {PanelInstanceMap}
+   */
   function normalizePanelInstances(raw) {
     var defaults = createDefaultPanelInstances();
     var source = raw && typeof raw === 'object' ? raw : {};
+    /** @type {PanelInstanceMap} */
     var result = {};
     var defaultIds = Object.keys(defaults);
     for (var i = 0; i < defaultIds.length; i++) {
@@ -149,12 +281,21 @@
     return result;
   }
 
+  /**
+   * @param {string|null|undefined} value
+   * @param {PanelInstanceMap|null|undefined} panelInstances
+   * @returns {string}
+   */
   function normalizePanelIdWithInstances(value, panelInstances) {
     var normalized = String(value || '');
     if (panelInstances && panelInstances[normalized]) return normalized;
     return normalizePanelKind(normalized);
   }
 
+  /**
+   * @param {Profile} [profile]
+   * @returns {DockSizeMap}
+   */
   function createDefaultDockSizes(profile) {
     if (profile === 'detachedBoard') {
       return { left: 0, right: 0, bottom: 0 };
@@ -162,10 +303,19 @@
     return { left: 272, right: 0, bottom: 180 };
   }
 
+  /**
+   * @param {Profile} [profile]
+   * @returns {DockRestoreSizeMap}
+   */
   function createDefaultDockRestoreSizes(profile) {
     return createDefaultDockSizes(profile === 'detachedBoard' ? 'workspace' : profile);
   }
 
+  /**
+   * @param {DockId} dockId
+   * @param {*} [value]
+   * @returns {number}
+   */
   function clampPanelSize(dockId, value) {
     var number = typeof value === 'number' && isFinite(value) ? value : null;
     if (number == null) return createDefaultDockSizes()[dockId];
@@ -173,6 +323,11 @@
     return Math.max(200, Math.min(520, Math.round(number)));
   }
 
+  /**
+   * @param {DockId} dockId
+   * @param {*} value
+   * @returns {number}
+   */
   function normalizeDockSizeValue(dockId, value) {
     var number = typeof value === 'number' && isFinite(value) ? value : null;
     if (number == null) return 0;
@@ -180,6 +335,11 @@
     return clampPanelSize(dockId, number);
   }
 
+  /**
+   * @param {*} raw
+   * @param {Profile} profile
+   * @returns {DockSizeMap}
+   */
   function normalizeDockSizes(raw, profile) {
     var defaults = createDefaultDockSizes(profile);
     var source = raw && typeof raw === 'object' ? raw : {};
@@ -190,6 +350,11 @@
     };
   }
 
+  /**
+   * @param {*} raw
+   * @param {Profile} profile
+   * @returns {DockRestoreSizeMap}
+   */
   function normalizeDockRestoreSizes(raw, profile) {
     var defaults = createDefaultDockRestoreSizes(profile);
     var source = raw && typeof raw === 'object' ? raw : {};
@@ -200,7 +365,12 @@
     };
   }
 
+  /**
+   * @param {Profile} [profile]
+   * @returns {PanelVisibilityMap}
+   */
   function createDefaultPanelVisibility(profile) {
+    /** @type {PanelVisibilityMap} */
     var result = {};
     for (var i = 0; i < runtimeAllowedPanelKinds.length; i++) {
       var kind = runtimeAllowedPanelKinds[i];
@@ -209,7 +379,14 @@
     return result;
   }
 
+  /**
+   * @param {Array<*>|null|undefined} ids
+   * @param {Object<string, true>|null|undefined} seen
+   * @param {PanelInstanceMap|null|undefined} panelInstances
+   * @returns {Array<string>}
+   */
   function ensureUniquePanelIds(ids, seen, panelInstances) {
+    /** @type {Array<string>} */
     var result = [];
     var localSeen = seen || {};
     var list = Array.isArray(ids) ? ids : [];
@@ -222,10 +399,19 @@
     return result;
   }
 
+  /**
+   * @param {*} raw
+   * @param {Profile} profile
+   * @param {PanelInstanceMap} panelInstances
+   * @returns {PanelDockGroups}
+   */
   function normalizePanelDocks(raw, profile, panelInstances) {
     var defaults = getDefaultDockGroups();
+    /** @type {PanelDockGroups} */
     var result = { left: [], right: [], bottom: [] };
+    /** @type {Object<string, true>} */
     var seen = {};
+    /** @type {Array<DockId>} */
     var dockOrder = ['left', 'right', 'bottom'];
     for (var i = 0; i < dockOrder.length; i++) {
       var dockId = dockOrder[i];
@@ -260,8 +446,15 @@
     return result;
   }
 
+  /**
+   * @param {*} raw
+   * @param {Profile} profile
+   * @param {PanelInstanceMap} panelInstances
+   * @returns {PanelVisibilityMap}
+   */
   function normalizePanelVisibility(raw, profile, panelInstances) {
     var defaults = createDefaultPanelVisibility(profile);
+    /** @type {PanelVisibilityMap} */
     var result = {};
     var source = raw && typeof raw === 'object' ? raw : {};
     var panelIds = Object.keys(panelInstances || {});
@@ -276,6 +469,10 @@
     return result;
   }
 
+  /**
+   * @param {Profile} [profile]
+   * @returns {SideDocksMap}
+   */
   function createDefaultSideDocks(profile) {
     if (!nextId) {
       throw new Error('LexeraPanelDefinitions.setup must be called before createDefaultSideDocks');
