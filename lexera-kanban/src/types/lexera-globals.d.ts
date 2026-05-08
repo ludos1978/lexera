@@ -19,6 +19,61 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: src/keybindingRegistry.js (IIFE;
+ * window.LexeraKeybindingRegistry = api). User-keybinding store +
+ * matcher + dispatcher. Keybindings are loaded once at boot from
+ * the keybindings.json config; runtime callers ask the registry to
+ * match a KeyboardEvent against the loaded set and then execute the
+ * resolved binding (either inserting text into a textarea or
+ * dispatching a board/card action via LexeraActionRegistry).
+ */
+interface LexeraKeybinding {
+  /** Raw "Cmd+Shift+K" / "Ctrl+B" string the user typed. */
+  key: string;
+  /** Normalised combo (modifier flags + lowercase key). */
+  combo: { ctrl: boolean; meta: boolean; shift: boolean; alt: boolean; key: string };
+  /** Action id dispatched on match (e.g. 'insert-text', 'next-card'). */
+  action: string;
+  /** Context filter ('always' / 'editor' / 'card-focus' / 'board'). */
+  when: string;
+  /** Optional payload passed to the action handler. */
+  args: Record<string, unknown> | null;
+  /** Optional human-readable description for the help overlay. */
+  description: string;
+}
+
+interface LexeraKeybindingRegistryApi {
+  /** Load user bindings from a JSON string (the contents of
+   *  keybindings.json). Empty / invalid input loads nothing but
+   *  still flips isLoaded() to true. */
+  loadFromJson(jsonString: string | null | undefined): void;
+  /** Find the first binding matching (event, context). Context is
+   *  one of the `when` values used during load. Returns null when
+   *  no binding matches. */
+  match(event: KeyboardEvent, context: string): LexeraKeybinding | null;
+  /** Run a matched binding. Returns true when the action was
+   *  handled, false otherwise. textarea + insertFn are required
+   *  for `insert-text` / `insert-formatting` actions; other actions
+   *  dispatch through LexeraActionRegistry. */
+  execute(
+    binding: LexeraKeybinding | null | undefined,
+    textarea: HTMLTextAreaElement | null,
+    insertFn: ((textarea: HTMLTextAreaElement, args: { snippet?: string } & Record<string, unknown>) => void) | null
+  ): boolean;
+  /** Snapshot of all loaded bindings (used by the help overlay). */
+  getUserBindings(): LexeraKeybinding[];
+  /** Format a key string ('Meta+Shift+K') for display, swapping
+   *  symbols on macOS and word names elsewhere. */
+  formatKeyDisplay(keyStr: string): string;
+  /** Path of the keybindings.json on disk; persisted so reload can
+   *  be wired to the same path the load came from. */
+  setConfigPath(path: string | null): void;
+  getConfigPath(): string | null;
+  /** True after loadFromJson() has run at least once. */
+  isLoaded(): boolean;
+}
+
+/**
  * Source: src/debug/debugApi.js (IIFE; window.LexeraDebug = api).
  * Runtime debug helpers reachable from DevTools — the user can flip
  * native-webview visibility, query the suppression state, or grab a
@@ -161,6 +216,68 @@ interface LexeraTitleHelpersApi {
   basenameWithoutMd(filePath: string | null | undefined): string;
 }
 
+/**
+ * Source: src/workspace/treeRegistry.js (IIFE;
+ * window.LexeraTreeRegistry = api). Centralises iteration over the
+ * four layout trees the workspace shell holds (one centre dock + three
+ * side docks). Stateful — `setup()` must be called once before any
+ * other method (throws on missing deps).
+ */
+type LexeraTreeRegistryTreeId = 'center' | 'left' | 'right' | 'bottom';
+
+/**
+ * Recursive DockTreeNode union (DockTreeLeaf | DockTreeSplit) is
+ * authored as JSDoc in `workspaceShell.js`. Kept as `any` at this
+ * .d.ts boundary so the slice doesn't have to repeat the full union;
+ * a follow-up tightening can replace this with a real interface once
+ * those JSDoc shapes are exported as a shared type.
+ */
+type LexeraDockTreeNode = any;
+
+interface LexeraTreeRegistryFoundLeaf {
+  treeId: LexeraTreeRegistryTreeId;
+  leaf: LexeraDockTreeNode;
+}
+interface LexeraTreeRegistryFoundTab {
+  treeId: LexeraTreeRegistryTreeId;
+  tab: LexeraDockTreeNode;
+  leaf: LexeraDockTreeNode;
+  index: number;
+}
+interface LexeraTreeRegistryFoundPanel {
+  treeId: LexeraTreeRegistryTreeId;
+  tab: LexeraDockTreeNode;
+  leaf: LexeraDockTreeNode;
+}
+
+interface LexeraTreeRegistryApi {
+  /** Bind shell state + helpers. Throws if any required dep is
+   *  missing. Must be called once before any other method. */
+  setup(deps: {
+    state: any;
+    layoutTree: any;
+    withNormalizedLeaves: (node: LexeraDockTreeNode, isRoot: boolean) => LexeraDockTreeNode;
+    resolvePanelTargetFn: (panelId: string) => string;
+  }): void;
+  /** The four tree ids in iteration order:
+   *  `['center', 'left', 'right', 'bottom']`. */
+  allTreeIds(): readonly LexeraTreeRegistryTreeId[];
+  /** Root node of the named tree, or `null` if empty. */
+  getTreeRoot(treeId: LexeraTreeRegistryTreeId): LexeraDockTreeNode | null;
+  /** Replace the root of the named tree. Pass `null` to empty it. */
+  setTreeRoot(treeId: LexeraTreeRegistryTreeId, root: LexeraDockTreeNode | null): void;
+  /** Run `withNormalizedLeaves` on every non-empty tree root,
+   *  flagging the centre tree via the `isRoot` argument. */
+  normalizeAllTrees(): void;
+  /** Find a leaf by id across all four trees, or `null`. */
+  findLeafInAllTrees(leafId: string): LexeraTreeRegistryFoundLeaf | null;
+  /** Find a tab by id across all four trees, or `null`. */
+  findTabInAllTrees(tabId: string): LexeraTreeRegistryFoundTab | null;
+  /** Find a panel by id across all four trees. Resolves panel
+   *  references via the configured `resolvePanelTargetFn`. */
+  findPanelInAllTrees(panelId: string): LexeraTreeRegistryFoundPanel | null;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
@@ -176,7 +293,7 @@ declare global {
     LexeraTabDragController: any;
     LexeraGeometryObserver: LexeraGeometryObserverApi;
     LexeraPanelDefinitions: any;
-    LexeraTreeRegistry: any;
+    LexeraTreeRegistry: LexeraTreeRegistryApi;
     LexeraTitleHelpers: LexeraTitleHelpersApi;
     LexeraSharedPanels: any;
     LexeraWorkspaceShell: any;
@@ -191,7 +308,7 @@ declare global {
     LexeraBackendStatusBridge: any;
     LexeraEmbeddedBoardBridge: any;
     LexeraHierarchyDragBridge: any;
-    LexeraKeybindingRegistry: any;
+    LexeraKeybindingRegistry: LexeraKeybindingRegistryApi;
     LexeraRuntime: any;
     LexeraDialogs: LexeraDialogsApi;
 
