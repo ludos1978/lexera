@@ -36,6 +36,7 @@
     "src/workspace/panelDefinitions.js",
     "src/workspace/panelHost.js",
     "src/workspace/sharedPanels.js",
+    "src/workspace/tabDragController.js",
     "src/workspace/treeRegistry.js",
     "src/workspace/workspaceShell.js",
     "src/workspace/multiviewWebview.js"
