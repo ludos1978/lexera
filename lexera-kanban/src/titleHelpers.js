@@ -59,11 +59,58 @@
     return 'Untitled';
   }
 
+  // Cards have no `title` field — KanbanCard stores only `content` and the
+  // displayed title is derived. Mirror of `getCardTitle()` in app.js so
+  // sub-app webviews (workspaces, hierarchy) that don't load app.js still
+  // show the same label the kanban view shows.
+  //
+  // Algorithm: walk lines until the first empty line; skip image-only
+  // (`![…]`) lines; if the line is a markdown heading (#/##/###), return
+  // the heading text; otherwise return the line. If everything in the
+  // first block is empty/comment-only, fall back to the first non-empty
+  // line in the rest of the content. `'Untitled'` when there is nothing.
+  var INTERNAL_HIDDEN_RE = /\s*#hidden-internal-(?:incoming|parked|archived|deleted)\b/g;
+  function stripCardTitleNoise(line) {
+    return String(line || '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(INTERNAL_HIDDEN_RE, '')
+      .trim();
+  }
+  function resolveCardLabel(card) {
+    if (!card) return 'Untitled';
+    // Some surfaces (e.g. boardCleanup) pre-derive a `title` and stash
+    // it on the card object. Honor it if present so the workspace tree
+    // doesn't re-derive from raw content when the caller already did
+    // the work.
+    var preset = String(card.title || '').trim();
+    if (preset) return preset;
+    var content = String(card.content || '');
+    if (!content) return 'Untitled';
+    var lines = content.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var trimmed = stripCardTitleNoise(lines[i]);
+      if (trimmed === '') break;
+      if (/^!\[/.test(trimmed)) continue;
+      var headingMatch = trimmed.match(/^#{1,3}\s+(.+)/);
+      if (headingMatch) {
+        var headingText = headingMatch[1].trim();
+        return headingText || 'Untitled';
+      }
+      return trimmed;
+    }
+    for (var j = 0; j < lines.length; j++) {
+      var fallback = stripCardTitleNoise(lines[j]);
+      if (fallback !== '') return fallback;
+    }
+    return 'Untitled';
+  }
+
   var api = {
     extractHtmlComments: extractHtmlComments,
     stripHtmlComments: stripHtmlComments,
     rebuildTitleWithPreservedComments: rebuildTitleWithPreservedComments,
     resolveBoardLabel: resolveBoardLabel,
+    resolveCardLabel: resolveCardLabel,
     basenameWithoutMd: basenameWithoutMd
   };
 

@@ -64,7 +64,9 @@
     };
   }
   function buildCardNode(card, ctx) {
-    return { id: card.id || null, label: nodeLabel(card), type: 'card',
+    return { id: card.id || null,
+             label: window.LexeraTitleHelpers.resolveCardLabel(card),
+             type: 'card',
              children: null, expanded: false, hasToggle: false, grip: true,
              gripTitle: 'Drag card to reorder',
              attrs: dragAttrs(ctx.boardId, 'card') };

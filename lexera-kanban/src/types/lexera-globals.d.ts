@@ -83,6 +83,17 @@ interface LexeraTitleHelpersApi {
   resolveBoardLabel(
     meta: { title?: string; filePath?: string; file_path?: string; name?: string } | null | undefined
   ): string;
+  /**
+   * Card label resolver. Cards have no canonical `title` field — the
+   * displayed label is derived from `card.content` (first non-empty
+   * line, skipping image-only lines, stripping H1/H2/H3 markers, HTML
+   * comments, and #hidden-internal-* tags). If a caller has already
+   * stashed a `title` on the card object (e.g. boardCleanup), that
+   * wins. Falls back to `'Untitled'` when nothing is derivable.
+   */
+  resolveCardLabel(
+    card: { title?: string; content?: string } | null | undefined
+  ): string;
   /** Strip directory separators and the trailing `.md` extension. */
   basenameWithoutMd(filePath: string | null | undefined): string;
 }
