@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-08):** ✓ 2624 passed | 2 skipped — `./run-lexera-tests.sh --unit` (213 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK.
+**Last run (2026-05-08):** ✓ 2626 passed | 2 skipped — `./run-lexera-tests.sh --unit` (213 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK (covers titleHelpers.js + workspace/workspaceShell.js + workspace/multiviewWebview.js).
 
 ## Open Tasks
 
