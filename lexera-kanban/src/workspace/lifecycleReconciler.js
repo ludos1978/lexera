@@ -21,7 +21,78 @@
   // Phase 2.2 wires `reconcile(state)` as the first call inside
   // `render()`, skipped while a drag is in flight (state.dragTabId set).
 
+  /**
+   * @typedef {Object} ReconcilerTreesState
+   *   The subset of `state` (workspace shell) the reconciler reads. Kept
+   *   structural so the reconciler stays decoupled from the umbrella
+   *   `WorkspaceShellState` typedef in workspaceShell.js.
+   * @property {*} [dockTree] - Centre dock tree (a `DockTreeNode | null`
+   *   on the consumer side; opaque here — passed straight to the
+   *   injected `collectAllTabIds`).
+   * @property {{left?: *, right?: *, bottom?: *}} [sideDocks] - Side-dock
+   *   trees keyed by dock id. Each is a `DockTreeNode | null` upstream.
+   */
+
+  /**
+   * @typedef {function(*): Array<string>} CollectAllTabIdsFn
+   *   Injected by the caller — typically `LexeraLayoutTree.collectAllTabIds`.
+   *   Walks a dock-tree node and returns every tab id reachable from it.
+   *   The reconciler treats the result as opaque — it only iterates the
+   *   returned ids and never inspects tree shape directly.
+   */
+
+  /**
+   * @typedef {function(string): void} RemoveFrameFn
+   *   Injected by the caller — fires once per tab id that was in the
+   *   previous snapshot but is absent from the current trees. The shell
+   *   wraps this around its `frameCache` cleanup + multiview destroy IPC.
+   */
+
+  /**
+   * @typedef {function(*): void} PrepareTabFn
+   *   Reserved for a later phase that may take ownership of tab spawn.
+   *   Phase 2.1 only handles teardown, so this is captured but unused.
+   */
+
+  /**
+   * @typedef {Object} ReconcilerDeps
+   * @property {CollectAllTabIdsFn} [collectAllTabIds]
+   * @property {RemoveFrameFn} [removeFrame]
+   * @property {PrepareTabFn} [prepareTab]
+   */
+
+  /**
+   * @typedef {Object} ReconcileResult
+   * @property {Array<string>} destroyed - Tab ids the reconciler called
+   *   `removeFrame` on this tick.
+   * @property {Array<string>} snapshot - Every tab id reachable from the
+   *   current trees (the next baseline).
+   */
+
+  /**
+   * @typedef {Object} LexeraLifecycleReconcilerInstance
+   * @property {function(ReconcilerTreesState): ReconcileResult} reconcile
+   *   Diff the previous snapshot against the current trees; destroy
+   *   anything missing; return what was destroyed and the new snapshot.
+   *   No-ops when either of `collectAllTabIds` / `removeFrame` is missing.
+   * @property {function(): void} reset - Drop the previous snapshot so
+   *   the next `reconcile` treats every current id as new.
+   * @property {function(): Array<string>} _test_lastSnapshot - Test seam.
+   * @property {function(): boolean} _test_prepareTabBound - Test seam.
+   */
+
+  /**
+   * @typedef {Object} LexeraLifecycleReconcilerApi
+   * @property {function(ReconcilerDeps): LexeraLifecycleReconcilerInstance} create
+   */
+
+  /**
+   * @param {ReconcilerTreesState|null|undefined} state
+   * @param {CollectAllTabIdsFn} collectAllTabIds
+   * @returns {Object<string, true>}
+   */
   function gatherCurrentIds(state, collectAllTabIds) {
+    /** @type {Object<string, true>} */
     var ids = Object.create(null);
     if (!state || typeof collectAllTabIds !== 'function') return ids;
     var trees = [
@@ -43,6 +114,10 @@
     return ids;
   }
 
+  /**
+   * @param {ReconcilerDeps} [deps]
+   * @returns {LexeraLifecycleReconcilerInstance}
+   */
   function create(deps) {
     deps = deps || {};
     var collectAllTabIds = typeof deps.collectAllTabIds === 'function'
@@ -55,13 +130,19 @@
     var prepareTab = typeof deps.prepareTab === 'function'
       ? deps.prepareTab : null;
 
+    /** @type {Object<string, true>} */
     var lastSnapshot = Object.create(null);
 
+    /**
+     * @param {ReconcilerTreesState} state
+     * @returns {ReconcileResult}
+     */
     function reconcile(state) {
       if (!collectAllTabIds || !removeFrame) {
         return { destroyed: [], snapshot: [] };
       }
       var currentIds = gatherCurrentIds(state, collectAllTabIds);
+      /** @type {Array<string>} */
       var destroyed = [];
       for (var prevId in lastSnapshot) {
         if (!Object.prototype.hasOwnProperty.call(lastSnapshot, prevId)) continue;
@@ -88,6 +169,7 @@
     };
   }
 
+  /** @type {LexeraLifecycleReconcilerApi} */
   var api = {
     create: create
   };

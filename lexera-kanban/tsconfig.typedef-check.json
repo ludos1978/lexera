@@ -29,6 +29,7 @@
     "src/titleHelpers.js",
     "src/workspace/geometryObserver.js",
     "src/workspace/layoutTree.js",
+    "src/workspace/lifecycleReconciler.js",
     "src/workspace/workspaceShell.js",
     "src/workspace/multiviewWebview.js"
   ]
