@@ -19,6 +19,79 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: src/workspace/layoutTree.js (IIFE;
+ * window.LexeraLayoutTree = api). Pure tree primitives — no DOM,
+ * no state, no webviews. Every layout-tree mutation in the codebase
+ * must go through this API (enforced by
+ * `layoutTreeMutationContract.test.js`).
+ *
+ * Tree-node types are kept loose (`any`) here; the canonical typed
+ * shapes live as JSDoc @typedef in workspaceShell.js
+ * (DockTreeNode / DockTreeLeaf / DockTreeSplit / DockTreeTab) and
+ * are referenced via call-site annotations rather than re-declared
+ * here. A future slice can lift them into this file once
+ * cross-file @typedef visibility is needed elsewhere.
+ */
+interface LexeraLayoutTreeApi {
+  /** Coerce a viewKind string to one of the known kinds; falls
+   *  back to 'default' on null/unknown. */
+  normalizeViewKind(value: string | null | undefined): 'canvas' | 'kanban' | 'default';
+  isPanelTab(tab: any): boolean;
+  isBoardTab(tab: any): boolean;
+  visitTree(
+    node: any,
+    visitor: (candidate: any, parent: any, side: 'first' | 'second' | '') => void,
+    parent?: any,
+    side?: 'first' | 'second' | ''
+  ): void;
+  getFirstLeaf(node: any): any;
+  findLeafById(node: any, leafId: string): any;
+  findNodeAndParent(node: any, nodeId: string): any;
+  findTab(node: any, tabId: string): { tab: any; leaf: any; index: number } | null;
+  findClosestSplitParent(node: any, targetLeafId: string, parentSplit?: any): any;
+  countTreeTabs(tree: any): number;
+  collectAllTabIds(tree: any): string[];
+  /** Remove a tab from anywhere in the tree by tab.id. Returns the
+   *  hit record `{ removed, leaf, index }` or `null` when the tab
+   *  wasn't found. Updates the affected leaf's activeTabId to
+   *  follow the "first remaining tab" rule. */
+  removeTabById(tree: any, tabId: string): { removed: any; leaf: any; index: number } | null;
+  /** Remove every tab matching tabId from a SINGLE leaf. Returns
+   *  the count removed (companion to removeTabById which is
+   *  single-match tree-wide). */
+  removeTabFromLeaf(leaf: any, tabId: string): number;
+  /** Pull the tab at `index` out of `leaf`. Returns the removed
+   *  tab object, or `null` on bounds / type failure. Uses the
+   *  "left neighbour" activeTabId fallback. */
+  extractTabAtIndex(leaf: any, index: number): any;
+  /** Insert a tab into a leaf at index; returns the final
+   *  inserted index (or -1 on validation failure). */
+  insertTabIntoLeaf(leaf: any, tab: any, index?: number): number;
+  /** Move a tab between leaves. Returns `{ tab, insertedAt }` on
+   *  success, `null` on bounds / type failure. */
+  moveTab(
+    sourceLeaf: any,
+    sourceIndex: number,
+    destLeaf: any,
+    destIndex?: number
+  ): { tab: any; insertedAt: number } | null;
+  /** Wholesale replace `holder[key]` with `nextTree`. Returns the
+   *  symmetric `{ removed, added }` tab-id diff so the caller can
+   *  clean up frame caches / multiview state for removed ids. */
+  replaceTreeRoot(holder: any, key: string, nextTree: any): { removed: string[]; added: string[] };
+  createIdFactory(): (prefix: string) => string;
+  createTabsetNode(tabs: any[], idFactory?: (prefix: string) => string): any;
+  createSplitNode(axis: 'horizontal' | 'vertical', first: any, second: any, ratio: number, idFactory?: (prefix: string) => string): any;
+  withNormalizedLeaves(node: any, isRoot: boolean, idFactory?: (prefix: string) => string): any;
+  createBoardTab(boardId: string, viewKind: string | null | undefined, idFactory?: (prefix: string) => string): any;
+  createPanelTab(panelId: string, idFactory?: (prefix: string) => string): any;
+  migratePanelDocksToSideDocks(panelDocks: any, panelGroupActives: any, idFactory?: (prefix: string) => string): any;
+  findLeafContainingBoard(node: any, boardId: string, viewKind?: string): any;
+  findAnyLeafContainingBoard(node: any, boardId: string): any;
+  findLeafContainingPanel(node: any, panelId: string, resolvePanelTarget?: (id: string) => string): { tab: any; leaf: any } | null;
+}
+
+/**
  * Source: src/workspace/tabDragController.js (IIFE;
  * window.LexeraTabDragController = api). Pointer-based tab/panel
  * drag controller — owns the pointermove/pointerup listeners,
@@ -309,7 +382,7 @@ declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
     lexeraLog: any;
-    LexeraLayoutTree: any;
+    LexeraLayoutTree: LexeraLayoutTreeApi;
     LexeraLifecycleReconciler: any;
     LexeraBoardHost: any;
     LexeraPanelHost: any;
