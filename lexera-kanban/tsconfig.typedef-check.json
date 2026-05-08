@@ -26,6 +26,7 @@
   },
   "include": [
     "src/types/lexera-globals.d.ts",
+    "src/titleHelpers.js",
     "src/workspace/workspaceShell.js",
     "src/workspace/multiviewWebview.js"
   ]

@@ -12,6 +12,45 @@
 //
 // Loaded via `tsconfig.typedef-check.json` `include`.
 
+// ─────────────────────────────────────────────────────────────────────
+// Per-module API surfaces. Progressive tightening: each module's `any`
+// is replaced with a real interface as a slice. The TS gate then
+// catches call-site mismatches the moment a signature drifts.
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Source: src/titleHelpers.js (IIFE; window.LexeraTitleHelpers = api).
+ * Pure helpers — no state, no DOM. Used by boardHeader, workspaceShell,
+ * and the workspaces / hierarchy sub-apps to converge on a single
+ * board-label resolver.
+ */
+interface LexeraTitleHelpersApi {
+  /** Extract every <!-- … --> HTML comment as a string array. */
+  extractHtmlComments(text: string | null | undefined): string[];
+  /** Strip <!-- … --> blocks and collapse stray whitespace. */
+  stripHtmlComments(text: string | null | undefined): string;
+  /**
+   * Re-emit a title containing the user's edited prefix followed by
+   * the original title's HTML comments (preserving hidden metadata
+   * like `<!-- id:… -->` even when the user retypes the visible
+   * portion).
+   */
+  rebuildTitleWithPreservedComments(
+    userInput: string | null | undefined,
+    originalTitle: string | null | undefined
+  ): string;
+  /**
+   * Canonical priority chain: parsed title → filename without `.md` →
+   * legacy `name` → `'Untitled'`. Accepts both `filePath` (camelCase
+   * Rust serde) and `file_path` (legacy snake_case) payload keys.
+   */
+  resolveBoardLabel(
+    meta: { title?: string; filePath?: string; file_path?: string; name?: string } | null | undefined
+  ): string;
+  /** Strip directory separators and the trailing `.md` extension. */
+  basenameWithoutMd(filePath: string | null | undefined): string;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
@@ -28,7 +67,7 @@ declare global {
     LexeraGeometryObserver: any;
     LexeraPanelDefinitions: any;
     LexeraTreeRegistry: any;
-    LexeraTitleHelpers: any;
+    LexeraTitleHelpers: LexeraTitleHelpersApi;
     LexeraSharedPanels: any;
     LexeraWorkspaceShell: any;
     LexeraDashboard: any;
