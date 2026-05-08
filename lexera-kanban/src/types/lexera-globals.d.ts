@@ -19,6 +19,42 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: src/workspace/geometryObserver.js (IIFE;
+ * window.LexeraGeometryObserver = api). Factory + a per-instance
+ * stateful API that wraps a single shared ResizeObserver watching
+ * every `.ws-view-tabs` element in the workspace shell.
+ */
+interface LexeraGeometryObserverInstance {
+  /** Recompute overflow for one header element + invoke the
+   *  onTabsLayoutChanged hook. No-op when headerEl is falsy. */
+  updateTabOverflow(headerEl: HTMLElement | null | undefined): void;
+  /** Subscribe a header's `.ws-view-tabs` child to the shared
+   *  ResizeObserver. Idempotent — repeated calls re-observe
+   *  the same element. */
+  observeTabOverflow(headerEl: HTMLElement | null | undefined): void;
+  /** Disconnect the shared observer + cancel any pending rAF. */
+  destroy(): void;
+  /** Test seam: whether the lazy ResizeObserver has been created. */
+  _test_hasObserver(): boolean;
+  /** Test seam: the rAF id of the next scheduled flush
+   *  (`0` when nothing pending). */
+  _test_pendingRafId(): number;
+}
+
+interface LexeraGeometryObserverApi {
+  /** Build an instance bound to the supplied callback bag.
+   *  `onTabsLayoutChanged(headerEl)` fires after each recompute so
+   *  the shell can close any open overflow dropdown when the
+   *  visible-tab set shifts underneath it. */
+  create(deps?: {
+    onTabsLayoutChanged?: (headerEl: HTMLElement) => void;
+  }): LexeraGeometryObserverInstance;
+  /** Internal hook exposed for the contract test
+   *  (`geometryObserverContract.test.js`). */
+  _recomputeOverflow(headerEl: HTMLElement): boolean;
+}
+
+/**
  * Source: src/titleHelpers.js (IIFE; window.LexeraTitleHelpers = api).
  * Pure helpers — no state, no DOM. Used by boardHeader, workspaceShell,
  * and the workspaces / hierarchy sub-apps to converge on a single
@@ -64,7 +100,7 @@ declare global {
     LexeraMessageBridge: any;
     LexeraLayoutPersistence: any;
     LexeraTabDragController: any;
-    LexeraGeometryObserver: any;
+    LexeraGeometryObserver: LexeraGeometryObserverApi;
     LexeraPanelDefinitions: any;
     LexeraTreeRegistry: any;
     LexeraTitleHelpers: LexeraTitleHelpersApi;
