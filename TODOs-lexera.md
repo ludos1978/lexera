@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-08):** ✓ 2615 passed — `./run-lexera-tests.sh --unit` (212 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK.
+**Last run (2026-05-08):** ✓ 2624 passed | 2 skipped — `./run-lexera-tests.sh --unit` (213 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK.
 
 ## Open Tasks
 
@@ -67,6 +67,10 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 #### Backend management view (2026-05-06)
 
 - [x] (done) ~~**backend management window rendered empty**~~ — user reported "the backend management view doesnt show anything at all! just an empty window!". Root cause: since the workspace-shell module split (Apr 26-28, commits 3d713daf + 27d5c446), `lexera-kanban/src/workspace/workspaceShell.js` throws at parse time if any of its global deps (`LexeraLayoutTree`, `LexeraTreeRegistry`, `LexeraBoardHost`, ...) are missing. `lexera-backend/src/connection-settings.html` only loaded the shell + `sharedPanels.js` — none of the 11 dep files. Throw aborted boot before `connection-settings.js` could `mountManagementShell()`. Fix: extended `sync-frontend-view-assets.mjs` to copy `titleHelpers.js` + the 10 `workspace/*.js` deps into `lexera-backend/src/`, added matching `<script>` tags before `workspaceShell.js` in `connection-settings.html`, extended the `.gitignore`. Pinned by `backendConnectionSettingsShellDepsContract.test.js` (26 assertions — every dep is loaded BEFORE workspaceShell.js AND declared in the sync script). (commit 1ff5bf75)
+
+#### Card-edit scroll drift (2026-05-08)
+
+- [ ] (in progress) **card flies off the LEFT side after edit ends** — user reported 2026-05-08 that ending an inline card edit scrolls the just-edited card out of viewport, most of the time off the left edge. Three plausible culprits at [app.js:5567-5586](lexera-kanban/src/app.js#L5567-L5586): (1) `pinSwapLayout` releases pinned widths after one rAF but `enhanceRenderedElement` (images / embeds / `content-visibility:auto`) often resizes the new card a frame later, AFTER `restoreBoardScroll` already ran — browser scroll-anchoring then shifts scrollLeft; (2) `content-visibility:auto` (commit e6590830) — when the swapped card paints, real intrinsic-size differs from the 100px estimate; if the column is in a wrap/flex container or has min-content width, neighbours re-pack and the focused column moves horizontally; (3) `flushDeferredBoardRefresh` falls through to a full `loadBoard()` → `renderColumns()` when there's no live-sync session, and `vsTeardown` + virtualization re-layout can clamp scrollLeft if total width shrunk. **Diagnostic shipped (commit 158632d2):** ~~labelled every preserveBoardScroll call site (refreshTargetedElements:<types>, renderColumns, refreshAllRenderedCards, renderCardDisplayState) and added an opt-in drift logger gated by `localStorage.LEXERA_SCROLL_DRIFT_DEBUG=1` that emits one `[scroll-drift] label=… deltaLeft=… deltaTop=…` line per drifting restore via logFrontendIssue('debug', 'render.scrollDrift', …)~~. Pinned by `scrollDriftDiagnosticContract.test.js` (10 assertions). **Awaiting real-app trace** — user enables the flag, reproduces the drift on a wide board, copies the `[scroll-drift]` lines from the Log panel; the first non-zero `deltaLeft` line names the bleeding call site and unblocks the actual fix slice.
 
 #### Frontend performance — scroll-perf investigation (2026-05-07)
 
