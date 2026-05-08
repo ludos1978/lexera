@@ -289,7 +289,7 @@ var LexeraInlineRenderer = (function () {
         // scrolled instead of poisoning the pipeline.
         var pdfViewValue = String(imageAttrs.values.view || '').toLowerCase();
         var pdfViewAttr = (pdfViewValue === 'scrolled' || pdfViewValue === 'overview' || pdfViewValue === 'stacked')
-          ? ' data-pdf-view="' + escapeAttr(pdfViewValue) + '"'
+          ? ' data-view-mode="' + escapeAttr(pdfViewValue) + '"'
           : '';
         var containerClass = 'embed-container' + (preKnownMissing ? ' embed-broken' : '');
         var embedHtml = '<span class="' + containerClass + '" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '" data-embed-index="' + escapeAttr(String(embedIndex)) + '"' +

@@ -2743,7 +2743,7 @@ var LexeraEmbedMenu = (function () {
         var previewPageAttr = /^\d+$/.test(String(modalPage || ''))
           ? ' data-preview-page="' + escapeAttr(String(modalPage)) + '"'
           : '';
-        // For PDF previews: copy the source card embed's `data-pdf-view`
+        // For PDF previews: copy the source card embed's `data-view-mode`
         // (set by inlineRenderer from the markdown's `{view=…}`) onto
         // the modal's synthesized container so the modal honours the
         // per-embed mode instead of falling through to the global
@@ -2756,11 +2756,11 @@ var LexeraEmbedMenu = (function () {
             var sourceEmbed = document.querySelector(
               '.embed-container[data-file-path="' +
               String(filePath).replace(/"/g, '\\"') +
-              '"][data-pdf-view]'
+              '"][data-view-mode]'
             );
             if (sourceEmbed) {
-              var srcView = sourceEmbed.getAttribute('data-pdf-view') || '';
-              if (srcView) pdfViewAttr = ' data-pdf-view="' + escapeAttr(srcView) + '"';
+              var srcView = sourceEmbed.getAttribute('data-view-mode') || '';
+              if (srcView) pdfViewAttr = ' data-view-mode="' + escapeAttr(srcView) + '"';
             }
           } catch (_) { /* selector failure (e.g. quote-edge-case) — fall through */ }
         }
@@ -4283,11 +4283,11 @@ var LexeraEmbedMenu = (function () {
     if (!isExternal && previewKind === 'pdf' &&
         typeof window !== 'undefined' && window.LexeraPdfViewer) {
       // The check-mark next to the current mode reflects the
-      // PER-EMBED choice (from `data-pdf-view` on the container,
+      // PER-EMBED choice (from `data-view-mode` on the container,
       // populated from the markdown's `{view=…}` attribute). Absence
       // of the attribute means scrolled — that's the hard-coded
       // fallback, there is no global override.
-      var perEmbedMode = String(container.getAttribute('data-pdf-view') || '').toLowerCase();
+      var perEmbedMode = String(container.getAttribute('data-view-mode') || '').toLowerCase();
       var currentMode = window.LexeraPdfViewer.VALID_MODES[perEmbedMode]
         ? perEmbedMode
         : window.LexeraPdfViewer.DEFAULT_MODE;

@@ -326,7 +326,7 @@
         { embedIndex: embedIndex, filePath: filePath, contentSnippet: oldContent.slice(0, 200) });
     }
     // The user already sees the visual change from the local viewer's
-    // setMode + the data-pdf-view attr update; saveCardEdit handles
+    // setMode + the data-view-mode attr update; saveCardEdit handles
     // the CRDT write + sibling-window broadcast. saveCardEdit is
     // ASYNC, so the previous try/catch only caught synchronous
     // throws — a rejected promise was silently swallowed. Log both
@@ -380,11 +380,11 @@
             typeof viewer.__lexeraPdfController.setMode === 'function') {
           try { viewer.__lexeraPdfController.setMode(mode); } catch (_) {}
         }
-        embedContainer.setAttribute('data-pdf-view', mode);
+        embedContainer.setAttribute('data-view-mode', mode);
         writeViewToCardMarkdown(embedContainer, mode);
       },
       // Walk every mounted PDF viewer in the document and tell it to
-      // switch to `mode`. Skips embeds with an explicit `data-pdf-view`
+      // switch to `mode`. Skips embeds with an explicit `data-view-mode`
       // attribute so per-embed `{view=…}` overrides stay pinned.
       // Each viewer keeps a back-reference at `el.__lexeraPdfController`.
       applyModeToAll: function (mode) {
@@ -394,7 +394,7 @@
           var node = nodes[i];
           var parent = node.parentNode;
           var pinnedView = parent && parent.getAttribute
-            ? String(parent.getAttribute('data-pdf-view') || '').toLowerCase()
+            ? String(parent.getAttribute('data-view-mode') || '').toLowerCase()
             : '';
           if (VALID_MODES[pinnedView]) continue;
           var ctrl = node.__lexeraPdfController;
@@ -466,11 +466,11 @@
       container.appendChild(host);
 
       // Per-embed `{view=…}` attribute (parsed from the source markdown
-      // by inlineRenderer.js → emitted as `data-pdf-view` on the embed
+      // by inlineRenderer.js → emitted as `data-view-mode` on the embed
       // container). Absence of the attribute means scrolled — there is
       // no global default-override, scrolled is the hard-coded fallback.
       var perEmbedView = container && container.getAttribute
-        ? String(container.getAttribute('data-pdf-view') || '').toLowerCase()
+        ? String(container.getAttribute('data-view-mode') || '').toLowerCase()
         : '';
       var initialMode = VALID_MODES[perEmbedView] ? perEmbedView : DEFAULT_MODE;
       var ctrl = mountPdfViewer(host, url, initialMode);

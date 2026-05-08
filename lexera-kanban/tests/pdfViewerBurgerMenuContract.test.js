@@ -295,11 +295,11 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     );
   });
 
-  it('inlineRenderer emits data-pdf-view on the embed container when the markdown carries {view=…}', () => {
+  it('inlineRenderer emits data-view-mode on the embed container when the markdown carries {view=…}', () => {
     // Per-embed view-mode override syntax: `![](sample.pdf){view=stacked}`.
     // The renderer must:
     //   - validate the value (only scrolled/overview/stacked are emitted)
-    //   - serialize as `data-pdf-view="<value>"` on the embed container
+    //   - serialize as `data-view-mode="<value>"` on the embed container
     // A typo or unknown value silently falls back to scrolled (the
     // implicit default) — the data-attribute is never emitted in that
     // case.
@@ -311,30 +311,30 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(inlineJs).toMatch(/['"]scrolled['"]\s*\|\|/);
     expect(inlineJs).toMatch(/['"]overview['"]\s*\|\|/);
     expect(inlineJs).toMatch(/['"]stacked['"]\s*\)/);
-    expect(inlineJs).toMatch(/data-pdf-view=/);
+    expect(inlineJs).toMatch(/data-view-mode=/);
   });
 
-  it('pdf.js plugin honours data-pdf-view as the initial-mode override, falling back to DEFAULT_MODE (scrolled)', () => {
-    // The plugin reads `container.getAttribute('data-pdf-view')` and
+  it('pdf.js plugin honours data-view-mode as the initial-mode override, falling back to DEFAULT_MODE (scrolled)', () => {
+    // The plugin reads `container.getAttribute('data-view-mode')` and
     // uses it iff valid; empty / invalid values fall through to
     // DEFAULT_MODE (scrolled). No LexeraSettings lookup.
-    expect(pdfPluginJs).toMatch(/getAttribute\(\s*['"]data-pdf-view['"]\s*\)/);
+    expect(pdfPluginJs).toMatch(/getAttribute\(\s*['"]data-view-mode['"]\s*\)/);
     expect(pdfPluginJs).toMatch(/VALID_MODES\[\s*perEmbedView\s*\]\s*\?\s*perEmbedView\s*:\s*DEFAULT_MODE/);
   });
 
-  it('modal preview synthesizes data-pdf-view from the source card so {view=…} carries through', () => {
+  it('modal preview synthesizes data-view-mode from the source card so {view=…} carries through', () => {
     // Modal preview builds a fresh `.embed-container` from
     // (boardId, filePath) — without explicit propagation it would
     // lose the source's `{view=…}` and fall back to the global
     // default. The fix queries the live DOM for the source card
-    // embed (`.embed-container[data-file-path="…"][data-pdf-view]`)
+    // embed (`.embed-container[data-file-path="…"][data-view-mode]`)
     // and forwards its attribute. Best-effort: if the source isn't
     // in the same webview the lookup returns null and the modal
     // falls through to the default. Pin the lookup wiring so a
     // future refactor can't quietly drop it.
     expect(embedMenuJs).toMatch(/\.embed-container\[data-file-path/);
-    expect(embedMenuJs).toMatch(/\[data-pdf-view\]/);
-    expect(embedMenuJs).toMatch(/sourceEmbed\.getAttribute\(\s*['"]data-pdf-view['"]\s*\)/);
+    expect(embedMenuJs).toMatch(/\[data-view-mode\]/);
+    expect(embedMenuJs).toMatch(/sourceEmbed\.getAttribute\(\s*['"]data-view-mode['"]\s*\)/);
     // The synthesized modal `.embed-container` line must include the
     // optional `pdfViewAttr` so the propagated value lands in the DOM.
     expect(embedMenuJs).toMatch(/embed-container-modal[\s\S]{0,400}pdfViewAttr/);
