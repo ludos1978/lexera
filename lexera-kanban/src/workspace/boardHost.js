@@ -1,6 +1,57 @@
 (function () {
   'use strict';
 
+  /**
+   * @typedef {Object} BoardHostSetupDeps
+   * @property {string} [bootId] - Per-shell boot id appended to webview
+   *   labels. Optional — when absent, labels fall back to the
+   *   un-suffixed `board-tab-<tabId>` form (single-window unit tests
+   *   only).
+   */
+
+  /**
+   * @typedef {Object} BoardHostTab
+   *   The narrow subset of `DockTreeBoardTab` this module reads.
+   *   Decoupled from the umbrella DockTreeNode typedef.
+   * @property {string} id - The tab id used in the webview label.
+   * @property {string} [boardId] - The board this tab opens.
+   * @property {string} [viewKind] - 'kanban' / 'canvas' — sets the
+   *   `view=` query param when present.
+   * @property {string} [kind] - Discriminator (`'board'` for board
+   *   tabs, `'panel'` for panel tabs). `getEmbeddedUrlForTab` rejects
+   *   non-board tabs via `layoutTree.isBoardTab(tab)`.
+   */
+
+  /**
+   * @typedef {Object} GeometryUpdate
+   * @property {string} label
+   * @property {number} x
+   * @property {number} y
+   * @property {number} width
+   * @property {number} height
+   */
+
+  /**
+   * @typedef {function(): void} PushGeomFn
+   *   Caller-supplied geometry pusher. Takes no args — pushes the
+   *   geometry for the watched placeholder under whichever rules the
+   *   caller wants (per-frame coalescing, etc.). Default fallback
+   *   reads the placeholder rect directly and forwards it via
+   *   `multiview.pushGeomDeferred`.
+   */
+
+  /**
+   * @typedef {Object} VisibilityObserverHandle
+   * @property {HTMLElement} element - The placeholder this observer is
+   *   bound to. Comparing pointers lets a re-watch on the same tab
+   *   short-circuit when the DOM node is unchanged.
+   * @property {function(): void} disconnect
+   */
+
+  /**
+   * @typedef {Object<string, VisibilityObserverHandle>} VisibilityObserverMap
+   */
+
   var layoutTree = (typeof window !== 'undefined' && window.LexeraLayoutTree) || null;
   if (!layoutTree) {
     throw new Error('LexeraLayoutTree global is required before boardHost.js');
@@ -19,8 +70,13 @@
   // unit tests that load this module without setup get the legacy
   // `board-tab-<tabId>` shape, which is fine in single-window test
   // scenarios.
+  /** @type {string} */
   var _bootId = '';
 
+  /**
+   * @param {BoardHostSetupDeps} [deps]
+   * @returns {void}
+   */
   function setup(deps) {
     if (deps && typeof deps.bootId === 'string') {
       _bootId = deps.bootId;
@@ -34,6 +90,12 @@
    * open in some iframe, mutations must be routed INTO that iframe so they
    * land on the iframe's live `fullBoardData` and go through its save
    * pipeline.
+   */
+  /**
+   * @param {*} dockTree - `DockTreeNode | null`.
+   * @param {Object<string, HTMLIFrameElement>|null|undefined} frameCache
+   * @param {string|null|undefined} boardId
+   * @returns {Window|null}
    */
   function getFrameWindowForBoard(dockTree, frameCache, boardId) {
     if (!boardId) return null;
@@ -54,6 +116,9 @@
    * isolated unit tests). The bootId guarantees the label is unique
    * across windows so two shells handing out the same tabId don't
    * collide on Tauri's global webview-label registry.
+   *
+   * @param {string} tabId
+   * @returns {string}
    */
   function multiviewLabelForTab(tabId) {
     var safeTabId = String(tabId);
@@ -65,6 +130,9 @@
    * Inverse of `multiviewLabelForTab`. Recovers the tabId from a
    * webview label, accounting for the optional bootId suffix. Returns
    * '' when the label doesn't have the board-tab prefix at all.
+   *
+   * @param {string|null|undefined} label
+   * @returns {string}
    */
   function tabIdFromBoardLabel(label) {
     var raw = String(label || '');
@@ -76,6 +144,12 @@
     return rest;
   }
 
+  /**
+   * @param {URL} fromUrl
+   * @param {URL} toUrl
+   * @param {string} childLabel
+   * @returns {void}
+   */
   function applyChildWindowContext(fromUrl, toUrl, childLabel) {
     if (!fromUrl || !toUrl || !childLabel) return;
     var hostWindowLabel = fromUrl.searchParams.get('windowLabel') || 'main';
@@ -88,6 +162,10 @@
    * Returns '' for non-board tabs. `locationHref` is taken from the host
    * window so the same origin is reused; pass it explicitly to keep the
    * function pure relative to its inputs.
+   *
+   * @param {BoardHostTab|null|undefined} tab
+   * @param {string} locationHref
+   * @returns {string}
    */
   function getEmbeddedUrlForTab(tab, locationHref) {
     if (!layoutTree.isBoardTab(tab)) return '';
@@ -111,6 +189,9 @@
    * Convert an absolute embedded-board URL into the relative form Tauri 2's
    * `WebviewBuilder::App` expects (path + query + fragment, no scheme/host).
    * Returns the input unchanged if it is not a parseable URL.
+   *
+   * @param {string|null|undefined} desiredSrc
+   * @returns {string}
    */
   function multiviewUrlForTab(desiredSrc) {
     if (!desiredSrc) return desiredSrc;
@@ -126,11 +207,16 @@
   /**
    * Ensure the placeholder has a `.mv-health-dot` child reflecting the
    * webview's connection state. Returns the dot element.
+   *
+   * @param {HTMLElement} placeholderEl
+   * @param {Document} [doc]
+   * @returns {HTMLElement|null}
    */
   function ensureHealthDot(placeholderEl, doc) {
     var ownerDoc = doc || (typeof document !== 'undefined' ? document : null);
     if (!ownerDoc) return null;
-    var dot = placeholderEl.querySelector('.mv-health-dot');
+    /** @type {HTMLElement|null} */
+    var dot = /** @type {HTMLElement|null} */ (placeholderEl.querySelector('.mv-health-dot'));
     if (!dot) {
       dot = ownerDoc.createElement('div');
       dot.className = 'mv-health-dot';
@@ -143,8 +229,14 @@
 
   // Private registry: tabId → { disconnect() }. Owned by this module so
   // the shell does not have to track visibility observers itself.
+  /** @type {VisibilityObserverMap} */
   var visibilityObservers = {};
 
+  /**
+   * @param {string} label
+   * @param {HTMLElement} placeholderEl
+   * @returns {GeometryUpdate|null}
+   */
   function computeVisibilityGeometryUpdate(label, placeholderEl) {
     if (!label || !placeholderEl || placeholderEl.offsetParent === null) return null;
     var sharedMultiviewWebview = (typeof window !== 'undefined' && window.LexeraMultiviewWebview) || null;
@@ -173,6 +265,12 @@
    * Idempotent per tabId — a second call for the same tab is a no-op.
    * Caller can supply a `pushGeomFn` to use shell geometry rules; otherwise
    * a local fallback that pushes the placeholder rect is used.
+   *
+   * @param {string} tabId
+   * @param {HTMLElement} placeholderEl
+   * @param {PushGeomFn} [pushGeomFn]
+   * @param {string} [labelOverride]
+   * @returns {void}
    */
   function watchPlaceholderVisibility(tabId, placeholderEl, pushGeomFn, labelOverride) {
     if (visibilityObservers[tabId]) {
@@ -258,6 +356,9 @@
   /**
    * Disconnect and forget the visibility observer for a tab. Called when
    * the tab's child webview is destroyed or evicted.
+   *
+   * @param {string} tabId
+   * @returns {void}
    */
   function cleanupVisibilityObserver(tabId) {
     if (visibilityObservers[tabId]) {
@@ -266,8 +367,13 @@
     }
   }
 
-  /** Test helper: returns true if a visibility observer is currently
-   *  registered for the given tab. */
+  /**
+   * Test helper: returns true if a visibility observer is currently
+   * registered for the given tab.
+   *
+   * @param {string} tabId
+   * @returns {boolean}
+   */
   function hasVisibilityObserver(tabId) {
     return !!visibilityObservers[tabId];
   }
