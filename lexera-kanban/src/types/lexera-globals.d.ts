@@ -647,7 +647,10 @@ declare global {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
     lexeraLog: any;
     LexeraLayoutTree: LexeraLayoutTreeApi;
-    LexeraLifecycleReconciler: any;
+    /** Typed via `@typedef LexeraLifecycleReconcilerApi` in
+     *  src/workspace/lifecycleReconciler.js (script-mode JS @typedef
+     *  declarations leak into the global TS namespace). */
+    LexeraLifecycleReconciler: LexeraLifecycleReconcilerApi;
     LexeraBoardHost: any;
     LexeraPanelHost: any;
     LexeraMultiviewWebview: any;
