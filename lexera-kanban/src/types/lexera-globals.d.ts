@@ -208,6 +208,94 @@ interface LexeraInspectorShortcutsApi {
 }
 
 /**
+ * Source: src/core/moduleRuntime.js (IIFE;
+ * window.LexeraRuntime = api). Shared infrastructure for IIFE
+ * modules — a reactive state store with change-listeners + an event
+ * bus + a getter/setter-preserving deps merger + a module registry
+ * with auto-discovery + a few view state-class helpers (loading /
+ * empty / error / connected) for sub-app surfaces.
+ *
+ * The reactive `state` is a Proxy: reads via `runtime.state.foo`
+ * call `getState('foo')`, writes via `runtime.state.foo = …` call
+ * `setState('foo', …)` which fires both the per-key listeners AND
+ * a `<key>:changed` event. Falls back to a plain object when the
+ * Proxy global is unavailable (very old runtimes).
+ */
+interface LexeraRuntimeStartupReport {
+  /** Names of KNOWN_MODULES that have been discovered or
+   *  registered. */
+  found: string[];
+  /** Names that haven't been discovered yet (script tag missing,
+   *  IIFE failed to register, etc.). */
+  missing: string[];
+  /** Total number of names in the KNOWN_MODULES list. */
+  total: number;
+}
+
+interface LexeraRuntimeApi {
+  /** Reactive state accessor — Proxy(get → getState, set →
+   *  setState) when Proxy is available, plain `_stateValues`
+   *  object otherwise. Read like `runtime.state.boards`. */
+  state: { [key: string]: unknown };
+  /** Initialise a state key with a starting value + an empty
+   *  listener list. */
+  defineState(key: string, initialValue: unknown): void;
+  getState(key: string): unknown;
+  /** Write a state key, fire all listeners + a `<key>:changed`
+   *  event. */
+  setState(key: string, value: unknown): void;
+  /** Subscribe to per-key state changes. Returns an `unsubscribe`
+   *  fn. */
+  onStateChange(
+    key: string,
+    fn: (value: unknown, previous: unknown) => void
+  ): () => void;
+  /** Subscribe to an event bus topic. Returns an `unsubscribe` fn. */
+  on(event: string, fn: (data: unknown) => void): () => void;
+  /** Fire an event-bus topic to every subscribed listener.
+   *  Listener errors are caught + logged via console.error so one
+   *  bad listener can't block the rest. */
+  emit(event: string, data?: unknown): void;
+  /** Copy own properties from `source` to `target`, preserving any
+   *  getter/setter descriptors. Modules use this to absorb deps
+   *  without losing live-binding semantics. Returns `target`. */
+  mergeDeps<T extends object>(target: T, source: object | null | undefined): T;
+  /** Register a module instance under a name (called once per
+   *  IIFE). */
+  registerModule(name: string, mod: unknown): void;
+  /** Look up a previously-registered module; `null` when missing. */
+  getModule(name: string): unknown;
+  /** Walk KNOWN_MODULES, copy each `window.<name>` into the
+   *  registry that isn't already there. Called once after script
+   *  load. */
+  discoverModules(): void;
+  /** Diagnostic snapshot of the registry vs. KNOWN_MODULES. */
+  getStartupReport(): LexeraRuntimeStartupReport;
+  /** The auto-discovery allowlist. Static; mutating this in place
+   *  is technically possible but the codebase doesn't. */
+  KNOWN_MODULES: string[];
+  /** Toggle the `view-loading` class on a sub-app container.
+   *  Removes `view-empty` automatically. */
+  setViewLoading(container: HTMLElement | null, loading: boolean): void;
+  /** Toggle the `view-empty` class + write a `data-empty-message`
+   *  attribute. Removes `view-loading` automatically. */
+  setViewEmpty(
+    container: HTMLElement | null,
+    empty: boolean,
+    message?: string
+  ): void;
+  /** Toggle the `view-error` class + write a `data-error-message`
+   *  attribute. */
+  setViewError(
+    container: HTMLElement | null,
+    error: boolean,
+    message?: string
+  ): void;
+  /** Toggle the `view-connected` / `view-disconnected` class pair. */
+  setViewConnected(container: HTMLElement | null, connected: boolean): void;
+}
+
+/**
  * Source: src/workspace/panelHost.js (IIFE;
  * window.LexeraPanelHost = api). Owns panel-side webview routing —
  * the allowlist of panel kinds that spawn child webviews
@@ -1589,7 +1677,7 @@ declare global {
     LexeraEmbeddedBoardBridge: LexeraEmbeddedBoardBridgeApi;
     LexeraHierarchyDragBridge: LexeraHierarchyDragBridgeApi;
     LexeraKeybindingRegistry: LexeraKeybindingRegistryApi;
-    LexeraRuntime: any;
+    LexeraRuntime: LexeraRuntimeApi;
     LexeraDialogs: LexeraDialogsApi;
     LexeraInspectorShortcuts: LexeraInspectorShortcutsApi;
     LexeraPanelLaunchers: LexeraPanelLaunchersApi;
