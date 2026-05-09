@@ -515,13 +515,74 @@ interface LexeraTitleHelpersApi {
 type LexeraTreeRegistryTreeId = 'center' | 'left' | 'right' | 'bottom';
 
 /**
- * Recursive DockTreeNode union (DockTreeLeaf | DockTreeSplit) is
- * authored as JSDoc in `workspaceShell.js`. Kept as `any` at this
- * .d.ts boundary so the slice doesn't have to repeat the full union;
- * a follow-up tightening can replace this with a real interface once
- * those JSDoc shapes are exported as a shared type.
+ * Recursive DockTreeNode union (DockTreeLeaf | DockTreeSplit). Mirrors
+ * the JSDoc `@typedef`s in `src/workspace/layoutTree.js` (the module
+ * that owns construction + mutation of every node) — kept in sync so
+ * the .d.ts ambient view matches what checkJs sees at the call sites.
+ *
+ * Tab variants are discriminated on `kind` (`'board' | 'panel'`); node
+ * variants on `type` (`'tabs' | 'split'`). The shell + reconciler walk
+ * these unions through `LexeraLayoutTreeApi.visitTree` /
+ * `collectAllTabIds` and the find* helpers below.
  */
-type LexeraDockTreeNode = any;
+interface LexeraDockTreeBoardTab {
+  /** Stable tab id minted by `createBoardTab` / `idFactory('tab')`. */
+  id: string;
+  kind: 'board';
+  /** The board this tab opens. Empty string allowed mid-creation. */
+  boardId: string;
+  /** Normalised view kind from `normalizeViewKind`. */
+  viewKind: 'canvas' | 'kanban' | 'default';
+}
+
+interface LexeraDockTreePanelTab {
+  /** Stable tab id minted by `createPanelTab` / `idFactory('tab')`. */
+  id: string;
+  kind: 'panel';
+  /** Matches a key in the workspace shell's `state.panelInstances`. */
+  panelId: string;
+}
+
+type LexeraDockTreeTab = LexeraDockTreeBoardTab | LexeraDockTreePanelTab;
+
+interface LexeraDockTreeLeaf {
+  type: 'tabs';
+  /** Stable pane id minted by `idFactory('pane')`. */
+  id: string;
+  /** Ordered list of tabs in this pane. May be empty briefly during
+   *  mutation; `withNormalizedLeaves` collapses empty non-root leaves
+   *  to `null`. */
+  tabs: Array<LexeraDockTreeTab>;
+  /** Id of the currently rendered tab in `tabs`. Empty string when
+   *  the leaf is empty. Kept consistent by the mutation helpers. */
+  activeTabId: string;
+}
+
+interface LexeraDockTreeSplit {
+  type: 'split';
+  /** Stable split id minted by `idFactory('split')`. */
+  id: string;
+  /** `horizontal` stacks first-above-second; `vertical` puts them
+   *  side-by-side. */
+  axis: 'horizontal' | 'vertical';
+  /** First-child fraction of the split, clamped to `[0.18, 0.82]`. */
+  ratio: number;
+  first: LexeraDockTreeNode;
+  second: LexeraDockTreeNode;
+}
+
+type LexeraDockTreeNode = LexeraDockTreeLeaf | LexeraDockTreeSplit;
+
+/**
+ * Pre-tab-tree persistence shape: per dock, a list of groups, each
+ * group a list of panel ids. `LexeraLayoutTreeApi.migratePanelDocksToSideDocks`
+ * walks it once at boot and emits a `LexeraDockTreeNode | null` per dock.
+ */
+interface LexeraLegacyPanelDocks {
+  left: Array<Array<string>>;
+  right: Array<Array<string>>;
+  bottom: Array<Array<string>>;
+}
 
 interface LexeraTreeRegistryFoundLeaf {
   treeId: LexeraTreeRegistryTreeId;
