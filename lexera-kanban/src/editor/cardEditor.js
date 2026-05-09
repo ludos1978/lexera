@@ -1156,6 +1156,16 @@ var CardEditor = (function () {
           ' contentLen=' + (newContent ? newContent.length : 0));
       }
     } catch (_e) {}
+    // Pin the board's horizontal scroll for ~400ms across the whole
+    // save flow. preserveBoardScroll inside refreshTargetedElements
+    // restores once + once-in-rAF, but a horizontal jump fires ~140ms
+    // later (after embed decode / focus-driven scroll-into-view) when
+    // the rAF window has already closed. The latch resets any drift
+    // back to the saved value until the deadline. See app.js
+    // lockBoardScrollHorizontal for the full triage.
+    if (_deps && typeof _deps.lockBoardScrollHorizontal === 'function') {
+      _deps.lockBoardScrollHorizontal(400);
+    }
     _deps.setIsEditing(false);
     var fullBoardData = _deps.getFullBoardData();
     var activeBoardId = _deps.getActiveBoardId();

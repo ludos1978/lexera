@@ -190,6 +190,13 @@ var InlineCardEditor = (function () {
       _deps.clearPendingCardDraftSync();
       return _deps.saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
     }
+    // Cancel path also rebuilds the card via renderCardDisplayState,
+    // which has the same horizontal-scroll-jump risk as the save
+    // path. Mirror the latch from saveCardEdit so cancel doesn't
+    // leak through.
+    if (_deps && typeof _deps.lockBoardScrollHorizontal === 'function') {
+      _deps.lockBoardScrollHorizontal(400);
+    }
     _deps.renderCardDisplayState(editor.cardEl, editor.originalContent);
     return _deps.revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent)
       .catch(function (err) {

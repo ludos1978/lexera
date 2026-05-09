@@ -477,6 +477,7 @@ var LexeraDashboard = (function () {
     stripInternalHiddenTags: function(content) { return stripInternalHiddenTags(content); },
     replaceNthMarkdownEmbed: function(c, i, r) { return replaceNthMarkdownEmbed(c, i, r); },
     preserveBoardScroll: function(label) { return preserveBoardScroll(label); },
+    lockBoardScrollHorizontal: function(durationMs) { return lockBoardScrollHorizontal(durationMs); },
     lexeraLog: function(level, msg) { lexeraLog(level, msg); },
     logFrontendIssue: function(level, tag, msg, err) { logFrontendIssue(level, tag, msg, err); },
     getInlineCardEditor: function() { return InlineCardEditorModule ? InlineCardEditorModule.getCurrentInlineCardEditor() : null; },
@@ -5415,6 +5416,63 @@ var LexeraDashboard = (function () {
    * (refreshTargetedElements), so card-edit saves, checkbox toggles, and any
    * other mutation share the same behavior.
    */
+  /**
+   * Defensive scroll-latch for the .columns-container. Pins
+   * `scrollLeft` to its current value and installs a scroll listener
+   * that resets any drift back to that value for `durationMs`
+   * (default 400). Used by the card-edit-end path to defend against
+   * browser-initiated horizontal scrolls that happen AFTER the
+   * synchronous + rAF `restoreBoardScroll` calls — most commonly:
+   *
+   *   - WebKit auto-scroll-into-view triggered by focus restoration
+   *     when the textarea is removed from DOM.
+   *   - Late layout reflow when an embedded SVG / image / PDF
+   *     decode finishes after the editor closes.
+   *   - content-visibility:auto bumping a card's intrinsic-size
+   *     after off-screen capture.
+   *
+   * `overflow-anchor: none` on the container disables anchoring for
+   * vertical drift but doesn't always defend against horizontal
+   * focus-driven jumps in WebKit. The latch is the belt-and-braces
+   * fallback when scroll-anchoring leaks through.
+   *
+   * Returns an `unlock()` fn the caller can invoke to release the
+   * latch early (e.g. when the user explicitly scrolls within the
+   * window — though we don't currently distinguish user scrolls).
+   *
+   * @param {number} [durationMs] Default 400ms.
+   * @returns {() => void}
+   */
+  function lockBoardScrollHorizontal(durationMs) {
+    var cc = getElColumnsContainer();
+    if (!cc) return function () {};
+    var lockedLeft = cc.scrollLeft;
+    var totalMs = typeof durationMs === 'number' && durationMs > 0 ? durationMs : 400;
+    var deadline = Date.now() + totalMs;
+    var detached = false;
+    function onScroll() {
+      if (detached) return;
+      if (Date.now() > deadline) { detach(); return; }
+      if (cc.scrollLeft !== lockedLeft) {
+        // Setting scrollLeft to the same value won't re-fire scroll;
+        // setting to a different value will, so this self-loops once
+        // until the value matches lockedLeft. Bounded by the deadline
+        // check above so we can't loop forever.
+        cc.scrollLeft = lockedLeft;
+      }
+    }
+    function detach() {
+      if (detached) return;
+      detached = true;
+      cc.removeEventListener('scroll', onScroll);
+    }
+    cc.addEventListener('scroll', onScroll, { passive: true });
+    // Hard-uninstall after deadline regardless, so a quiet (no scroll
+    // event) deadline still cleans up the listener.
+    setTimeout(detach, totalMs + 50);
+    return detach;
+  }
+
   function preserveBoardScroll(label) {
     var cc = getElColumnsContainer();
     if (!cc) return function () {};
