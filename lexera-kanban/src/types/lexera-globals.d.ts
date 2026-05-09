@@ -236,32 +236,45 @@ interface LexeraLayoutTreeApi {
   getFirstLeaf(node: any): any;
   findLeafById(node: any, leafId: string): any;
   findNodeAndParent(node: any, nodeId: string): any;
-  findTab(node: any, tabId: string): { tab: any; leaf: any; index: number } | null;
+  findTab(
+    node: LexeraDockTreeNode | null,
+    tabId: string
+  ): { tab: any; leaf: LexeraDockTreeLeaf; index: number } | null;
   findClosestSplitParent(node: any, targetLeafId: string, parentSplit?: any): any;
-  countTreeTabs(tree: any): number;
-  collectAllTabIds(tree: any): string[];
+  countTreeTabs(tree: LexeraDockTreeNode | null): number;
+  collectAllTabIds(tree: LexeraDockTreeNode | null): string[];
   /** Remove a tab from anywhere in the tree by tab.id. Returns the
    *  hit record `{ removed, leaf, index }` or `null` when the tab
    *  wasn't found. Updates the affected leaf's activeTabId to
-   *  follow the "first remaining tab" rule. */
-  removeTabById(tree: any, tabId: string): { removed: any; leaf: any; index: number } | null;
+   *  follow the "first remaining tab" rule.
+   *
+   *  `removed` is typed as `any` (not `LexeraDockTreeTab`) because
+   *  many consumers in workspaceShell.js access `.boardId` /
+   *  `.viewKind` directly without narrowing on `kind` first;
+   *  tightening the return surfaces 10+ latent type errors that
+   *  need a separate narrowing pass. */
+  removeTabById(
+    tree: LexeraDockTreeNode | null,
+    tabId: string
+  ): { removed: any; leaf: LexeraDockTreeLeaf; index: number } | null;
   /** Remove every tab matching tabId from a SINGLE leaf. Returns
    *  the count removed (companion to removeTabById which is
    *  single-match tree-wide). */
-  removeTabFromLeaf(leaf: any, tabId: string): number;
+  removeTabFromLeaf(leaf: LexeraDockTreeLeaf, tabId: string): number;
   /** Pull the tab at `index` out of `leaf`. Returns the removed
    *  tab object, or `null` on bounds / type failure. Uses the
    *  "left neighbour" activeTabId fallback. */
-  extractTabAtIndex(leaf: any, index: number): any;
+  extractTabAtIndex(leaf: LexeraDockTreeLeaf, index: number): LexeraDockTreeTab | null;
   /** Insert a tab into a leaf at index; returns the final
    *  inserted index (or -1 on validation failure). */
-  insertTabIntoLeaf(leaf: any, tab: any, index?: number): number;
+  insertTabIntoLeaf(leaf: LexeraDockTreeLeaf, tab: LexeraDockTreeTab, index?: number): number;
   /** Move a tab between leaves. Returns `{ tab, insertedAt }` on
-   *  success, `null` on bounds / type failure. */
+   *  success, `null` on bounds / type failure. `tab` typed as `any`
+   *  for the same narrow-by-kind reason called out on `removeTabById`. */
   moveTab(
-    sourceLeaf: any,
+    sourceLeaf: LexeraDockTreeLeaf,
     sourceIndex: number,
-    destLeaf: any,
+    destLeaf: LexeraDockTreeLeaf,
     destIndex?: number
   ): { tab: any; insertedAt: number } | null;
   /** Wholesale replace `holder[key]` with `nextTree`. Returns the
