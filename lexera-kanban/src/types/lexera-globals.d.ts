@@ -208,6 +208,58 @@ interface LexeraInspectorShortcutsApi {
 }
 
 /**
+ * Source: src/workspace/panelHost.js (IIFE;
+ * window.LexeraPanelHost = api). Owns panel-side webview routing —
+ * the allowlist of panel kinds that spawn child webviews
+ * (PANEL_WEBVIEW_KINDS), the `panel-tab-<bootId>-<tabId>` label
+ * convention (and its inverse), and the per-kind URL builder that
+ * loads `views/<kind>/index.html` instead of the legacy
+ * shell-compat `index.html?panelKind=…` path.
+ */
+interface LexeraPanelHostTab {
+  /** Tab id used in the webview label. */
+  id: string;
+  /** Panel-instance id; falls through to the panel kind in the
+   *  `panel=` URL param when missing so the sub-app still gets a
+   *  usable instance handle. */
+  panelId?: string;
+}
+
+interface LexeraPanelHostApi {
+  /** Stash the per-shell boot id used as a uniqueness suffix in
+   *  panel-tab webview labels. Optional — when bootId isn't
+   *  supplied (only happens in unit tests), the labels fall back
+   *  to the un-suffixed `panel-tab-<tabId>` form. */
+  setup(deps?: { bootId?: string }): void;
+  /** Frozen allowlist of panel kinds whose dock-hosted tabs should
+   *  spawn a child webview. Per Workstream P, this is currently
+   *  every panel kind. */
+  PANEL_WEBVIEW_KINDS: Readonly<{ [kind: string]: true }>;
+  /** True when the kind is on PANEL_WEBVIEW_KINDS. */
+  isPanelKindOnWebviewAllowlist(kind: string | null | undefined): boolean;
+  /** `panel-tab-<bootId>-<tabId>` (or `panel-tab-<tabId>` when
+   *  bootId is empty). Distinct from the `board-tab-` prefix so
+   *  the multiview-destroyed listener can disambiguate. */
+  panelLabelForTab(tabId: string): string;
+  /** Inverse of panelLabelForTab. Returns '' when the label
+   *  doesn't carry the panel-tab prefix. */
+  tabIdFromPanelLabel(label: string | null | undefined): string;
+  /** Build the per-kind sub-app URL the dock webview should load
+   *  (`views/<kind>/index.html?panelKind=&pane=&panel=`). Pure
+   *  relative to inputs (locationHref is supplied by the shell).
+   *  Returns '' when any required piece is missing. */
+  panelUrlForTab(
+    tab: LexeraPanelHostTab | null | undefined,
+    panelKind: string | null | undefined,
+    locationHref: string | null | undefined
+  ): string;
+  /** Map a panel kind to the sub-app directory under `src/views/`.
+   *  Most kinds use their own name; only legacy mismatches need
+   *  overrides (currently just `logs` → `log`). */
+  viewDirForKind(panelKind: string | null | undefined): string;
+}
+
+/**
  * Source: src/workspace/layoutTree.js (IIFE;
  * window.LexeraLayoutTree = api). Pure tree primitives — no DOM,
  * no state, no webviews. Every layout-tree mutation in the codebase
@@ -1323,7 +1375,7 @@ declare global {
      *  declarations leak into the global TS namespace). */
     LexeraLifecycleReconciler: LexeraLifecycleReconcilerApi;
     LexeraBoardHost: LexeraBoardHostApi;
-    LexeraPanelHost: any;
+    LexeraPanelHost: LexeraPanelHostApi;
     LexeraMultiviewWebview: any;
     LexeraMultiview: any;
     LexeraMessageBridge: LexeraMessageBridgeApi;
