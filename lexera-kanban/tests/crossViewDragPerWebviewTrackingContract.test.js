@@ -78,32 +78,48 @@ describe('per-webview cross-view-drag tracking', () => {
       expect(embeddedBoardBridge).toMatch(/card:\s*['"]tree-card['"]/);
     });
 
-    it('on local pointerup: resolves a tree-target + broadcasts hierarchy-entity-drop AND cross-view-drag-handled', () => {
+    it('on local pointerup: resolves a source-aware tree-target + broadcasts hierarchy-entity-drop AND cross-view-drag-handled', () => {
       // The destination MUST NOT call `__lexeraExternalDnd.drop` —
       // that path mutates the local kanban's board data, which is
-      // wrong for cross-board moves (the source entity still lives
-      // in source.boardId; only the shell can load both boards and
-      // apply atomically). User report 2026-05-09: "doesnt work".
-      // Fix: resolve a tree-shaped target from the destination's DOM
-      // and broadcast `hierarchy-entity-drop` so
-      // hierarchyDragBridge.applyDrop on the shell side handles the
-      // four-helper dispatch (same/cross-board × same/cross-kind).
-      expect(embeddedBoardBridge).toMatch(/function\s+resolveCrossViewTreeTarget\s*\(/);
+      // wrong for cross-board moves. Resolve a tree-shaped target
+      // from the destination's DOM and broadcast hierarchy-entity-drop
+      // so the shell-side applyDrop runs through its four helpers.
+      expect(embeddedBoardBridge).toMatch(/function\s+resolveCrossViewTreeTarget\s*\(\s*x\s*,\s*y\s*,\s*source\s*\)/);
       // Tree-target resolution reads canonical kanban DOM data
       // attributes — card / column / stack / row IDs.
       expect(embeddedBoardBridge).toMatch(/['"]\.card\[data-card-id\]['"]/);
       expect(embeddedBoardBridge).toMatch(/['"]\.column\[data-column-id\]['"]/);
       expect(embeddedBoardBridge).toMatch(/['"]\.board-stack\[data-stack-id\]['"]/);
       expect(embeddedBoardBridge).toMatch(/['"]\.board-row\[data-row-id\]['"]/);
-      // Active board id for the destination is read off
-      // window.LexeraDashboard so the tree-target carries boardId.
+      // Active board id resolution is layered: LexeraDashboard
+      // first, then the embedded URL `?board=` param, then the
+      // body's data-active-board-id attribute. The fallbacks keep
+      // the helper alive when the dashboard global hasn't fully
+      // initialised yet.
       expect(embeddedBoardBridge).toMatch(/LexeraDashboard[\s\S]{0,80}getActiveBoardId/);
+      expect(embeddedBoardBridge).toMatch(/URLSearchParams[\s\S]{0,200}\.get\(\s*['"]board['"]\s*\)/);
+      // The hit-test branches on the source.kind so a row-drag
+      // never resolves to a card target the absorb table can't
+      // apply. The same-kind sibling check runs first, then the
+      // cross-kind ABSORB_PARENT fallback.
+      expect(embeddedBoardBridge).toMatch(/sourceKind\s*===\s*['"]card['"]/);
+      expect(embeddedBoardBridge).toMatch(/sourceKind\s*===\s*['"]column['"]/);
+      expect(embeddedBoardBridge).toMatch(/sourceKind\s*===\s*['"]stack['"]/);
+      expect(embeddedBoardBridge).toMatch(/sourceKind\s*===\s*['"]row['"]/);
+      // ABSORB_PARENT mirrors the source-side ABSORB_KINDS table
+      // so card→column / column→stack / stack→row / row→board
+      // pairings stay consistent across hit-test + apply.
+      expect(embeddedBoardBridge).toMatch(/ABSORB_PARENT[\s\S]{0,200}card:\s*['"]column['"]/);
+      expect(embeddedBoardBridge).toMatch(/ABSORB_PARENT[\s\S]{0,200}row:\s*['"]board['"]/);
       // Cards carry `position: 'before' | 'after'` for sibling
-      // reorder; the column / stack / row branches do NOT set
-      // position (cross-kind absorb appends to children).
+      // reorder. Card source also handles the "between cards in
+      // .column-cards" case by finding the nearest sibling card by
+      // vertical centre — keeps the drop slot in agreement with
+      // the kanban's own hover preview line.
       expect(embeddedBoardBridge).toMatch(
         /closest\(\s*['"]\.card\[data-card-id\]['"][\s\S]{0,400}position/
       );
+      expect(embeddedBoardBridge).toMatch(/closest\(\s*['"]\.column-cards['"]\s*\)/);
       // The pointerup handler broadcasts BOTH the persistence event
       // (hierarchy-entity-drop) AND the cleanup echo
       // (cross-view-drag-handled). Persistence broadcast comes

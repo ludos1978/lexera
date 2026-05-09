@@ -305,57 +305,171 @@
     // Resolve the destination kanban's active board id. The shell's
     // applyDrop needs `{ boardId, kind, entityId }` on the target so
     // it can load the right board and route through the four
-    // helpers. LexeraDashboard.getActiveBoardId is exposed by app.js
-    // and lives on every kanban webview that boots the dashboard.
+    // helpers. Tries `LexeraDashboard.getActiveBoardId()` first
+    // (exposed by app.js), then falls back to the embedded-board URL
+    // param `?board=` so the helper still works when the dashboard
+    // global hasn't finished initialising. Last resort: the body's
+    // `data-active-board-id` attribute if any future tooling sets it.
     function getDestinationActiveBoardId() {
       try {
         var dash = window.LexeraDashboard;
         if (dash && typeof dash.getActiveBoardId === 'function') {
-          return dash.getActiveBoardId() || null;
+          var id = dash.getActiveBoardId();
+          if (id) return String(id);
+        }
+      } catch (_) { /* non-fatal */ }
+      try {
+        var p = new URLSearchParams(window.location.search || '');
+        var fromUrl = p.get('board');
+        if (fromUrl) return String(fromUrl);
+      } catch (_) { /* non-fatal */ }
+      try {
+        if (document.body && document.body.dataset && document.body.dataset.activeBoardId) {
+          return String(document.body.dataset.activeBoardId);
         }
       } catch (_) { /* non-fatal */ }
       return null;
     }
-    // DOM hit-test → tree-shaped drop target. Cards are sibling-
-    // reorder targets (with `position`); columns / stacks / rows are
-    // absorb targets (no position — append-as-last semantics in
-    // applyEntityAbsorb / applyCrossBoardEntityAbsorb).
-    function resolveCrossViewTreeTarget(x, y) {
+    // ABSORB_PARENT mirrors the source-side ABSORB_KINDS table in
+    // hierarchy.js / workspaces.js so the destination's hit-test
+    // accepts the same kind pairs the source allows.
+    var ABSORB_PARENT = { card: 'column', column: 'stack', stack: 'row', row: 'board' };
+    // Source-aware DOM hit-test → tree-shaped drop target. Same-kind
+    // hit yields sibling reorder (with `position`); a hit on the
+    // ABSORB_PARENT[sourceKind] yields cross-kind absorb (no
+    // `position` — append-as-last). Other kinds in the cursor's
+    // ancestor chain are ignored so a row-drag never accidentally
+    // resolves to a card target the absorb table can't apply.
+    function resolveCrossViewTreeTarget(x, y, source) {
       if (!document.elementFromPoint) return null;
       var hit = document.elementFromPoint(x, y);
       if (!hit || typeof hit.closest !== 'function') return null;
       var boardId = getDestinationActiveBoardId();
       if (!boardId) return null;
-      // Card: sibling reorder with before/after based on cursor Y vs
-      // the card's vertical midpoint.
-      var card = hit.closest('.card[data-card-id]');
-      if (card) {
-        var cardId = String(card.getAttribute('data-card-id') || '').trim();
-        if (cardId) {
-          var rect = card.getBoundingClientRect();
-          var position = (rect.height > 0 && y >= rect.top + rect.height / 2)
-            ? 'after' : 'before';
-          return { boardId: boardId, kind: 'card', entityId: cardId, position: position };
+      var sourceKind = source && source.kind;
+      if (!sourceKind) return null;
+      var absorbKind = ABSORB_PARENT[sourceKind] || null;
+
+      // 1) Card source: prefer card-sibling reorder. If the cursor
+      // landed on a specific card, use it. Otherwise look for the
+      // enclosing column-cards container and pick the nearest card
+      // by vertical centre — keeps the drop slot in agreement with
+      // the kanban's own hover preview, which highlights an insert
+      // line at the same position. If the column has no cards (or
+      // the cursor missed all of them), fall through to absorb.
+      if (sourceKind === 'card') {
+        var card = hit.closest('.card[data-card-id]');
+        if (card) {
+          var cid = String(card.getAttribute('data-card-id') || '').trim();
+          if (cid) {
+            var crect = card.getBoundingClientRect();
+            var cposition = (crect.height > 0 && y >= crect.top + crect.height / 2)
+              ? 'after' : 'before';
+            return { boardId: boardId, kind: 'card', entityId: cid, position: cposition };
+          }
+        }
+        var cardsContainer = hit.closest('.column-cards');
+        if (cardsContainer) {
+          var siblingCards = cardsContainer.querySelectorAll(':scope > .card[data-card-id]');
+          if (siblingCards.length > 0) {
+            var nearest = null;
+            var nearestDist = Infinity;
+            for (var i = 0; i < siblingCards.length; i++) {
+              var srect = siblingCards[i].getBoundingClientRect();
+              var center = srect.top + srect.height / 2;
+              var d = Math.abs(y - center);
+              if (d < nearestDist) { nearestDist = d; nearest = siblingCards[i]; }
+            }
+            if (nearest) {
+              var nrect = nearest.getBoundingClientRect();
+              var npos = (nrect.height > 0 && y >= nrect.top + nrect.height / 2)
+                ? 'after' : 'before';
+              var nid = String(nearest.getAttribute('data-card-id') || '').trim();
+              if (nid) return { boardId: boardId, kind: 'card', entityId: nid, position: npos };
+            }
+          }
+          // Empty column — absorb on parent column.
+          var emptyCol = cardsContainer.closest('.column[data-column-id]');
+          if (emptyCol) {
+            var ecid = String(emptyCol.getAttribute('data-column-id') || '').trim();
+            if (ecid) return { boardId: boardId, kind: 'column', entityId: ecid };
+          }
         }
       }
-      // Column / stack / row: cross-kind absorb — the shell's
-      // applyEntityAbsorb appends the source to the target's
-      // children array. Match closest first (deepest containment).
-      var column = hit.closest('.column[data-column-id]');
-      if (column) {
-        var columnId = String(column.getAttribute('data-column-id') || '').trim();
-        if (columnId) return { boardId: boardId, kind: 'column', entityId: columnId };
+
+      // 2) Column source: prefer column-sibling reorder.
+      if (sourceKind === 'column') {
+        var col = hit.closest('.column[data-column-id]');
+        if (col) {
+          var colId = String(col.getAttribute('data-column-id') || '').trim();
+          if (colId) {
+            var colRect = col.getBoundingClientRect();
+            // Columns are typically arranged horizontally inside a
+            // stack — pick before/after on the X axis.
+            var horizontalSplit = (colRect.width > 0 && x >= colRect.left + colRect.width / 2)
+              ? 'after' : 'before';
+            return { boardId: boardId, kind: 'column', entityId: colId, position: horizontalSplit };
+          }
+        }
       }
-      var stack = hit.closest('.board-stack[data-stack-id]');
-      if (stack) {
-        var stackId = String(stack.getAttribute('data-stack-id') || '').trim();
-        if (stackId) return { boardId: boardId, kind: 'stack', entityId: stackId };
+
+      // 3) Stack source: prefer stack-sibling reorder.
+      if (sourceKind === 'stack') {
+        var st = hit.closest('.board-stack[data-stack-id]');
+        if (st) {
+          var stId = String(st.getAttribute('data-stack-id') || '').trim();
+          if (stId) {
+            var stRect = st.getBoundingClientRect();
+            // Stacks within a row are typically horizontal too.
+            var stPos = (stRect.width > 0 && x >= stRect.left + stRect.width / 2)
+              ? 'after' : 'before';
+            return { boardId: boardId, kind: 'stack', entityId: stId, position: stPos };
+          }
+        }
       }
-      var row = hit.closest('.board-row[data-row-id]');
-      if (row) {
-        var rowId = String(row.getAttribute('data-row-id') || '').trim();
-        if (rowId) return { boardId: boardId, kind: 'row', entityId: rowId };
+
+      // 4) Row source: prefer row-sibling reorder.
+      if (sourceKind === 'row') {
+        var rw = hit.closest('.board-row[data-row-id]');
+        if (rw) {
+          var rwId = String(rw.getAttribute('data-row-id') || '').trim();
+          if (rwId) {
+            var rwRect = rw.getBoundingClientRect();
+            // Rows are stacked vertically in a board.
+            var rwPos = (rwRect.height > 0 && y >= rwRect.top + rwRect.height / 2)
+              ? 'after' : 'before';
+            return { boardId: boardId, kind: 'row', entityId: rwId, position: rwPos };
+          }
+        }
       }
+
+      // 5) Cross-kind absorb fallback. The cursor wasn't over a
+      // valid same-kind sibling — try the source's ABSORB_PARENT
+      // kind. This is what gives the user "drop on a parent →
+      // append as last item".
+      if (absorbKind === 'column') {
+        var absorbCol = hit.closest('.column[data-column-id]');
+        if (absorbCol) {
+          var acId = String(absorbCol.getAttribute('data-column-id') || '').trim();
+          if (acId) return { boardId: boardId, kind: 'column', entityId: acId };
+        }
+      } else if (absorbKind === 'stack') {
+        var absorbStack = hit.closest('.board-stack[data-stack-id]');
+        if (absorbStack) {
+          var asId = String(absorbStack.getAttribute('data-stack-id') || '').trim();
+          if (asId) return { boardId: boardId, kind: 'stack', entityId: asId };
+        }
+      } else if (absorbKind === 'row') {
+        var absorbRow = hit.closest('.board-row[data-row-id]');
+        if (absorbRow) {
+          var arId = String(absorbRow.getAttribute('data-row-id') || '').trim();
+          if (arId) return { boardId: boardId, kind: 'row', entityId: arId };
+        }
+      } else if (absorbKind === 'board') {
+        // Row → board absorb: target = the destination board itself.
+        return { boardId: boardId, kind: 'board', entityId: boardId };
+      }
+
       return null;
     }
     function teardownCrossDragListeners() {
@@ -413,7 +527,7 @@
         // broadcast `hierarchy-entity-drop` so the shell-side
         // `hierarchyDragBridge.applyDrop` does the right thing for
         // both same-board and cross-board cases.
-        var target = resolveCrossViewTreeTarget(e.clientX, e.clientY);
+        var target = resolveCrossViewTreeTarget(e.clientX, e.clientY, pending.source);
         var dropped = !!target;
         xviewLog('local-track.pointerup', {
           x: e.clientX, y: e.clientY,
