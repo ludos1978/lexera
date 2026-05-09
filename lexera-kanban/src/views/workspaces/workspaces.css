@@ -79,6 +79,17 @@ h3 {
   outline-offset: -1px;
   border-radius: 3px;
 }
+/* Directional indicator for same-kind reorder. The sub-app sets
+ * `.is-drop-before` / `.is-drop-after` based on cursor Y vs the
+ * target node's mid-height. Solid 2px accent bar at the matching
+ * edge so the user can predict drop direction. Cross-kind absorbs
+ * (no position) keep just the dashed outline above. */
+#local-boards .tree-node.is-drop-target.is-drop-before {
+  box-shadow: 0 -2px 0 0 var(--accent, #4a9eff);
+}
+#local-boards .tree-node.is-drop-target.is-drop-after {
+  box-shadow: 0 2px 0 0 var(--accent, #4a9eff);
+}
 
 /* Inline rename editor: dblclick replaces the .tree-label with this
  * input. Stays inline-flow so the row layout stays put. */

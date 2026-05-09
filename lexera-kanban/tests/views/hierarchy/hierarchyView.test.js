@@ -499,30 +499,32 @@ describe('hierarchy view sub-app', () => {
         };
       }
       var targetY = opts.zone === 'after' ? 280 : 220;
-      sourceEl.dispatchEvent(new window.MouseEvent('mousedown', {
-        bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10
-      }));
+      // hierarchy.js now listens for pointer events (so setPointerCapture
+      // can keep events flowing across Tauri webview boundaries — see
+      // hierarchy.js pointerdown handler). Tests dispatch PointerEvent
+      // when available, falling back to MouseEvent for older JSDOM.
+      var Ctor = (typeof window.PointerEvent === 'function') ? window.PointerEvent : window.MouseEvent;
+      function makeEvt(type, x, y) {
+        return new Ctor(type, {
+          bubbles: true, cancelable: true,
+          button: 0, pointerId: 1, pointerType: 'mouse',
+          clientX: x, clientY: y
+        });
+      }
+      sourceEl.dispatchEvent(makeEvt('pointerdown', 10, 10));
       window.document.elementFromPoint = function () { return sourceEl; };
-      window.document.dispatchEvent(new window.MouseEvent('mousemove', {
-        bubbles: true, clientX: 11, clientY: 11
-      }));
-      window.document.dispatchEvent(new window.MouseEvent('mousemove', {
-        bubbles: true, clientX: 50, clientY: 50
-      }));
+      window.document.dispatchEvent(makeEvt('pointermove', 11, 11));
+      window.document.dispatchEvent(makeEvt('pointermove', 50, 50));
       if (targetEl) {
         window.document.elementFromPoint = function () { return targetEl; };
-        window.document.dispatchEvent(new window.MouseEvent('mousemove', {
-          bubbles: true, clientX: 100, clientY: targetY
-        }));
+        window.document.dispatchEvent(makeEvt('pointermove', 100, targetY));
       }
       if (opts.skipMouseup) {
         window.document.elementFromPoint = origElementFromPoint;
         if (targetEl && origGetRect) targetEl.getBoundingClientRect = origGetRect;
         return;
       }
-      window.document.dispatchEvent(new window.MouseEvent('mouseup', {
-        bubbles: true, clientX: 100, clientY: targetY
-      }));
+      window.document.dispatchEvent(makeEvt('pointerup', 100, targetY));
       window.document.elementFromPoint = origElementFromPoint;
       if (targetEl && origGetRect) targetEl.getBoundingClientRect = origGetRect;
     }
@@ -1006,26 +1008,20 @@ describe('hierarchy view sub-app', () => {
       const origEFP = window.document.elementFromPoint;
       window.document.elementFromPoint = function () { return window.document.body; };
 
-      cardNode.dispatchEvent(new window.MouseEvent('mousedown', {
-        bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10
-      }));
+      // hierarchy.js listens for pointer events (so setPointerCapture
+      // can keep events flowing across Tauri webview boundaries).
+      const PE = (typeof window.PointerEvent === 'function') ? window.PointerEvent : window.MouseEvent;
+      const evtInit = { bubbles: true, cancelable: true, button: 0, pointerId: 1, pointerType: 'mouse' };
+      cardNode.dispatchEvent(new PE('pointerdown', Object.assign({ clientX: 10, clientY: 10 }, evtInit)));
       // First move below threshold.
-      window.document.dispatchEvent(new window.MouseEvent('mousemove', {
-        bubbles: true, clientX: 11, clientY: 11
-      }));
+      window.document.dispatchEvent(new PE('pointermove', Object.assign({ clientX: 11, clientY: 11 }, evtInit)));
       // Cross threshold — should fire drag-start.
-      window.document.dispatchEvent(new window.MouseEvent('mousemove', {
-        bubbles: true, clientX: 100, clientY: 200
-      }));
+      window.document.dispatchEvent(new PE('pointermove', Object.assign({ clientX: 100, clientY: 200 }, evtInit)));
       // No local match → also fires drag-move.
-      window.document.dispatchEvent(new window.MouseEvent('mousemove', {
-        bubbles: true, clientX: 200, clientY: 300
-      }));
+      window.document.dispatchEvent(new PE('pointermove', Object.assign({ clientX: 200, clientY: 300 }, evtInit)));
       // Release with no local target → fires drag-end-external, NOT
       // hierarchy-entity-drop.
-      window.document.dispatchEvent(new window.MouseEvent('mouseup', {
-        bubbles: true, clientX: 200, clientY: 300
-      }));
+      window.document.dispatchEvent(new PE('pointerup', Object.assign({ clientX: 200, clientY: 300 }, evtInit)));
 
       const dragStart = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drag-start');
       expect(dragStart).toBeTruthy();

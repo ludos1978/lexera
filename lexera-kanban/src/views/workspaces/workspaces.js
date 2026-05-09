@@ -195,6 +195,19 @@
     var pendingDrag = null;   // { startX, startY, source }
     var activeDrag = null;    // { source } — set once threshold is exceeded
     var activeDropTargetEl = null;
+    // Pointer capture state — set when pointerdown captures the source
+    // tree-node so pointermove/pointerup keep firing even after the
+    // cursor crosses into a sibling Tauri webview (the kanban view).
+    var capturedPointerId = -1;
+    var capturedSourceEl = null;
+    var releasePointerCaptureSafely = function () {
+      if (capturedSourceEl && capturedPointerId !== -1 &&
+          typeof capturedSourceEl.releasePointerCapture === 'function') {
+        try { capturedSourceEl.releasePointerCapture(capturedPointerId); } catch (_) { /* ignore */ }
+      }
+      capturedSourceEl = null;
+      capturedPointerId = -1;
+    };
 
     var readSourceFromNode = function (el) {
       var src = el && el.closest ? el.closest('.tree-node[data-drag-kind]') : null;
@@ -263,15 +276,19 @@
     var clearDropTargetEl = function () {
       if (activeDropTargetEl) {
         activeDropTargetEl.classList.remove('is-drop-target');
+        activeDropTargetEl.classList.remove('is-drop-before');
+        activeDropTargetEl.classList.remove('is-drop-after');
         activeDropTargetEl = null;
       }
     };
     var endDrag = function () {
       clearDropTargetEl();
+      releasePointerCaptureSafely();
       pendingDrag = null;
       activeDrag = null;
-      document.removeEventListener('mousemove', onMove, true);
-      document.removeEventListener('mouseup', onUp, true);
+      document.removeEventListener('pointermove', onMove, true);
+      document.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('pointercancel', onUp, true);
     };
     // Sub-app's own webview label — used to tag drag-move broadcasts
     // so the shell-side router can translate this document's cursor
@@ -338,11 +355,24 @@
           activeDropTargetEl = match.node;
         }
       }
+      // Same-kind reorder uses match.info.position ('before' | 'after')
+      // — surface that as a class so the user sees which side the
+      // dragged sibling will land on. Cross-kind absorbs (no position)
+      // keep just the dashed-outline `.is-drop-target`.
+      if (activeDropTargetEl) {
+        activeDropTargetEl.classList.remove('is-drop-before');
+        activeDropTargetEl.classList.remove('is-drop-after');
+        if (match && match.info && match.info.position === 'before') {
+          activeDropTargetEl.classList.add('is-drop-before');
+        } else if (match && match.info && match.info.position === 'after') {
+          activeDropTargetEl.classList.add('is-drop-after');
+        }
+      }
       // No local target → cursor may be over a different webview.
       // Broadcast drag-move so the shell-side router can forward to
-      // that webview's `__lexeraExternalDnd.hover`. When there IS a
-      // local target we skip the broadcast to keep the visual
-      // exclusively local.
+      // that webview's `__lexeraExternalDnd.hover`. Pointer capture
+      // (set on pointerdown) keeps these events flowing even after
+      // the cursor crosses into a sibling Tauri webview.
       if (!match) broadcastCrossViewMove(e.clientX, e.clientY);
     };
     var onUp = function (e) {
@@ -356,13 +386,15 @@
       var src = activeDrag.source;
       var clientX = e.clientX, clientY = e.clientY;
       clearDropTargetEl();
+      releasePointerCaptureSafely();
       var hadLocalDrop = !!match;
       var dropPayload = match ? { source: src, target: match.info } : null;
       pendingDrag = null;
       activeDrag = null;
       _xviewSourceLogged = false; // re-log on the next drag session
-      document.removeEventListener('mousemove', onMove, true);
-      document.removeEventListener('mouseup', onUp, true);
+      document.removeEventListener('pointermove', onMove, true);
+      document.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('pointercancel', onUp, true);
       if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
         if (hadLocalDrop) {
           // Local within-panel reorder/absorb. The shell's
@@ -419,17 +451,33 @@
         }
       }
     };
-    localBoardsEl.addEventListener('mousedown', function (e) {
+    localBoardsEl.addEventListener('pointerdown', function (e) {
       // Only left mouse button starts a drag. Skip clicks on the
       // toggle (TreeView fold caret) so toggling stays click-driven.
       if (e.button !== 0) return;
       if (e.target && e.target.closest && e.target.closest('.tree-toggle')) return;
       var source = readSourceFromNode(e.target);
       if (!source) return;
+      // Pointer capture on the source tree-node so pointermove/pointerup
+      // keep firing on this webview even after the user drags the
+      // cursor into a sibling Tauri webview (the kanban view). Without
+      // this, mouse events stop at the webview boundary and the
+      // `hierarchy-entity-drag-move` broadcast never fires for cross-
+      // webview drops. Mirrors the kanban tab-drag pattern in
+      // tabDragController.js.
+      var srcEl = e.target.closest && e.target.closest('.tree-node[data-drag-kind]');
+      if (srcEl && typeof srcEl.setPointerCapture === 'function' && typeof e.pointerId === 'number') {
+        try {
+          srcEl.setPointerCapture(e.pointerId);
+          capturedSourceEl = srcEl;
+          capturedPointerId = e.pointerId;
+        } catch (_) { /* not all environments expose pointer capture */ }
+      }
       pendingDrag = { startX: e.clientX, startY: e.clientY, source: source };
       activeDrag = null;
-      document.addEventListener('mousemove', onMove, true);
-      document.addEventListener('mouseup', onUp, true);
+      document.addEventListener('pointermove', onMove, true);
+      document.addEventListener('pointerup', onUp, true);
+      document.addEventListener('pointercancel', onUp, true);
     });
     // Cancel an in-flight drag if the window loses focus or the page
     // becomes hidden — common gesture-loss scenarios.

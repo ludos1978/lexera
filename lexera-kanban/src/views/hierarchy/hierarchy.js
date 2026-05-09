@@ -247,6 +247,20 @@
     var pendingDrag = null;
     var activeDrag = null;
     var activeDropTargetEl = null;
+    // Pointer capture state — set when pointerdown captures the source
+    // tree-node so pointermove/pointerup keep firing even when the
+    // cursor crosses into another Tauri webview (the failure mode for
+    // workspace → kanban cross-view drag with bare mouse events).
+    var capturedPointerId = -1;
+    var capturedSourceEl = null;
+    var releasePointerCaptureSafely = function () {
+      if (capturedSourceEl && capturedPointerId !== -1 &&
+          typeof capturedSourceEl.releasePointerCapture === 'function') {
+        try { capturedSourceEl.releasePointerCapture(capturedPointerId); } catch (_) { /* ignore */ }
+      }
+      capturedSourceEl = null;
+      capturedPointerId = -1;
+    };
 
     var readSourceFromNode = function (el) {
       var src = el && el.closest ? el.closest('.tree-node[data-drag-kind]') : null;
@@ -310,15 +324,19 @@
     var clearDropTargetEl = function () {
       if (activeDropTargetEl) {
         activeDropTargetEl.classList.remove('is-drop-target');
+        activeDropTargetEl.classList.remove('is-drop-before');
+        activeDropTargetEl.classList.remove('is-drop-after');
         activeDropTargetEl = null;
       }
     };
     var endDrag = function () {
       clearDropTargetEl();
+      releasePointerCaptureSafely();
       pendingDrag = null;
       activeDrag = null;
-      document.removeEventListener('mousemove', onMove, true);
-      document.removeEventListener('mouseup', onUp, true);
+      document.removeEventListener('pointermove', onMove, true);
+      document.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('pointercancel', onUp, true);
     };
     var getOwnWebviewLabel = function () {
       try {
@@ -379,9 +397,24 @@
           activeDropTargetEl = match.node;
         }
       }
+      // Same-kind reorder uses match.info.position ('before' | 'after')
+      // — surface that as a class on the target so the user sees which
+      // side the dragged sibling will land on. Cross-kind absorbs (no
+      // position) keep just the dashed-outline `.is-drop-target`.
+      if (activeDropTargetEl) {
+        activeDropTargetEl.classList.remove('is-drop-before');
+        activeDropTargetEl.classList.remove('is-drop-after');
+        if (match && match.info && match.info.position === 'before') {
+          activeDropTargetEl.classList.add('is-drop-before');
+        } else if (match && match.info && match.info.position === 'after') {
+          activeDropTargetEl.classList.add('is-drop-after');
+        }
+      }
       // No local target → cursor may be over another webview. Forward
       // the cursor position so the shell can route to that webview's
-      // `__lexeraExternalDnd.hover`.
+      // `__lexeraExternalDnd.hover`. Pointer capture (set on
+      // pointerdown) keeps these events flowing even when the cursor
+      // has crossed into a sibling Tauri webview.
       if (!match) broadcastCrossViewMove(e.clientX, e.clientY);
     };
     var onUp = function (e) {
@@ -395,13 +428,15 @@
       var src = activeDrag.source;
       var clientX = e.clientX, clientY = e.clientY;
       clearDropTargetEl();
+      releasePointerCaptureSafely();
       var hadLocalDrop = !!match;
       var dropPayload = match ? { source: src, target: match.info } : null;
       pendingDrag = null;
       activeDrag = null;
       _xviewSourceLogged = false; // reset for next drag session
-      document.removeEventListener('mousemove', onMove, true);
-      document.removeEventListener('mouseup', onUp, true);
+      document.removeEventListener('pointermove', onMove, true);
+      document.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('pointercancel', onUp, true);
       if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
         if (hadLocalDrop) {
           // Local within-panel reorder/absorb. Logged so the user can
@@ -455,17 +490,33 @@
         }
       }
     };
-    localBoardsEl.addEventListener('mousedown', function (e) {
+    localBoardsEl.addEventListener('pointerdown', function (e) {
       if (e.button !== 0) return;
       // Clicks on the toggle stay click-driven so fold/unfold isn't
       // hijacked by a tiny drag.
       if (e.target && e.target.closest && e.target.closest('.tree-toggle')) return;
       var source = readSourceFromNode(e.target);
       if (!source) return;
+      // Pointer capture on the source tree-node so pointermove/pointerup
+      // keep firing on the SOURCE webview even after the user drags the
+      // cursor into a sibling Tauri webview (the kanban view). Without
+      // this, mouse events stop at the webview boundary and the
+      // `hierarchy-entity-drag-move` broadcast never fires for cross-
+      // webview drops. Mirrors the kanban tab-drag pattern in
+      // tabDragController.js.
+      var srcEl = e.target.closest && e.target.closest('.tree-node[data-drag-kind]');
+      if (srcEl && typeof srcEl.setPointerCapture === 'function' && typeof e.pointerId === 'number') {
+        try {
+          srcEl.setPointerCapture(e.pointerId);
+          capturedSourceEl = srcEl;
+          capturedPointerId = e.pointerId;
+        } catch (_) { /* not all environments expose pointer capture */ }
+      }
       pendingDrag = { startX: e.clientX, startY: e.clientY, source: source };
       activeDrag = null;
-      document.addEventListener('mousemove', onMove, true);
-      document.addEventListener('mouseup', onUp, true);
+      document.addEventListener('pointermove', onMove, true);
+      document.addEventListener('pointerup', onUp, true);
+      document.addEventListener('pointercancel', onUp, true);
     });
     window.addEventListener('blur', endDrag);
     document.addEventListener('visibilitychange', function () {
