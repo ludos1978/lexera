@@ -19,6 +19,56 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: src/shell/panelLaunchers.js (IIFE;
+ * window.LexeraPanelLaunchers = api). DevTools-console helpers for
+ * opening Stage-4 utility sub-apps (log, inspector, workspaces,
+ * dashboard) as either floating webviews or side-docked panels.
+ * Underlying primitives (openAsSidePanel / closeSidePanel +
+ * computeSlotRect) live here too — extracted from
+ * `multiviewClient.js` (Workstream 5). The kind-specific launchers
+ * (openLogView / openInspector / openWorkspaces / openDashboard) are
+ * thin wrappers that pin a default URL + close-helper for one kind.
+ */
+interface LexeraPanelLaunchersSidePanelOpts {
+  label: string;
+  url: string;
+  side?: 'left' | 'right' | 'bottom' | 'top';
+  size?: number;
+  topInset?: number;
+}
+
+interface LexeraPanelLaunchersLauncherOpts {
+  side?: 'left' | 'right' | 'bottom' | 'top';
+  size?: number;
+  topInset?: number;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}
+
+interface LexeraPanelLaunchersApi {
+  /** Mount a child webview as a side-docked panel pinned to `side`.
+   *  Subscribes to window resize so the panel re-tracks the slot. */
+  openAsSidePanel(opts: LexeraPanelLaunchersSidePanelOpts): Promise<unknown>;
+  /** Tear down a previously-opened side panel by its label. */
+  closeSidePanel(label: string): Promise<unknown>;
+  /** Open the Log view. With `opts.side` set, docks; otherwise
+   *  floats at (x, y) with the given size. */
+  openLogView(opts?: LexeraPanelLaunchersLauncherOpts): Promise<unknown>;
+  closeLogView(): Promise<unknown>;
+  /** Open the Inspector view. Same opts contract as openLogView. */
+  openInspector(opts?: LexeraPanelLaunchersLauncherOpts): Promise<unknown>;
+  closeInspector(): Promise<unknown>;
+  /** Open the Workspaces sub-app. Same opts contract. */
+  openWorkspaces(opts?: LexeraPanelLaunchersLauncherOpts): Promise<unknown>;
+  closeWorkspaces(): Promise<unknown>;
+  /** Open the Dashboard sub-app. Same opts contract. */
+  openDashboard(opts?: LexeraPanelLaunchersLauncherOpts): Promise<unknown>;
+  closeDashboard(): Promise<unknown>;
+}
+
+/**
  * Source: src/shell/inspectorShortcuts.js (IIFE;
  * window.LexeraInspectorShortcuts = api). Pure-logic predicates that
  * classify a KeyboardEvent as either the single-window inspector
@@ -626,7 +676,7 @@ declare global {
     LexeraRuntime: any;
     LexeraDialogs: LexeraDialogsApi;
     LexeraInspectorShortcuts: LexeraInspectorShortcutsApi;
-    LexeraPanelLaunchers: any;
+    LexeraPanelLaunchers: LexeraPanelLaunchersApi;
     LexeraLifecycle: any;
 
     // Logging diagnostics.
