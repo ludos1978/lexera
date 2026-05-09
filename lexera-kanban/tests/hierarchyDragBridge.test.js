@@ -164,20 +164,42 @@ describe('LexeraHierarchyDragBridge.applyEntityReorder', () => {
     expect(board.rows.map((r) => r.id)).toEqual(['r2', 'r1']);
   });
 
-  it('rejects cross-parent same-kind moves (deferred to Phase 3)', () => {
+  it('moves cross-parent same-kind drops to the target sibling list (cross-column card move)', () => {
+    // 2026-05-09 user contract: dragging card-1 from column c1 onto
+    // card-4 (which lives in column c2) inside the same board MUST
+    // succeed. The previous "rejects, deferred to Phase 3" behaviour
+    // surfaced as `applyDrop returned false` in the in-app log; the
+    // user explicitly requires cross-column reorder to work.
     const board = makeBoard();
-    // card-1 lives in column c1; card-4 lives in column c2 — different parents.
     const ok = bridge.applyEntityReorder(
       board,
       { boardId: 'b1', kind: 'card', entityId: 'card-1' },
       { boardId: 'b1', kind: 'card', entityId: 'card-4' }
     );
-    expect(ok).toBe(false);
-    // Board untouched.
+    expect(ok).toBe(true);
+    // card-1 was removed from c1.
     expect(board.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
-      .toEqual(['card-1', 'card-2', 'card-3']);
+      .toEqual(['card-2', 'card-3']);
+    // …and lands BEFORE card-4 in c2 (no `target.position` defaults
+    // to 'before', the same convention applyEntityReorder uses for
+    // same-parent reorder).
     expect(board.rows[0].stacks[0].columns[1].cards.map((c) => c.id))
-      .toEqual(['card-4']);
+      .toEqual(['card-1', 'card-4']);
+  });
+
+  it("honours target.position === 'after' on cross-parent moves", () => {
+    const board = makeBoard();
+    const ok = bridge.applyEntityReorder(
+      board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'card', entityId: 'card-4', position: 'after' }
+    );
+    expect(ok).toBe(true);
+    expect(board.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['card-2', 'card-3']);
+    // 'after' lands the moved entity below card-4.
+    expect(board.rows[0].stacks[0].columns[1].cards.map((c) => c.id))
+      .toEqual(['card-4', 'card-1']);
   });
 
   it('rejects cross-kind drops', () => {
@@ -748,7 +770,12 @@ describe('LexeraHierarchyDragBridge.install', () => {
     expect(onApplied).toHaveBeenCalledWith('b1');
   });
 
-  it('does not call saveBoard when the move is not a sibling reorder', async () => {
+  it('persists cross-parent same-kind drops (cross-column card move) — saveBoard fires once with the rebuilt board', async () => {
+    // 2026-05-09 user contract update: cross-column card moves
+    // within the same board MUST persist. The previous "does not
+    // call saveBoard" expectation pinned the deferred-Phase-3
+    // behaviour that surfaced as `applyDrop returned false` in the
+    // user-pasted in-app log.
     const wv = makeWebview();
     const board = makeBoard();
     const saveBoard = vi.fn(() => Promise.resolve());
@@ -758,13 +785,20 @@ describe('LexeraHierarchyDragBridge.install', () => {
       loadBoard: () => Promise.resolve(board),
       saveBoard: saveBoard
     });
-    // Cross-parent (different columns) — applyEntityReorder rejects.
     wv._fire('hierarchy-entity-drop', {
       source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
       target: { boardId: 'b1', kind: 'card', entityId: 'card-4' }
     });
     await new Promise((r) => setTimeout(r, 0));
-    expect(saveBoard).not.toHaveBeenCalled();
+    expect(saveBoard).toHaveBeenCalledTimes(1);
+    const [savedId, savedBoard] = saveBoard.mock.calls[0];
+    expect(savedId).toBe('b1');
+    // card-1 was removed from c1 …
+    expect(savedBoard.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['card-2', 'card-3']);
+    // … and inserted before card-4 in c2 (default `position`).
+    expect(savedBoard.rows[0].stacks[0].columns[1].cards.map((c) => c.id))
+      .toEqual(['card-1', 'card-4']);
   });
 
   it('returns false when required deps are missing', () => {

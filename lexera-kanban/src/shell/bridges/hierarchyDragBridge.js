@@ -69,12 +69,21 @@
   }
 
   /**
-   * Move `source` to `target.index` inside its parent array within a
-   * SINGLE board. Returns true on success, false when the move is not
-   * a sibling reorder (different parents, missing entity, mismatched
-   * kind, identity equals). Mutates `board` in place — the caller is
-   * expected to pass the full `KanbanBoard` it intends to send back
-   * to `saveBoard`.
+   * Move `source` so it lands beside `target` within a SINGLE board.
+   * Handles BOTH same-parent reorder (sibling shuffle inside one
+   * column / stack / row) AND cross-parent move (drag a card from
+   * column A to column B inside the same board, etc). Returns true
+   * on success, false when the kinds don't match, an id is missing,
+   * or source === target. Mutates `board` in place; caller is
+   * expected to pass the full `KanbanBoard` going to `saveBoard`.
+   *
+   * 2026-05-09 user-reported regression: cross-column card moves
+   * within the same board hit the source's local-drop path (cursor
+   * stayed inside source webview) and applyDrop returned false
+   * because the previous implementation rejected `src.parent !==
+   * tgt.parent`. Now both cases share the splice + reinsert path;
+   * the same-parent index adjustment only fires when the parents
+   * truly are the same array.
    */
   function applyEntityReorder(board, source, target) {
     if (!board || !source || !target) return false;
@@ -83,17 +92,17 @@
     var src = locateEntity(board, source.kind, source.entityId);
     var tgt = locateEntity(board, target.kind, target.entityId);
     if (!src || !tgt) return false;
-    // Sibling reorder requires both entities live in the same parent
-    // array.
-    if (src.parent !== tgt.parent) return false;
     var moved = src.parent.splice(src.index, 1)[0];
     var insertAt = tgt.index;
-    if (src.index < tgt.index) insertAt -= 1;
+    // Only adjust for the removed slot when source and target share
+    // the parent array — cross-parent moves don't shift the target's
+    // index because the splice happened in a different list.
+    if (src.parent === tgt.parent && src.index < tgt.index) insertAt -= 1;
     // `target.position` ('before' | 'after') controls which side of
     // the target the source lands on. Defaults to 'before' so old
     // call sites (no zone-aware drop) keep their existing behaviour.
     if (target.position === 'after') insertAt += 1;
-    src.parent.splice(insertAt, 0, moved);
+    tgt.parent.splice(insertAt, 0, moved);
     return true;
   }
 

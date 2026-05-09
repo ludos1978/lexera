@@ -360,9 +360,16 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     }).not.toThrow();
 
     // Diagnostic log fired so the user knows stage 5 receiver is missing.
+    // Two log lines fire on each external-dnd-drop now (after the
+    // 2026-05-09 destination-side persistence fix): one for the
+    // tree-target resolution attempt (`receive.drop.tree-target`),
+    // and the legacy relay's `receive.no-handler` when
+    // `__lexeraExternalDnd` is missing. Assert that `receive.no-handler`
+    // appears anywhere in the log, not necessarily first.
     const xviewCalls = lexeraLog.mock.calls.filter((c) => /\[xview-dnd\]/.test(String(c[1])));
     expect(xviewCalls.length).toBeGreaterThan(0);
-    expect(String(xviewCalls[0][1])).toMatch(/receive\.no-handler/);
+    const hasNoHandler = xviewCalls.some((c) => /receive\.no-handler/.test(String(c[1])));
+    expect(hasNoHandler).toBe(true);
   });
 
   it('falls back to focusing a rendered card when dashboard navigation helper returns false', async () => {

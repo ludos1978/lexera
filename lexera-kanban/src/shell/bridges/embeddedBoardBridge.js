@@ -273,7 +273,46 @@
       }
     }
     wv.listen('external-dnd-hover', function (event) { relayExternalDnd('hover', event); });
-    wv.listen('external-dnd-drop', function (event) { relayExternalDnd('drop', event); });
+    // The external-dnd-drop arrives via the shell's
+    // forwardCrossViewDrag chain (source pointerup outside source
+    // bounds → shell looks up cursor's webview → emits
+    // external-dnd-drop here). Pointer capture on the source means
+    // the destination's OWN pointerup never fires for cross-WKWebView
+    // drops, so this listener — NOT the per-webview pointerup
+    // tracker installed below — is the path that lands the user's
+    // release. relayExternalDnd's legacy __lexeraExternalDnd.drop is
+    // a kanban-internal mutator that doesn't persist cross-board, so
+    // we ALSO build a tree-target from the destination's DOM and
+    // broadcast hierarchy-entity-drop for the shell-side
+    // hierarchyDragBridge.applyDrop persistence chain. The legacy
+    // local apply is kept (relayExternalDnd) so the in-kanban hover
+    // visual stays consistent for the brief moment between drop and
+    // re-render — saveBoard's broadcast will overwrite it shortly.
+    wv.listen('external-dnd-drop', function (event) {
+      var p = (event && event.payload) || {};
+      var inner = p.payload || null;
+      var src = inner && inner.source;
+      if (src && typeof p.x === 'number' && typeof p.y === 'number') {
+        var target = resolveCrossViewTreeTarget(p.x, p.y, src);
+        xviewLog('receive.drop.tree-target', {
+          x: p.x, y: p.y,
+          srcKind: src.kind,
+          targetKind: target && target.kind,
+          targetEntityId: target && target.entityId,
+          targetPosition: target && target.position,
+          resolved: !!target
+        });
+        if (target) {
+          try {
+            invoke('multiview_broadcast', {
+              event: 'hierarchy-entity-drop',
+              payload: { source: src, target: target }
+            });
+          } catch (_) { /* non-fatal */ }
+        }
+      }
+      relayExternalDnd('drop', event);
+    });
 
     // ─── Per-webview cross-view drag tracking ──────────────────────
     //
