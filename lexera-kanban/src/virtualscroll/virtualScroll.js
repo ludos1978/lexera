@@ -48,7 +48,7 @@
   var vsSwapInQueue = [];
   var vsSwapInQueued = new Set();
   var vsSwapInRafId = 0;
-  var VS_SWAP_IN_BUDGET_PER_FRAME = 6;
+  var VS_SWAP_IN_BUDGET_PER_FRAME = 8;
 
   /**
    * Generation counter incremented on each full activate() call.
@@ -73,7 +73,7 @@
     if (!root) return;
     vsObserver = new IntersectionObserver(vsHandleIntersections, {
       root: root,
-      rootMargin: '600px 0px 600px 0px',
+      rootMargin: '800px 0px 800px 0px',
       threshold: 0
     });
   }
@@ -107,8 +107,6 @@
     vsSwapInQueue.push(sentinel);
     if (vsSwapInRafId) return;
     if (typeof requestAnimationFrame !== 'function') {
-      // Fallback for headless environments without rAF — drain
-      // synchronously so behaviour matches the pre-batching path.
       vsProcessSwapInQueue();
       return;
     }
@@ -120,9 +118,6 @@
     var ptrDrag = deps.getPtrDrag ? deps.getPtrDrag() : null;
     var cardDrag = deps.getCardDrag ? deps.getCardDrag() : null;
     if (ptrDrag || cardDrag) {
-      // Drag took over; vsMaterialiseAll handles full hydration. Drop
-      // the queue so a paused-scroll-then-drag transition doesn't fire
-      // stale swap-ins after the materialise pass.
       vsSwapInQueue.length = 0;
       vsSwapInQueued.clear();
       return;
@@ -131,8 +126,6 @@
     while (budget > 0 && vsSwapInQueue.length > 0) {
       var sentinel = vsSwapInQueue.shift();
       vsSwapInQueued.delete(sentinel);
-      // Sentinel may have been removed from DOM (column torn down or
-      // remeasureColumn discarded it) between schedule and process.
       if (!sentinel.parentNode) continue;
       vsSwapIn(sentinel);
       budget--;
@@ -144,8 +137,7 @@
 
   /**
    * Drain every pending swap-in synchronously. Used by vsMaterialiseAll
-   * (drag start) so pointer hit-testing sees every card mounted, with no
-   * partially-flushed batch lingering.
+   * (drag start) so pointer hit-testing sees every card mounted.
    */
   function vsDrainSwapInQueue() {
     if (vsSwapInRafId) {
@@ -173,9 +165,6 @@
         vsObserver.unobserve(info.cardEl);
       });
     }
-    // Drop any queued swap-ins for sentinels owned by this column —
-    // their parent is about to be replaced and the swap would target
-    // a stale DOM node.
     state.sentinels.forEach(function (_info, sentinel) {
       if (vsSwapInQueued.has(sentinel)) {
         vsSwapInQueued.delete(sentinel);
@@ -183,7 +172,6 @@
         if (idx !== -1) vsSwapInQueue.splice(idx, 1);
       }
     });
-    // Swap all virtualised cards back in so the DOM is clean
     state.sentinels.forEach(function (info, sentinel) {
       if (sentinel.parentNode && state.virtualised.has(info.cardEl)) {
         sentinel.parentNode.replaceChild(info.cardEl, sentinel);
@@ -226,8 +214,6 @@
     };
     vsColumnStates.set(container, state);
 
-    // Measure every card, create a sentinel for each, then replace
-    // non-visible cards with their sentinels.
     for (var j = 0; j < cards.length; j++) {
       var card = cards[j];
       var height = card.offsetHeight;
@@ -235,19 +221,13 @@
 
       state.sentinels.set(sentinel, { cardEl: card, height: height });
 
-      // Populate O(1) caches
       vsElementToState.set(card, state);
       vsElementToState.set(sentinel, state);
       vsCardToSentinel.set(card, sentinel);
 
-      // Start by observing every card AND its sentinel.  Cards that are
-      // currently visible stay rendered; those off-screen will be swapped
-      // out in the first intersection callback.
       vsObserver.observe(card);
     }
 
-    // Use requestAnimationFrame to let the observer fire its initial
-    // batch, then do the first swap pass.
     (function (st) {
       requestAnimationFrame(function () {
         vsInitialSwap(st);
@@ -257,11 +237,7 @@
 
   /**
    * Scan all rendered columns and activate virtual scrolling on those whose
-   * card count exceeds the threshold.  Must be called AFTER the DOM is fully
-   * built by renderColumns() (including content enhancement).
-   *
-   * Incremental: columns that were already measured in a previous pass and
-   * whose card count has not changed are skipped entirely.
+   * card count exceeds the threshold.
    */
   function vsActivate() {
     vsGeneration++;
@@ -269,7 +245,6 @@
     var root = vsGetRoot();
     if (!root) return;
 
-    // Collect all current column-cards containers so we can detect removed ones
     var allCardsContainers = root.querySelectorAll('.column-cards');
     var currentContainers = new Set();
     var qualifying = [];
@@ -282,8 +257,6 @@
       }
     }
 
-    // Tear down state for columns that no longer exist in the DOM, or that
-    // have dropped below the threshold
     var toRemove = [];
     vsColumnStates.forEach(function (state, key) {
       if (!currentContainers.has(key)) {
@@ -293,7 +266,6 @@
     for (var r = 0; r < toRemove.length; r++) {
       vsTeardownColumn(toRemove[r]);
     }
-    // Also tear down columns that dropped below threshold
     vsColumnStates.forEach(function (state, key) {
       if (!qualifying.some(function (q) { return q.container === key; })) {
         vsTeardownColumn(key);
@@ -301,7 +273,6 @@
     });
 
     if (qualifying.length === 0) {
-      // No qualifying columns — tear down the observer if it exists
       if (vsObserver) {
         vsObserver.disconnect();
         vsObserver = null;
@@ -315,14 +286,11 @@
       var info = qualifying[q];
       var existingState = vsColumnStates.get(info.container);
 
-      // Skip this column if it already has state and the card count matches
       if (existingState && existingState.cardCount === info.cards.length) {
-        // Stamp with current generation so it survives future prune passes
         existingState.generation = vsGeneration;
         continue;
       }
 
-      // Column is new or card count changed — tear down old state and re-setup
       if (existingState) {
         vsTeardownColumn(info.container);
       }
@@ -330,11 +298,6 @@
     }
   }
 
-  /**
-   * Re-measure a single column after a card was updated in place.
-   * Finds the column state by colIndex attribute, then updates the
-   * sentinel mapping for any card that was replaced in the DOM.
-   */
   function vsRemeasureColumn(colIndex) {
     var root = vsGetRoot();
     if (!root) return;
@@ -344,7 +307,6 @@
     var state = vsColumnStates.get(container);
     if (!state) return;
 
-    // Build a map of card-id -> current sentinel for fast lookup
     var cardIdToSentinel = new Map();
     state.sentinels.forEach(function (info, sentinel) {
       var cardId = sentinel.getAttribute('data-vs-card-id') || '';
@@ -376,9 +338,7 @@
       var oldInfo = state.sentinels.get(existingSentinel);
       if (!oldInfo) continue;
 
-      // Check if the card element was replaced (new DOM node for same card-id)
       if (oldInfo.cardEl !== card) {
-        // Update the sentinel mapping to point to the new card element
         if (vsObserver) {
           if (oldInfo.cardEl) vsObserver.unobserve(oldInfo.cardEl);
           vsObserver.observe(card);
@@ -389,7 +349,6 @@
         vsCardToSentinel.set(card, existingSentinel);
       }
 
-      // Update the sentinel height to match the (possibly resized) card
       var measuredHeight = card.offsetHeight;
       if (measuredHeight !== oldInfo.height) {
         oldInfo.height = measuredHeight;
@@ -417,8 +376,6 @@
     for (var j = 0; j < sentinelsToDelete.length; j++) {
       var deletedSentinel = sentinelsToDelete[j];
       state.sentinels.delete(deletedSentinel);
-      // Drop queued swap-ins for sentinels we just discarded so the rAF
-      // tick doesn't try to mount them into a stale parent.
       if (vsSwapInQueued.has(deletedSentinel)) {
         vsSwapInQueued.delete(deletedSentinel);
         var qIdx = vsSwapInQueue.indexOf(deletedSentinel);
@@ -426,7 +383,6 @@
       }
     }
 
-    // Update card count in case cards were added/removed
     var allCards = container.querySelectorAll(':scope > .card');
     var allPlaceholders = container.querySelectorAll(':scope > .vs-placeholder');
     state.cardCount = allCards.length + allPlaceholders.length;
@@ -435,45 +391,58 @@
   /**
    * After the observer has had a chance to fire once, swap out any cards that
    * are NOT intersecting with placeholders.
+   * Batches reads then writes to avoid layout thrashing.
    */
   function vsInitialSwap(state) {
     if (!vsObserver) return;
+    var root = vsGetRoot();
+    if (!root) return;
+    var rootRect = root.getBoundingClientRect();
+    var buffer = 800;
+    
+    var currentCardEditor = deps.getCurrentCardEditor ? deps.getCurrentCardEditor() : null;
+    var cardsToSwap = [];
+
+    // BATCHED READS
     state.sentinels.forEach(function (info, sentinel) {
       var card = info.cardEl;
-      // If the card is still in the DOM and not near the viewport, replace it
-      if (card.parentNode === state.container && !vsIsNearViewport(card)) {
-        // Don't virtualise cards that are being edited
-        var currentCardEditor = deps.getCurrentCardEditor ? deps.getCurrentCardEditor() : null;
+      if (card.parentNode === state.container) {
         if (currentCardEditor && currentCardEditor.cardEl === card) return;
-        state.container.replaceChild(sentinel, card);
-        state.virtualised.add(card);
-        vsObserver.observe(sentinel);
+        
+        var elRect = card.getBoundingClientRect();
+        var isNear = (
+          elRect.bottom >= rootRect.top - buffer &&
+          elRect.top <= rootRect.bottom + buffer
+        );
+        
+        if (!isNear) {
+          cardsToSwap.push({ card: card, sentinel: sentinel });
+        }
       }
     });
+
+    // BATCHED WRITES
+    for (var i = 0; i < cardsToSwap.length; i++) {
+      var item = cardsToSwap[i];
+      state.container.replaceChild(item.sentinel, item.card);
+      state.virtualised.add(item.card);
+      vsObserver.observe(item.sentinel);
+    }
   }
 
-  /**
-   * Quick check whether an element is near the scroll viewport.
-   */
   function vsIsNearViewport(el) {
     var root = vsGetRoot();
     if (!root) return true;
     var rootRect = root.getBoundingClientRect();
     var elRect = el.getBoundingClientRect();
-    var buffer = 600;
+    var buffer = 800;
     return (
       elRect.bottom >= rootRect.top - buffer &&
       elRect.top <= rootRect.bottom + buffer
     );
   }
 
-  /**
-   * IntersectionObserver callback.  When a sentinel scrolls into view, swap
-   * the real card back in.  When a card scrolls out of view, swap the
-   * sentinel back in.
-   */
   function vsHandleIntersections(entries) {
-    // During drag, do nothing — all cards need to be in the DOM.
     var ptrDrag = deps.getPtrDrag ? deps.getPtrDrag() : null;
     var cardDrag = deps.getCardDrag ? deps.getCardDrag() : null;
     if (ptrDrag || cardDrag) return;
@@ -483,14 +452,10 @@
       var el = entry.target;
 
       if (el.classList.contains('vs-placeholder')) {
-        // A placeholder just became visible — queue a swap-in. Batched
-        // in rAF with a per-frame budget so a fast scroll past N hidden
-        // cards doesn't synchronously mount + render N cards in one tick.
         if (entry.isIntersecting) {
           vsScheduleSwapIn(el);
         }
       } else if (el.classList.contains('card')) {
-        // A real card just left the viewport — swap it out
         if (!entry.isIntersecting) {
           vsSwapOut(el);
         }
@@ -498,9 +463,6 @@
     }
   }
 
-  /**
-   * Replace a sentinel/placeholder with its real card element.
-   */
   function vsSwapIn(sentinel) {
     var state = vsFindStateForElement(sentinel);
     if (!state) return;
@@ -510,19 +472,16 @@
     if (sentinel.parentNode) {
       sentinel.parentNode.replaceChild(card, sentinel);
       state.virtualised.delete(card);
-      // Observe the real card so we know when it scrolls away
       if (vsObserver) {
         vsObserver.unobserve(sentinel);
         vsObserver.observe(card);
       }
+      // Hook for lazy enhancement in app.js
+      if (deps.onMaterialise) deps.onMaterialise(card);
     }
   }
 
-  /**
-   * Replace a real card element with its sentinel/placeholder.
-   */
   function vsSwapOut(card) {
-    // Don't virtualise cards that are being edited
     var currentCardEditor = deps.getCurrentCardEditor ? deps.getCurrentCardEditor() : null;
     if (currentCardEditor && currentCardEditor.cardEl === card) return;
 
@@ -532,7 +491,6 @@
     if (!sentinel) return;
 
     if (card.parentNode) {
-      // Update placeholder height in case the card was resized
       sentinel.style.height = card.offsetHeight + 'px';
       card.parentNode.replaceChild(sentinel, card);
       state.virtualised.add(card);
@@ -551,13 +509,7 @@
     return vsCardToSentinel.get(card) || null;
   }
 
-  /**
-   * During drag start, materialise ALL virtualised cards so that pointer
-   * hit-testing works on every card.  Called from the drag start path.
-   */
   function vsMaterialiseAll() {
-    // Drain any pending swap-ins synchronously so pointer hit-testing
-    // sees a fully consistent DOM — no half-flushed batch lingering.
     vsDrainSwapInQueue();
     if (vsColumnStates.size === 0) return;
     vsColumnStates.forEach(function (state) {
@@ -569,32 +521,51 @@
             vsObserver.unobserve(sentinel);
             vsObserver.observe(info.cardEl);
           }
+          if (deps.onMaterialise) deps.onMaterialise(info.cardEl);
         }
       });
     });
   }
 
-  /**
-   * After drag ends, re-evaluate which cards should be virtualised.
-   * Called from the drag cleanup path.
-   */
   function vsRestoreAfterDrag() {
     if (vsColumnStates.size === 0) return;
+    
+    var root = vsGetRoot();
+    if (!root) return;
+    var rootRect = root.getBoundingClientRect();
+    var buffer = 800;
+    var currentCardEditor = deps.getCurrentCardEditor ? deps.getCurrentCardEditor() : null;
+
     vsColumnStates.forEach(function (state) {
+      var cardsToSwap = [];
+      
+      // BATCHED READS
       state.sentinels.forEach(function (info, sentinel) {
         var card = info.cardEl;
-        if (card.parentNode === state.container && !vsIsNearViewport(card)) {
-          var currentCardEditor = deps.getCurrentCardEditor ? deps.getCurrentCardEditor() : null;
+        if (card.parentNode === state.container) {
           if (currentCardEditor && currentCardEditor.cardEl === card) return;
-          sentinel.style.height = card.offsetHeight + 'px';
-          state.container.replaceChild(sentinel, card);
-          state.virtualised.add(card);
-          if (vsObserver) {
-            vsObserver.unobserve(card);
-            vsObserver.observe(sentinel);
+          var elRect = card.getBoundingClientRect();
+          var isNear = (
+            elRect.bottom >= rootRect.top - buffer &&
+            elRect.top <= rootRect.bottom + buffer
+          );
+          if (!isNear) {
+            cardsToSwap.push({ card: card, sentinel: sentinel });
           }
         }
       });
+
+      // BATCHED WRITES
+      for (var i = 0; i < cardsToSwap.length; i++) {
+        var item = cardsToSwap[i];
+        item.sentinel.style.height = item.card.offsetHeight + 'px';
+        state.container.replaceChild(item.sentinel, item.card);
+        state.virtualised.add(item.card);
+        if (vsObserver) {
+          vsObserver.unobserve(item.card);
+          vsObserver.observe(item.sentinel);
+        }
+      }
     });
   }
 
@@ -608,8 +579,6 @@
     remeasureColumn: vsRemeasureColumn,
     materialiseAll: vsMaterialiseAll,
     restoreAfterDrag: vsRestoreAfterDrag,
-    // Test seams: the swap-in batching path needs deterministic
-    // inspection without booting the full board renderer.
     _test_scheduleSwapIn: vsScheduleSwapIn,
     _test_processSwapInQueue: vsProcessSwapInQueue,
     _test_drainSwapInQueue: vsDrainSwapInQueue,

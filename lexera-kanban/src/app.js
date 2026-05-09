@@ -1411,9 +1411,21 @@ var LexeraDashboard = (function () {
   function setColumnChildrenFoldState(columnEl, folded) { return OrderHelpers.setColumnChildrenFoldState(columnEl, folded); }
   function setRowChildrenFoldState(rowEl, folded) { return OrderHelpers.setRowChildrenFoldState(rowEl, folded); }
   function setStackChildrenFoldState(stackEl, folded) { return OrderHelpers.setStackChildrenFoldState(stackEl, folded); }
-  function toggleColumnFoldElement(columnEl, childrenOnly) { return OrderHelpers.toggleColumnFoldElement(columnEl, childrenOnly); }
-  function toggleStackFoldElement(stackEl, childrenOnly) { return OrderHelpers.toggleStackFoldElement(stackEl, childrenOnly); }
-  function toggleRowFoldElement(rowEl, childrenOnly) { return OrderHelpers.toggleRowFoldElement(rowEl, childrenOnly); }
+  function toggleColumnFoldElement(columnEl, childrenOnly) {
+    var r = OrderHelpers.toggleColumnFoldElement(columnEl, childrenOnly);
+    requestAnimationFrame(syncRenderedRowWidths);
+    return r;
+  }
+  function toggleStackFoldElement(stackEl, childrenOnly) {
+    var r = OrderHelpers.toggleStackFoldElement(stackEl, childrenOnly);
+    requestAnimationFrame(syncRenderedRowWidths);
+    return r;
+  }
+  function toggleRowFoldElement(rowEl, childrenOnly) {
+    var r = OrderHelpers.toggleRowFoldElement(rowEl, childrenOnly);
+    requestAnimationFrame(syncRenderedRowWidths);
+    return r;
+  }
   function reorderItems(items, sourceIdx, targetIdx, insertBefore) { return OrderHelpers.reorderItems(items, sourceIdx, targetIdx, insertBefore); }
   function reorderBoards(sourceIdx, targetIdx, insertBefore) { return OrderHelpers.reorderBoards(sourceIdx, targetIdx, insertBefore); }
   function targetClosest(target, selector) { return OrderHelpers.targetClosest(target, selector); }
@@ -5759,12 +5771,8 @@ var LexeraDashboard = (function () {
 
     if (needsSidebar) renderBoardList();
     if (needsStructuralVs) {
-      var container = getElColumnsContainer();
-      if (isCanvasBoardLayout()) {
-        syncCanvasRowBounds(container);
-      } else {
-        syncRenderedRowWidths();
-      }
+      if (isCanvasBoardLayout()) syncCanvasRowBounds(getElColumnsContainer());
+      else syncRenderedRowWidths();
     }
 
     // Full renderColumns refreshes the header bucket counts (incoming /
@@ -7797,10 +7805,9 @@ var LexeraDashboard = (function () {
   function normalizeStackWidth(rawValue) { return BoardSettingsModule.normalizeStackWidth(rawValue); }
 
   function clearLayoutLockStyles() {
-    var nodes = getElColumnsContainer().querySelectorAll('.board-row, .board-stack, .column');
+    var nodes = getElColumnsContainer().querySelectorAll('.board-stack, .column');
     for (var i = 0; i < nodes.length; i++) {
       var el = nodes[i];
-      if (!el || !el.style) continue;
       if (el.classList.contains('layout-locked')) continue;
       el.style.width = '';
       el.style.minWidth = '';
@@ -7811,46 +7818,36 @@ var LexeraDashboard = (function () {
     }
   }
 
+  // Pins .board-row-content to its measured pixel width so the browser's
+  // auto-width recomputation cannot oscillate as content-visibility'd
+  // descendants (.card / .column) flip between actual size and
+  // contain-intrinsic-size placeholders during scroll. Without this pin,
+  // scrollWidth swings by 100s–1000s of px on every viewport-edge crossing,
+  // and the browser auto-clamps scrollLeft, producing a visible snap-back.
   function syncRenderedRowWidths() {
-    if (!getElColumnsContainer()) return;
-    var rows = getElColumnsContainer().querySelectorAll('.board-row');
+    var container = getElColumnsContainer();
+    if (!container) return;
+    var rows = container.querySelectorAll('.board-row');
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
-      if (!row || row.classList.contains('layout-locked') || row.classList.contains('folded')) {
-        var foldedContent = row ? row.querySelector(':scope > .board-row-content') : null;
-        if (foldedContent && foldedContent.style) foldedContent.style.width = '';
-        continue;
-      }
-
+      if (row.classList.contains('layout-locked')) continue;
       var content = row.querySelector(':scope > .board-row-content');
       if (!content || content.classList.contains('layout-locked')) continue;
-
+      if (row.classList.contains('folded')) {
+        content.style.width = '';
+        continue;
+      }
       content.style.width = '';
-
       var stacks = content.querySelectorAll(':scope > .board-stack');
-      var contentWidth = 0;
-
-      if (stacks.length > 0) {
-        var maxRight = 0;
-        for (var s = 0; s < stacks.length; s++) {
-          var stack = stacks[s];
-          var right = stack.offsetLeft + stack.offsetWidth;
-          if (right > maxRight) maxRight = right;
-        }
-        var contentStyle = window.getComputedStyle(content);
-        var padRight = parseFloat(contentStyle.paddingRight || '0') || 0;
-        contentWidth = Math.max(0, Math.ceil(maxRight + padRight));
-      } else {
-        var empty = content.querySelector(':scope > .board-level-empty');
-        var emptyStyle = window.getComputedStyle(content);
-        var padLeft = parseFloat(emptyStyle.paddingLeft || '0') || 0;
-        var padRightEmpty = parseFloat(emptyStyle.paddingRight || '0') || 0;
-        contentWidth = Math.max(120, Math.ceil((empty ? empty.offsetWidth : 0) + padLeft + padRightEmpty));
+      if (stacks.length === 0) continue;
+      var maxRight = 0;
+      for (var s = 0; s < stacks.length; s++) {
+        var stack = stacks[s];
+        var right = stack.offsetLeft + stack.offsetWidth;
+        if (right > maxRight) maxRight = right;
       }
-
-      if (contentWidth > 0) {
-        content.style.width = contentWidth + 'px';
-      }
+      var padRight = parseFloat(window.getComputedStyle(content).paddingRight) || 0;
+      content.style.width = Math.ceil(maxRight + padRight) + 'px';
     }
   }
 
@@ -8669,9 +8666,6 @@ var LexeraDashboard = (function () {
     // Restore scroll position immediately after DOM rebuild
     restoreBoardScroll();
     var isCanvas = isCanvasBoardLayout();
-    if (!isCanvas) {
-      clearLayoutLockStyles();
-    }
     _rcMark('afterSyncScroll');
 
     // Batch all post-render DOM work into a single rAF to avoid multiple
@@ -8684,11 +8678,8 @@ var LexeraDashboard = (function () {
       var container = getElColumnsContainer();
       // Re-apply scroll position after layout (browser may have clamped it)
       restoreBoardScroll();
-      if (isCanvas) {
-        syncCanvasRowBounds(container);
-      } else {
-        syncRenderedRowWidths();
-      }
+      if (isCanvas) syncCanvasRowBounds(container);
+      else syncRenderedRowWidths();
       enhanceRenderedElement(container, { structural: true });
       syncSidebarToView();
       updateCardEditingIndicators();

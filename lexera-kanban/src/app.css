@@ -3026,6 +3026,7 @@ body.is-dragging-layout .columns-container {
   align-items: center;
   justify-content: flex-start;
   min-height: 22px;
+  min-width: 120px;
 }
 
 .board-level-empty-stacks {
