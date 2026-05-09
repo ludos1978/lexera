@@ -1469,10 +1469,37 @@ interface LexeraLifecycleApi {
   defaultConfig(searchString?: string): LexeraLifecycleConfig;
 }
 
+/**
+ * Frontend log levels accepted by `lexeraLog` (the in-app logger that
+ * surfaces every entry into the Log panel). Per-feedback in CLAUDE.md
+ * the kanban frontend MUST log only via `lexeraLog` / `logFrontendIssue`
+ * — never `console.*` or stderr — so callers across the codebase
+ * funnel through this signature.
+ */
+type LexeraLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/**
+ * Snapshot returned by `getLogFoldedStatusData()` (defined in
+ * src/logging/loggingSystem.js). Drives the four badges rendered in
+ * the bottom-dock fold strip when the log panel is collapsed:
+ * connection state, log count, sync user count, and in-flight API
+ * call count.
+ */
+interface LexeraLogFoldedStatusData {
+  /** Backend connection state. Drives the green/red dot + label. */
+  connected: boolean;
+  /** Total log entries currently in the in-memory buffer. */
+  logCount: number;
+  /** Number of remote sync peers currently visible in `LexeraApi`. */
+  userCount: number;
+  /** Number of `LexeraApi` requests still awaiting a response. */
+  inFlightCount: number;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
-    lexeraLog: any;
+    lexeraLog(level: LexeraLogLevel, message: string): void;
     LexeraLayoutTree: LexeraLayoutTreeApi;
     /** Typed via `@typedef LexeraLifecycleReconcilerApi` in
      *  src/workspace/lifecycleReconciler.js (script-mode JS @typedef
@@ -1510,7 +1537,7 @@ declare global {
     LexeraLifecycle: LexeraLifecycleApi;
 
     // Logging diagnostics.
-    getLogFoldedStatusData: any;
+    getLogFoldedStatusData(): LexeraLogFoldedStatusData;
 
     // Tauri 2 globals injected by the runtime.
     __TAURI__: any;
