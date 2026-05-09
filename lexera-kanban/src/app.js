@@ -5437,8 +5437,10 @@ var LexeraDashboard = (function () {
    * fallback when scroll-anchoring leaks through.
    *
    * Returns an `unlock()` fn the caller can invoke to release the
-   * latch early (e.g. when the user explicitly scrolls within the
-   * window — though we don't currently distinguish user scrolls).
+   * latch early. The latch ALSO auto-unlocks the moment any user
+   * input event (wheel / touchstart / pointerdown / keydown) fires
+   * on the container — so a user who immediately scrolls right
+   * after exiting an edit isn't fought by the latch.
    *
    * @param {number} [durationMs] Default 400ms.
    * @returns {() => void}
@@ -5461,12 +5463,27 @@ var LexeraDashboard = (function () {
         cc.scrollLeft = lockedLeft;
       }
     }
+    // User-input cancel: any of these events on the container means
+    // the user is actively scrolling/touching/typing — release the
+    // latch immediately so we don't fight their input. We can't
+    // distinguish browser-initiated scrolls from user scrolls via the
+    // scroll event alone (the scroll-event source bit isn't exposed
+    // by the platform), but a user-input event firing in the same
+    // window is a reliable proxy.
+    var INPUT_EVENTS = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+    function onUserInput() { detach(); }
     function detach() {
       if (detached) return;
       detached = true;
       cc.removeEventListener('scroll', onScroll);
+      for (var i = 0; i < INPUT_EVENTS.length; i++) {
+        cc.removeEventListener(INPUT_EVENTS[i], onUserInput);
+      }
     }
     cc.addEventListener('scroll', onScroll, { passive: true });
+    for (var j = 0; j < INPUT_EVENTS.length; j++) {
+      cc.addEventListener(INPUT_EVENTS[j], onUserInput, { passive: true, capture: true });
+    }
     // Hard-uninstall after deadline regardless, so a quiet (no scroll
     // event) deadline still cleans up the listener.
     setTimeout(detach, totalMs + 50);

@@ -106,4 +106,24 @@ describe('card-edit horizontal scroll-latch contract', () => {
       /_deps\.lockBoardScrollHorizontal\(\s*400\s*\)/
     );
   });
+
+  it('the latch auto-cancels on user-input events (wheel / touchstart / pointerdown / keydown)', () => {
+    // Fighting a user who scrolls right after exiting an edit would
+    // be worse than the original bug. Any of these events on the
+    // container detaches the latch immediately. Listed explicitly so
+    // a future contributor can't quietly drop one.
+    const fnBlock = appSrc.match(
+      /function\s+lockBoardScrollHorizontal[\s\S]{0,3500}?^\s{2}\}/m
+    );
+    expect(fnBlock).toBeTruthy();
+    const required = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+    for (const evt of required) {
+      expect(
+        fnBlock[0].includes(`'${evt}'`) || fnBlock[0].includes(`"${evt}"`),
+        `latch must register ${evt} as a user-input cancel trigger`
+      ).toBe(true);
+    }
+    // The cancel-handler must call detach (the listener-cleanup fn).
+    expect(fnBlock[0]).toMatch(/function\s+onUserInput\(\)\s*\{\s*detach\(\)/);
+  });
 });
