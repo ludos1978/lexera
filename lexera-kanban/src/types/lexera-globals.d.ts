@@ -1365,6 +1365,110 @@ interface LexeraBoardHostApi {
   hasVisibilityObserver(tabId: string): boolean;
 }
 
+/**
+ * Source: src/shell/lifecycle.js (IIFE; window.LexeraLifecycle = api).
+ * Webview lifecycle: LRU freshness tracking, soft-cap eviction, and a
+ * pre-warmed webview pool that the spawn fast-path can repurpose via
+ * `navigateWebview` (the renderer process is kept alive — much cheaper
+ * than `add_child`).
+ *
+ * Transport primitives (`spawn`, `destroy`, `setGeometry`,
+ * `navigateWebview`, `listWebviews`) live in `multiviewClient.js` and
+ * are dependency-injected via `create({...})`. Returns the lifecycle
+ * instance — `multiviewClient.js` exposes it on `LexeraMultiview.lifecycle`.
+ *
+ * Mirrors the JSDoc `@typedef`s in `src/shell/lifecycle.js`; if the
+ * interfaces below diverge from those, the typedef-check gate will
+ * surface the mismatch.
+ */
+interface LexeraLifecycleConfig {
+  softCap: number;
+  poolSize: number;
+  poolUrl: string;
+  pinnedLabels: string[];
+}
+
+interface LexeraLifecycleSpawnOptions {
+  label: string;
+  url: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface LexeraLifecycleGeometryUpdate {
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface LexeraLifecycleWebviewListEntry {
+  label: string;
+}
+
+interface LexeraLifecycleDeps {
+  spawn(opts: LexeraLifecycleSpawnOptions): Promise<unknown>;
+  destroy(label: string): Promise<unknown>;
+  setGeometry(updates: Array<LexeraLifecycleGeometryUpdate>): Promise<unknown>;
+  navigateWebview(label: string, url: string): Promise<unknown>;
+  listWebviews(): Promise<Array<LexeraLifecycleWebviewListEntry>>;
+  /** Optional URL search string for config overrides. Defaults to
+   *  `window.location.search`. */
+  locationSearch?: string;
+  /** Optional initial config; missing fields fall back to defaults. */
+  config?: LexeraLifecycleConfig;
+}
+
+interface LexeraLifecycleSpawnResult {
+  label: string;
+  /** True when the spawn was satisfied by repurposing a pool entry
+   *  (renderer process kept alive) instead of `add_child`. */
+  fromPool: boolean;
+}
+
+interface LexeraLifecycleStatus {
+  config: LexeraLifecycleConfig;
+  /** Per-label LRU timestamp (ms epoch). */
+  freshness: { [label: string]: number };
+  /** Labels of currently-pre-warmed pool entries. */
+  pool: string[];
+}
+
+interface LexeraLifecycleInstance {
+  /** Apply a partial config update; returns the merged config. */
+  configure(updates: Partial<LexeraLifecycleConfig>): LexeraLifecycleConfig;
+  /** Snapshot of current config + freshness + pool, intended for
+   *  diagnostics / debug surfaces. */
+  status(): LexeraLifecycleStatus;
+  /** Spawn (or repurpose from pool) a webview at the requested
+   *  geometry. The instance handles soft-cap eviction first if
+   *  the spawn would push live count past `softCap`. */
+  spawn(opts: LexeraLifecycleSpawnOptions): Promise<LexeraLifecycleSpawnResult>;
+  /** Mark `label` as recently-used so it survives soft-cap eviction. */
+  touch(label: string): void;
+  /** Force a soft-cap pass (normally fired by `spawn`). */
+  evictOldestIfOverCap(): Promise<unknown>;
+  /** Force a pool top-up to `poolSize` entries. */
+  refillPool(): Promise<unknown>;
+  /** Test seams — internal state accessors for vitest. */
+  _getConfig(): LexeraLifecycleConfig;
+  _getFreshness(): { [label: string]: number };
+  _getPool(): string[];
+}
+
+interface LexeraLifecycleApi {
+  /** Build a lifecycle instance bound to the supplied transport
+   *  primitives. */
+  create(deps: LexeraLifecycleDeps): LexeraLifecycleInstance;
+  /** Resolve a `LexeraLifecycleConfig` from the supplied URL
+   *  search string (or `window.location.search`). Used by `create`
+   *  when no explicit `config` is passed in `deps`. */
+  defaultConfig(searchString?: string): LexeraLifecycleConfig;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
@@ -1403,7 +1507,7 @@ declare global {
     LexeraDialogs: LexeraDialogsApi;
     LexeraInspectorShortcuts: LexeraInspectorShortcutsApi;
     LexeraPanelLaunchers: LexeraPanelLaunchersApi;
-    LexeraLifecycle: any;
+    LexeraLifecycle: LexeraLifecycleApi;
 
     // Logging diagnostics.
     getLogFoldedStatusData: any;
