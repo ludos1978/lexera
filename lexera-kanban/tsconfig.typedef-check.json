@@ -28,6 +28,7 @@
     "src/types/lexera-globals.d.ts",
     "src/titleHelpers.js",
     "src/shell/inspectorShortcuts.js",
+    "src/shell/panelLaunchers.js",
     "src/workspace/boardHost.js",
     "src/workspace/geometryObserver.js",
     "src/workspace/layoutPersistence.js",

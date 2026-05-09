@@ -412,6 +412,7 @@ declare global {
     LexeraRuntime: any;
     LexeraDialogs: LexeraDialogsApi;
     LexeraInspectorShortcuts: any;
+    LexeraPanelLaunchers: any;
 
     // Logging diagnostics.
     getLogFoldedStatusData: any;

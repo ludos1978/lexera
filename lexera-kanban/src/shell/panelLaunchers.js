@@ -24,9 +24,54 @@
 // If `side` is set the launcher uses openAsSidePanel; otherwise the
 // webview floats at (x, y) with the given size.
 
+/**
+ * @typedef {'left'|'right'|'bottom'|'top'} SidePanelEdge
+ */
+
+/**
+ * @typedef {Object} SidePanelOpts
+ * @property {string} label
+ * @property {string} url
+ * @property {SidePanelEdge} [side]
+ * @property {number} [size]
+ * @property {number} [topInset]
+ */
+
+/**
+ * @typedef {Object} LauncherOpts
+ * @property {SidePanelEdge} [side]
+ * @property {number} [size]
+ * @property {number} [topInset]
+ * @property {number} [x]
+ * @property {number} [y]
+ * @property {number} [width]
+ * @property {number} [height]
+ */
+
+/**
+ * @typedef {Object} FloatingDefaults
+ * @property {number} [x]
+ * @property {number} [y]
+ * @property {number} width
+ * @property {number} height
+ */
+
+/**
+ * @typedef {Object} SlotRect
+ * @property {number} x
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ */
+
+/**
+ * @typedef {(opts?: LauncherOpts) => Promise<*>} Launcher
+ */
+
 (function () {
   'use strict';
 
+  /** @returns {*} */
   function multiview() {
     if (typeof window !== 'undefined' && window.LexeraMultiview) return window.LexeraMultiview;
     return null;
@@ -34,14 +79,22 @@
 
   // ── Side-panel positioning ──────────────────────────────────────
 
+  /** @type {Object<string, () => void>} */
   var sidePanelSubscriptions = {};
 
+  /** @returns {SlotRect | null} */
   function getMainWindowClientRect() {
     if (typeof document === 'undefined' || !document.body) return null;
     var r = document.body.getBoundingClientRect();
     return { x: 0, y: 0, width: r.width, height: r.height };
   }
 
+  /**
+   * @param {SidePanelEdge} side
+   * @param {number} size
+   * @param {LauncherOpts | SidePanelOpts | undefined} opts
+   * @returns {SlotRect | null}
+   */
   function computeSlotRect(side, size, opts) {
     var topInset = opts && opts.topInset != null ? opts.topInset : 32;
     var rect = getMainWindowClientRect();
@@ -61,6 +114,10 @@
     return null;
   }
 
+  /**
+   * @param {SidePanelOpts} opts
+   * @returns {Promise<*>}
+   */
   function openAsSidePanel(opts) {
     var mv = multiview();
     if (!mv) return Promise.reject(new Error('LexeraMultiview not loaded'));
@@ -90,6 +147,10 @@
     return promise;
   }
 
+  /**
+   * @param {string} label
+   * @returns {Promise<*>}
+   */
   function closeSidePanel(label) {
     var handler = sidePanelSubscriptions[label];
     if (handler && typeof window !== 'undefined') {
@@ -106,6 +167,13 @@
   // window with default geometry". Factor that out so each launcher
   // is a 1-line registration.
 
+  /**
+   * @param {string} label
+   * @param {string} url
+   * @param {FloatingDefaults} floatingDefaults
+   * @param {string | string[]} [openMessage]
+   * @returns {Launcher}
+   */
   function makeLauncher(label, url, floatingDefaults, openMessage) {
     return function launcher(opts) {
       opts = opts || {};
