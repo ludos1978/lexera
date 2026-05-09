@@ -378,6 +378,80 @@ interface LexeraTreeRegistryApi {
   findPanelInAllTrees(panelId: string): LexeraTreeRegistryFoundPanel | null;
 }
 
+/**
+ * Source: src/workspace/messageBridge.js (IIFE;
+ * window.LexeraMessageBridge = api). Shell ↔ board-webview IPC.
+ * All messages between the workspace shell and embedded board
+ * sub-apps go through this module. Stateful — `setup({ multiview })`
+ * must be called once before any other method (throws otherwise).
+ *
+ * Mirrors the JSDoc typedefs in messageBridge.js (CatalogSnapshot,
+ * MultiviewLabelResolver). Tab and snapshot inner shapes are kept
+ * loose (`any`/`unknown`) at this boundary; the messageBridge module
+ * itself owns the precise validation.
+ */
+interface LexeraMessageBridgeCatalogSnapshot {
+  boards: Array<unknown>;
+  remoteBoards: Array<unknown>;
+  workspaces: Array<unknown>;
+  activeWorkspaceId: string;
+  activeWorkspace: Record<string, unknown> | null;
+  viewWorkspaceId: string;
+  viewWorkspace: Record<string, unknown> | null;
+  workspaceViewMode: 'manual' | 'follow-active-board';
+}
+
+interface LexeraMessageBridgeMultiviewLabelResolver {
+  /** Resolve the Tauri webview label for a board tab id. */
+  labelForTabId(tabId: string): string;
+  /** Resolve the Tauri webview label for a tab object. */
+  labelForTab(tab: unknown): string;
+}
+
+/**
+ * Shape of the value returned by `build-context-menu` IPC roundtrips
+ * (see workspaceShell.js:~4684 — used to populate native context
+ * menus). `context` carries arbitrary scope-specific fields the
+ * webview wants surfaced back through `dispatchAction`, so it stays
+ * permissive.
+ */
+interface LexeraMessageBridgeContextMenuResponse {
+  items: Array<Record<string, unknown>>;
+  context: Record<string, any>;
+}
+
+interface LexeraMessageBridgeApi {
+  /** Bind the multiview label resolver. Throws if `multiview` is
+   *  missing. Must be called once at boot. */
+  setup(deps: { multiview: LexeraMessageBridgeMultiviewLabelResolver }): void;
+  /** Send `focus-hierarchy-target` to the webview hosting `tabId`. */
+  focusHierarchy(tabId: string, target: unknown, options?: Record<string, unknown>): boolean;
+  /** Send `board-action` (`{ action }`) to the webview hosting
+   *  the supplied tab object. */
+  boardAction(tab: unknown, action: string): boolean;
+  /** Broadcast `layout-drag` (`{ active }`) to every child webview. */
+  layoutDrag(active: boolean): boolean;
+  /** Broadcast `backend-connection-state` (`{ connected }`) to
+   *  every child webview. */
+  broadcastBackendConnectionState(connected: boolean): boolean;
+  /** Push the catalog snapshot to every child webview via
+   *  LexeraMultiview.broadcastCatalog. Returns false if the
+   *  multiview broadcaster isn't available. */
+  broadcastCatalog(snapshot: LexeraMessageBridgeCatalogSnapshot): boolean;
+  /** Targeted catalog send for a freshly-activated pane. */
+  sendCatalog(tabId: string, snapshot: LexeraMessageBridgeCatalogSnapshot): boolean;
+  /** Coerce a partial / null / undefined snapshot into a fully
+   *  populated CatalogSnapshot with stable defaults. Idempotent. */
+  normalizeCatalog(snapshot: Partial<LexeraMessageBridgeCatalogSnapshot> | null | undefined): LexeraMessageBridgeCatalogSnapshot;
+  /** Round-trip `build-context-menu` request to the webview hosting
+   *  `tabId`. Resolves with the menu definition or rejects on
+   *  timeout / unavailable transport. Default timeout 1500ms. */
+  requestContextMenu(tabId: string, scope: string, ctx: unknown, timeoutMs?: number): Promise<LexeraMessageBridgeContextMenuResponse | null>;
+  /** Send `dispatch-action` (`{ scope, action, context }`) to the
+   *  webview hosting `tabId`. */
+  dispatchAction(tabId: string, scope: string, action: string, context: unknown): boolean;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
@@ -388,7 +462,7 @@ declare global {
     LexeraPanelHost: any;
     LexeraMultiviewWebview: any;
     LexeraMultiview: any;
-    LexeraMessageBridge: any;
+    LexeraMessageBridge: LexeraMessageBridgeApi;
     LexeraLayoutPersistence: any;
     LexeraTabDragController: LexeraTabDragControllerApi;
     LexeraGeometryObserver: LexeraGeometryObserverApi;
@@ -413,6 +487,7 @@ declare global {
     LexeraDialogs: LexeraDialogsApi;
     LexeraInspectorShortcuts: any;
     LexeraPanelLaunchers: any;
+    LexeraLifecycle: any;
 
     // Logging diagnostics.
     getLogFoldedStatusData: any;
