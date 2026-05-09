@@ -805,6 +805,81 @@ interface LexeraManagementBridgeApi {
 }
 
 /**
+ * Source: src/shell/bridges/embeddedBoardBridge.js (IIFE;
+ * window.LexeraEmbeddedBoardBridge = api). The sub-app side of the
+ * multiview wiring — runs INSIDE every kanban-board webview whose URL
+ * carries `?embedded=1`. Bridges shell broadcasts (catalog,
+ * dashboard navigation, layout/theme/connection state, cross-view
+ * drag, context-menu requests, mutation delegation) into the legacy
+ * `window.message` shape that the embedded board's existing
+ * orderHelpers.js / app.js handlers already consume. Also reports
+ * focus + health back to the shell, forwards the four open-helper
+ * keyboard shortcuts the webview captured before the shell could see
+ * them, and services cross-webview request/dispatch for build-context-
+ * menu and delegate-mutation.
+ *
+ * The bridge is dependency-injected because `multiviewClient.js` owns
+ * the Tauri-runtime accessors. `install(deps)` is called from
+ * `bootMultiview` only when the URL marks the webview as an embedded
+ * board; on any other webview it short-circuits to `false` so the
+ * subscribe / listen plumbing never runs.
+ */
+interface LexeraEmbeddedBoardBridgeShortcutMap {
+  /** Modifier+key chord (e.g. `Ctrl+Alt+L`, `Meta+Alt+I`) → shortcut
+   *  action id (e.g. `open-log-view`, `open-inspector`). Forwarded to
+   *  the shell as `multiview-shortcut` for the open-helper map in
+   *  `navigationBridge`. */
+  [chord: string]: string;
+}
+
+interface LexeraEmbeddedBoardBridgeWebview {
+  /** Webview label (e.g. `board-tab-…`). Used as the source-window
+   *  filter on outbound broadcasts and the subscribe key. */
+  label: string;
+  listen(eventName: string, handler: (event: { payload?: unknown } | null | undefined) => void): unknown;
+}
+
+interface LexeraEmbeddedBoardBridgeDeps {
+  /** Returns the current webview handle the bridge listens on. The
+   *  bridge bails (`install` → `false`) when this is missing or
+   *  returns null. */
+  getCurrentWebview(): LexeraEmbeddedBoardBridgeWebview | null | undefined;
+  /** Tauri command invoker — used for `multiview_subscribe`,
+   *  `multiview_broadcast`, `multiview_set_focused`,
+   *  `multiview_set_health`. */
+  invoke(cmd: string, args?: Record<string, unknown>): Promise<unknown>;
+  /** Optional request/response responder (see requestBridge). When
+   *  present, the bridge installs a `build-context-menu` handler on
+   *  it; absent → context-menu requests go unanswered (sub-app
+   *  webviews that don't surface a menu can omit it). */
+  handleRequest?: (
+    requestEvent: string,
+    handler: (data: unknown) => unknown | Promise<unknown>
+  ) => unknown;
+}
+
+interface LexeraEmbeddedBoardBridgeApi {
+  /** Detect whether the current URL marks this webview as an
+   *  embedded kanban board (`?embedded=1`). */
+  isEmbeddedKanban(): boolean;
+  /** Wire shell ⇄ embedded-board listeners. Returns `true` on full
+   *  success, `false` when the webview isn't embedded, deps are
+   *  incomplete, or the webview helper isn't available. Idempotent
+   *  for the CSS-injection step (marker `<style id>` guards re-run);
+   *  the listen/subscribe side trusts the caller to install once. */
+  install(deps: LexeraEmbeddedBoardBridgeDeps | null | undefined): boolean;
+  /** Resolve a `KeyboardEvent` to a shortcut action id (via
+   *  `MV_SHORTCUTS`) or `null` if no chord matches. The keydown
+   *  handler installed by `install` calls this to decide whether to
+   *  forward the event as `multiview-shortcut`. */
+  shortcutForKeydownEvent(event: KeyboardEvent): string | null;
+  /** Static chord → action map. Read-only by convention; the
+   *  embedded-board side mirrors the four open-helper actions
+   *  defined in `LexeraNavigationBridgeApi.SHORTCUT_ACTIONS`. */
+  MV_SHORTCUTS: LexeraEmbeddedBoardBridgeShortcutMap;
+}
+
+/**
  * Source: src/shell/bridges/requestBridge.js (IIFE;
  * window.LexeraRequestBridge = api). Request/response IPC pattern
  * over Tauri events: pairs a request event with a `<event>-response`
@@ -994,7 +1069,7 @@ declare global {
     LexeraRequestBridge: LexeraRequestBridgeApi;
     LexeraManagementBridge: LexeraManagementBridgeApi;
     LexeraBackendStatusBridge: LexeraBackendStatusBridgeApi;
-    LexeraEmbeddedBoardBridge: any;
+    LexeraEmbeddedBoardBridge: LexeraEmbeddedBoardBridgeApi;
     LexeraHierarchyDragBridge: any;
     LexeraKeybindingRegistry: LexeraKeybindingRegistryApi;
     LexeraRuntime: any;
