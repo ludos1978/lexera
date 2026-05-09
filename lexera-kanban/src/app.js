@@ -1703,6 +1703,68 @@ var LexeraDashboard = (function () {
     setupSidebarWidthResize();
     setupWorkspaceShell();
 
+    // DIAGNOSTIC: universal scroll watcher on the board viewport. Logs
+    // every scroll event with delta + scrollWidth/clientWidth + the
+    // current document.activeElement + a 7-frame stack trace. Empty
+    // stack + a card/textarea activeElement points at focus-driven
+    // browser auto-scroll-into-view (the leading hypothesis for the
+    // card-edit-end horizontal jump). Empty stack + body activeElement
+    // points at scroll-anchoring or layout-recompute. Gated by
+    // `localStorage.LEXERA_SCROLL_DRIFT_DEBUG = '1'` to keep the Log
+    // panel quiet by default.
+    try {
+      (function installBoardScrollDriftWatcher() {
+        if (typeof document === 'undefined' || typeof logFrontendIssue !== 'function') return;
+        function tryInstall() {
+          var el = document.querySelector('.columns-container');
+          if (!el) { setTimeout(tryInstall, 250); return; }
+          if (el.__lexeraDriftWatcherInstalled) return;
+          el.__lexeraDriftWatcherInstalled = true;
+          var lastLeft = el.scrollLeft;
+          var lastTop = el.scrollTop;
+          el.addEventListener('scroll', function () {
+            var debug = false;
+            try {
+              debug = typeof localStorage !== 'undefined'
+                && localStorage.getItem('LEXERA_SCROLL_DRIFT_DEBUG') === '1';
+            } catch (_) {}
+            var newLeft = el.scrollLeft;
+            var newTop = el.scrollTop;
+            var dx = newLeft - lastLeft;
+            var dy = newTop - lastTop;
+            lastLeft = newLeft;
+            lastTop = newTop;
+            if (!debug) return;
+            var trace = '';
+            try { throw new Error('scroll-drift'); } catch (e) { trace = e.stack || ''; }
+            var ae = '(none)';
+            try {
+              var aeEl = document.activeElement;
+              if (aeEl) {
+                var aeId = aeEl.id ? '#' + aeEl.id : '';
+                var aeCls = (aeEl.className && typeof aeEl.className === 'string')
+                  ? '.' + aeEl.className.split(/\s+/).slice(0, 2).join('.') : '';
+                var aeCi = aeEl.getAttribute ? aeEl.getAttribute('data-col-index') : null;
+                var aeCa = aeEl.getAttribute ? aeEl.getAttribute('data-card-index') : null;
+                ae = (aeEl.tagName || '?') + aeId + aeCls
+                  + (aeCi !== null ? '[col=' + aeCi + ']' : '')
+                  + (aeCa !== null ? '[card=' + aeCa + ']' : '');
+              }
+            } catch (_) {}
+            try {
+              logFrontendIssue('debug', 'scroll-drift',
+                'dx=' + dx + ' dy=' + dy +
+                ' left=' + newLeft + ' top=' + newTop +
+                ' scrollWidth=' + el.scrollWidth + ' clientWidth=' + el.clientWidth +
+                ' active=' + ae +
+                ' trace=' + trace.split('\n').slice(1, 8).join(' <- '));
+            } catch (_) {}
+          }, { passive: true });
+        }
+        tryInstall();
+      })();
+    } catch (_) {}
+
     // Init panels that may already exist after workspace shell restore.
     if (ManagementWiring) ManagementWiring.initDelayedPanels();
 

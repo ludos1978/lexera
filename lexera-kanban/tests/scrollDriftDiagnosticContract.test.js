@@ -104,4 +104,45 @@ describe('scroll-drift diagnostic contract', () => {
     expect(offenders, offenders.map((o) => `line ${o.idx}: ${o.line.trim()}`).join('\n'))
       .toEqual([]);
   });
+
+  // ── Universal scroll watcher (.columns-container) ─────────────────
+  // Companion diagnostic to preserveBoardScroll — the universal
+  // watcher captures scroll events even when they fire OUTSIDE the
+  // restoreBoardScroll() window (browser-initiated scroll-anchoring,
+  // focus-driven scroll-into-view, post-decode layout shifts). Same
+  // localStorage flag (LEXERA_SCROLL_DRIFT_DEBUG=1) gates the log
+  // emission. The activeElement field is the smoking gun for
+  // focus-driven horizontal drift: empty JS stack + a card/textarea
+  // activeElement at scroll time means the browser's
+  // scroll-into-view-on-focus is the trigger, not anchoring.
+
+  it('app.js installs the universal scroll watcher on .columns-container', () => {
+    expect(appSrc).toMatch(/installBoardScrollDriftWatcher/);
+    expect(appSrc).toMatch(/__lexeraDriftWatcherInstalled/);
+    expect(appSrc).toMatch(/document\.querySelector\(['"]\.columns-container['"]\)/);
+  });
+
+  it('the universal watcher gates log emission on LEXERA_SCROLL_DRIFT_DEBUG', () => {
+    // Same flag the preserveBoardScroll-side logger uses, so toggling
+    // one flag turns BOTH diagnostics on at once.
+    const watcherBlock = appSrc.match(/installBoardScrollDriftWatcher[\s\S]{0,4000}/);
+    expect(watcherBlock).toBeTruthy();
+    expect(watcherBlock[0]).toMatch(/LEXERA_SCROLL_DRIFT_DEBUG/);
+  });
+
+  it('the universal watcher emits via logFrontendIssue with the scroll-drift topic', () => {
+    expect(appSrc).toMatch(/logFrontendIssue\(\s*['"]debug['"]\s*,\s*['"]scroll-drift['"]/);
+  });
+
+  it('the universal watcher captures document.activeElement at scroll time', () => {
+    // Empty JS stack + activeElement = focus-driven horizontal scroll
+    // (the leading hypothesis); empty stack + body = anchoring.
+    expect(appSrc).toMatch(/document\.activeElement/);
+    expect(appSrc).toMatch(/active=/);
+  });
+
+  it('the universal watcher includes scrollWidth/clientWidth so deltaLeft → maxScrollLeft can be decoded', () => {
+    expect(appSrc).toMatch(/scrollWidth=/);
+    expect(appSrc).toMatch(/clientWidth=/);
+  });
 });
