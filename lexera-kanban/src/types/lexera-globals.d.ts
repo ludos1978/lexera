@@ -19,6 +19,45 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: src/shell/bridges/catalogBridge.js (IIFE;
+ * window.LexeraCatalogBridge = api). Caches the last
+ * board-catalog snapshot + active-board id and re-broadcasts each
+ * to every sub-app webview when activated. wrapShellMethods()
+ * monkey-patches `LexeraWorkspaceShell.onCatalogUpdated` /
+ * `onActiveBoardChanged` so the bridge intercepts every
+ * shell-emitted update without the shell knowing about it. Idempotent
+ * via the `__lexeraMultiviewCatalogWrapped` flag on `window`.
+ */
+interface LexeraCatalogBridgeApi {
+  /** Push a snapshot to every sub-app via the multiview broadcast
+   *  bus + cache it as the new `lastCatalogSnapshot`. */
+  broadcastCatalog(snapshot: unknown): Promise<unknown>;
+  /** Read the cached snapshot (`null` until the first broadcast). */
+  getLastCatalog(): unknown;
+  /** Toggle the catalog-broadcast switch on/off. */
+  activateCatalog(): void;
+  deactivateCatalog(): void;
+  /** Push an active-board id to every sub-app + cache it. */
+  broadcastActiveBoard(boardId: string | null): Promise<unknown>;
+  /** Read the cached active-board id. */
+  getLastActiveBoardId(): string | null;
+  /** Toggle the active-board-broadcast switch on/off. */
+  activateActiveBoard(): void;
+  deactivateActiveBoard(): void;
+  /** Activate both catalog + active-board sides at once. */
+  activate(): void;
+  /** Deactivate both at once. */
+  deactivate(): void;
+  /** Idempotent monkey-patch of LexeraWorkspaceShell.onCatalogUpdated
+   *  + onActiveBoardChanged so the bridge intercepts every shell
+   *  emit. Guarded by `window.__lexeraMultiviewCatalogWrapped`. */
+  wrapShellMethods(): void;
+  /** Subscribe to the `catalog-request` event so a freshly-loaded
+   *  sub-app can pull the cached snapshot on demand. */
+  initListeners(): void;
+}
+
+/**
  * Source: src/shell/bridges/navigationBridge.js (IIFE;
  * window.LexeraNavigationBridge = api). Subscribes the shell to
  * multiview-navigate / multiview-shortcut / focus-changed /
@@ -746,7 +785,7 @@ declare global {
     LexeraDebug: LexeraDebugApi;
     LexeraEmbedMenu: any;
     LexeraThemeBridge: LexeraThemeBridgeApi;
-    LexeraCatalogBridge: any;
+    LexeraCatalogBridge: LexeraCatalogBridgeApi;
     LexeraNavigationBridge: LexeraNavigationBridgeApi;
     LexeraRequestBridge: LexeraRequestBridgeApi;
     LexeraManagementBridge: any;
