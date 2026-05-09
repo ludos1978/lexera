@@ -373,8 +373,8 @@ interface LexeraLayoutTreeApi {
     parent?: any,
     side?: 'first' | 'second' | ''
   ): void;
-  getFirstLeaf(node: any): any;
-  findLeafById(node: any, leafId: string): any;
+  getFirstLeaf(node: LexeraDockTreeNode | null): LexeraDockTreeLeaf | null;
+  findLeafById(node: LexeraDockTreeNode | null, leafId: string): LexeraDockTreeLeaf | null;
   findNodeAndParent(node: any, nodeId: string): any;
   findTab(
     node: LexeraDockTreeNode | null,
@@ -424,7 +424,11 @@ interface LexeraLayoutTreeApi {
   createIdFactory(): (prefix: string) => string;
   createTabsetNode(tabs: any[], idFactory?: (prefix: string) => string): any;
   createSplitNode(axis: 'horizontal' | 'vertical', first: any, second: any, ratio: number, idFactory?: (prefix: string) => string): any;
-  withNormalizedLeaves(node: any, isRoot: boolean, idFactory?: (prefix: string) => string): any;
+  withNormalizedLeaves(
+    node: LexeraDockTreeNode | null,
+    isRoot: boolean,
+    idFactory?: (prefix: string) => string
+  ): LexeraDockTreeNode | null;
   createBoardTab(boardId: string, viewKind: string | null | undefined, idFactory?: (prefix: string) => string): any;
   createPanelTab(panelId: string, idFactory?: (prefix: string) => string): any;
   migratePanelDocksToSideDocks(panelDocks: any, panelGroupActives: any, idFactory?: (prefix: string) => string): any;
