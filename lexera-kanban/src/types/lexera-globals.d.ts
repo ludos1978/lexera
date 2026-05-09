@@ -805,6 +805,125 @@ interface LexeraManagementBridgeApi {
 }
 
 /**
+ * Source: src/shell/bridges/hierarchyDragBridge.js (IIFE;
+ * window.LexeraHierarchyDragBridge = api). Shell-side handler for the
+ * `hierarchy-entity-drop` broadcasts emitted by the workspaces and
+ * hierarchy sub-apps when the user drags a row / stack / column / card
+ * onto a sibling. Pure-helper layer (`applyEntityReorder` / `…Absorb`
+ * / `…Rename` / `applyDrop`) mutates `KanbanBoard` shapes in place;
+ * the IO-bound `install` wraps them with `LexeraApi.saveBoard` and
+ * `routeCrossViewDragPoint` translates a sub-app drag mousemove to a
+ * (targetLabel, localX, localY) tuple the shell forwards via
+ * `multiview_emit_to`.
+ *
+ * Entity kind discriminator is `'row' | 'stack' | 'column' | 'card'`
+ * for nested entities and `'board'` for the special `row → board`
+ * absorb (the kanban itself as the absorb container).
+ */
+type LexeraHierarchyDragEntityKind = 'row' | 'stack' | 'column' | 'card' | 'board';
+
+interface LexeraHierarchyDragSource {
+  kind: LexeraHierarchyDragEntityKind;
+  entityId: string;
+  /** Required for cross-board moves; identical to target.boardId
+   *  signals a same-board move. */
+  boardId?: string;
+}
+
+interface LexeraHierarchyDragTarget {
+  kind: LexeraHierarchyDragEntityKind;
+  entityId: string;
+  boardId?: string;
+  /** Drop side relative to the target sibling. Defaults to `'before'`
+   *  for backwards compatibility with pre-zone-aware call sites. */
+  position?: 'before' | 'after';
+}
+
+interface LexeraHierarchyDragRoutePointDeps {
+  /** Label of the webview firing the drag mousemove. */
+  sourceWebviewLabel: string;
+  /** Pointer coordinates in the source document's client space. */
+  sourceClientX: number;
+  sourceClientY: number;
+  /** Top-window rect for any webview by label, or null when the
+   *  label isn't currently spawned. */
+  getWebviewRect(label: string): { left: number; top: number; right: number; bottom: number } | null;
+  /** Shell helper from multiviewWebview.js — looks up which webview's
+   *  geometry contains the supplied top-window point. */
+  getWebviewLabelAtTopPoint(topX: number, topY: number): string | null;
+}
+
+interface LexeraHierarchyDragRoutePointResult {
+  /** Label of the destination webview that the cursor is currently
+   *  over (excludes the source itself). */
+  targetLabel: string;
+  /** Pointer coords inside the target webview's document — what
+   *  `__lexeraExternalDnd.hover(payload, x, y)` expects. */
+  localX: number;
+  localY: number;
+  /** Same point in top-window coordinates. */
+  topX: number;
+  topY: number;
+}
+
+interface LexeraHierarchyDragWebview {
+  /** Webview label (e.g. `board-tab-…` / `panel-tab-…`). */
+  label: string;
+  listen(eventName: string, handler: (event: { payload?: unknown } | null | undefined) => void): unknown;
+}
+
+interface LexeraHierarchyDragInstallDeps {
+  getCurrentWebview(): LexeraHierarchyDragWebview | null | undefined;
+  invoke(cmd: string, args?: Record<string, unknown>): Promise<unknown>;
+  /** Resolve a board id to a `KanbanBoard`-shaped object the pure
+   *  helpers can mutate. */
+  loadBoard(boardId: string): Promise<unknown>;
+  /** Persist a mutated board. */
+  saveBoard(boardId: string, board: unknown): Promise<unknown>;
+  /** Optional success hook fired after persist. */
+  onApplied?: (boardId: string) => void;
+  /** Optional error hook for any failure path. */
+  onError?: (err: unknown) => void;
+}
+
+interface LexeraHierarchyDragBridgeApi {
+  /** Same-board sibling reorder. Returns `true` when source and
+   *  target share a parent and the move was applied; `false`
+   *  otherwise (cross-parent / cross-board / mismatched kind /
+   *  identical entities). Mutates `board` in place. */
+  applyEntityReorder(board: unknown, source: LexeraHierarchyDragSource, target: LexeraHierarchyDragTarget): boolean;
+  /** Same-board cross-kind absorb (card→column, column→stack,
+   *  stack→row, row→board). Appends source to target's children
+   *  array. Returns `true` when the kind pair forms a valid one-
+   *  level absorb. */
+  applyEntityAbsorb(board: unknown, source: LexeraHierarchyDragSource, target: LexeraHierarchyDragTarget): boolean;
+  /** Cross-board sibling reorder. Mutates BOTH boards in place; the
+   *  caller must persist both. */
+  applyCrossBoardEntityReorder(srcBoard: unknown, tgtBoard: unknown, source: LexeraHierarchyDragSource, target: LexeraHierarchyDragTarget): boolean;
+  /** Cross-board cross-kind absorb. Same kind-pair rules as the
+   *  same-board variant; mutates both boards in place. */
+  applyCrossBoardEntityAbsorb(srcBoard: unknown, tgtBoard: unknown, source: LexeraHierarchyDragSource, target: LexeraHierarchyDragTarget): boolean;
+  /** In-place rename. Refuses empty / unchanged titles. */
+  applyEntityRename(board: unknown, source: LexeraHierarchyDragSource, newTitle: string | null | undefined): boolean;
+  /** Unified dispatch — picks the right helper based on
+   *  same-board vs cross-board and same-kind vs cross-kind. Does
+   *  NOT call `saveBoard`; the caller is expected to persist. */
+  applyDrop(srcBoard: unknown, tgtBoard: unknown, source: LexeraHierarchyDragSource, target: LexeraHierarchyDragTarget): boolean;
+  /** Translate a source-document drag point to a (targetLabel,
+   *  localX, localY) tuple the shell can forward via
+   *  `multiview_emit_to`. Pure — all geometry deps injected.
+   *  Returns `null` when the cursor is outside any known webview or
+   *  resolves to the source webview itself. */
+  routeCrossViewDragPoint(deps: LexeraHierarchyDragRoutePointDeps | null | undefined): LexeraHierarchyDragRoutePointResult | null;
+  /** Production wiring — listens for `hierarchy-entity-drop` events
+   *  on the current webview, looks up boards via the injected IO
+   *  callbacks, applies the move, persists. Returns `false` when
+   *  required deps are missing or the webview helper is
+   *  unavailable. */
+  install(deps: LexeraHierarchyDragInstallDeps | null | undefined): boolean;
+}
+
+/**
  * Source: src/shell/bridges/embeddedBoardBridge.js (IIFE;
  * window.LexeraEmbeddedBoardBridge = api). The sub-app side of the
  * multiview wiring — runs INSIDE every kanban-board webview whose URL
@@ -1070,7 +1189,7 @@ declare global {
     LexeraManagementBridge: LexeraManagementBridgeApi;
     LexeraBackendStatusBridge: LexeraBackendStatusBridgeApi;
     LexeraEmbeddedBoardBridge: LexeraEmbeddedBoardBridgeApi;
-    LexeraHierarchyDragBridge: any;
+    LexeraHierarchyDragBridge: LexeraHierarchyDragBridgeApi;
     LexeraKeybindingRegistry: LexeraKeybindingRegistryApi;
     LexeraRuntime: any;
     LexeraDialogs: LexeraDialogsApi;
