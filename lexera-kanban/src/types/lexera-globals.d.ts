@@ -709,6 +709,102 @@ interface LexeraBackendStatusBridgeApi {
 }
 
 /**
+ * Source: src/shell/bridges/managementBridge.js (IIFE;
+ * window.LexeraManagementBridge = api). Subscribes to three
+ * management-side broadcasts emitted by the backend / management UI:
+ * `management-workspaces-loaded`, `management-board-mutation`, and
+ * `render-apps-config-saved`. Each event is filtered by the bridge's
+ * own window label (events targeted at other windows are ignored)
+ * before being dispatched to the supplied handler bag.
+ *
+ * Webview-scoped listeners are preferred — Tauri 2 leaks `emit_to`
+ * events across windows when subscribed with kind `Any`
+ * (tauri-apps/tauri#11379); the bridge falls back to
+ * runtime-scoped listening only when the per-webview helper isn't
+ * available.
+ */
+interface LexeraManagementBridgeWorkspacesPayload {
+  workspaces: Array<unknown>;
+  defaultWorkspaceId: string | null;
+}
+
+interface LexeraManagementBridgeBoardMutationPayload {
+  /** Mutation discriminator. The bridge dispatches handlers for
+   *  `'added' | 'removed' | 'settings-saved'`; any other value is
+   *  ignored. */
+  kind: string;
+  /** Required for `removed` / `settings-saved`; null for `added`. */
+  boardId: string | null;
+  /** Carried only on `settings-saved`. */
+  settings: Record<string, unknown> | null;
+}
+
+interface LexeraManagementBridgeRenderAppsConfigPayload {
+  /** Free-form key/value map of render-apps settings the management
+   *  UI just saved. */
+  values: Record<string, unknown>;
+}
+
+interface LexeraManagementBridgeHandlers {
+  onWorkspacesLoaded?(workspaces: Array<unknown>, defaultWorkspaceId: string | null): void;
+  onBoardAdded?(): void;
+  onBoardRemoved?(boardId: string): void;
+  onBoardSettingsSaved?(boardId: string, settings: Record<string, unknown>): void;
+  onRenderAppsConfigSaved?(values: Record<string, unknown>): void;
+}
+
+interface LexeraManagementBridgeRuntime {
+  event?: { listen?(eventName: string, handler: (event: unknown) => void): unknown };
+}
+
+interface LexeraManagementBridgeApi {
+  /** Wire listeners against the implicit Tauri runtime
+   *  (`window.__TAURI__`). Returns `true` on success, `false` when
+   *  the runtime / event API is unavailable. */
+  install(handlers?: LexeraManagementBridgeHandlers | null): boolean;
+  /** Same as `install` but accepts an explicit runtime so the bridge
+   *  can be used from contexts that don't expose it on `window`
+   *  (test sandboxes, embedded webviews). Prefers the current
+   *  webview's `listen()` (avoids the Tauri #11379 cross-window
+   *  leak); falls back to `runtime.event.listen()`. */
+  installWith(
+    runtime: LexeraManagementBridgeRuntime | null | undefined,
+    handlers?: LexeraManagementBridgeHandlers | null
+  ): boolean;
+  /** Filter `management-workspaces-loaded` by source window,
+   *  normalize, dispatch `onWorkspacesLoaded`. Returns `true` when
+   *  the handler ran. */
+  handleWorkspacesLoaded(
+    event: unknown,
+    handlers: LexeraManagementBridgeHandlers | null | undefined
+  ): boolean;
+  /** Filter `management-board-mutation` by source window, normalize,
+   *  dispatch the matching `kind` callback. Returns `true` when a
+   *  callback ran (and `false` for ignored kinds / missing
+   *  handlers). */
+  handleBoardMutation(
+    event: unknown,
+    handlers: LexeraManagementBridgeHandlers | null | undefined
+  ): boolean;
+  /** Filter `render-apps-config-saved` by source window, normalize,
+   *  dispatch `onRenderAppsConfigSaved`. Returns `true` when the
+   *  handler ran. */
+  handleRenderAppsConfigSaved(
+    event: unknown,
+    handlers: LexeraManagementBridgeHandlers | null | undefined
+  ): boolean;
+  /** Coerce a raw `management-workspaces-loaded` event into a stable
+   *  `{ workspaces, defaultWorkspaceId }` shape. Idempotent. */
+  normalizeWorkspacesPayload(event: unknown): LexeraManagementBridgeWorkspacesPayload;
+  /** Coerce a raw `management-board-mutation` event into a stable
+   *  `{ kind, boardId, settings }` shape. Idempotent. */
+  normalizeBoardMutationPayload(event: unknown): LexeraManagementBridgeBoardMutationPayload;
+  /** Coerce a raw `render-apps-config-saved` event into a stable
+   *  `{ values }` shape. Idempotent. */
+  normalizeRenderAppsConfigPayload(event: unknown): LexeraManagementBridgeRenderAppsConfigPayload;
+}
+
+/**
  * Source: src/shell/bridges/requestBridge.js (IIFE;
  * window.LexeraRequestBridge = api). Request/response IPC pattern
  * over Tauri events: pairs a request event with a `<event>-response`
@@ -896,7 +992,7 @@ declare global {
     LexeraCatalogBridge: LexeraCatalogBridgeApi;
     LexeraNavigationBridge: LexeraNavigationBridgeApi;
     LexeraRequestBridge: LexeraRequestBridgeApi;
-    LexeraManagementBridge: any;
+    LexeraManagementBridge: LexeraManagementBridgeApi;
     LexeraBackendStatusBridge: LexeraBackendStatusBridgeApi;
     LexeraEmbeddedBoardBridge: any;
     LexeraHierarchyDragBridge: any;
