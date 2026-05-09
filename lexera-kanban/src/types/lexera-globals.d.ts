@@ -1473,6 +1473,42 @@ interface LexeraBoardHostApi {
 }
 
 /**
+ * Source: src/workspace/sharedPanels.js (IIFE;
+ * window.LexeraSharedPanels = api). Per-kind registry of duplicable
+ * panel instances (hierarchy / dashboard / week+monthCalendar / logs /
+ * backendSettings / frontendSettings). Each kind has a factory that
+ * mints an HTMLElement; the registry tracks live instances so the
+ * shell can enumerate roots (e.g. for theme broadcasts) and tear
+ * them down at unmount.
+ *
+ * `lexera-shared-panel-created` CustomEvent fires on `window` for
+ * every successful `createPanelElement` call so listeners (e.g.
+ * sub-app boot code) can wire onto fresh panel DOM.
+ */
+interface LexeraSharedPanelsCreatedEventDetail {
+  kind: string;
+  instanceId: string;
+  element: HTMLElement;
+}
+
+interface LexeraSharedPanelsApi {
+  /** True when `kind` is one of the duplicable panel kinds (the
+   *  registry's allowlist). */
+  isDuplicableKind(kind: string): boolean;
+  /** Build + register a new panel instance. Returns the rooted
+   *  HTMLElement on success, `null` when the kind has no factory.
+   *  Dispatches `lexera-shared-panel-created` on `window`. */
+  createPanelElement(kind: string, instanceId: string): HTMLElement | null;
+  /** Drop the registered instance for `instanceId` from the
+   *  registry. Caller is responsible for actually removing the DOM
+   *  node — this method only forgets the reference. */
+  unregisterInstance(instanceId: string): void;
+  /** Enumerate live root elements for one panel kind. Returns an
+   *  empty array for non-duplicable kinds. */
+  getRoots(kind: string): HTMLElement[];
+}
+
+/**
  * Source: src/shell/lifecycle.js (IIFE; window.LexeraLifecycle = api).
  * Webview lifecycle: LRU freshness tracking, soft-cap eviction, and a
  * pre-warmed webview pool that the spawn fast-path can repurpose via
@@ -1682,7 +1718,7 @@ declare global {
     LexeraPanelDefinitions: any;
     LexeraTreeRegistry: LexeraTreeRegistryApi;
     LexeraTitleHelpers: LexeraTitleHelpersApi;
-    LexeraSharedPanels: any;
+    LexeraSharedPanels: LexeraSharedPanelsApi;
     LexeraWorkspaceShell: any;
     LexeraDashboard: any;
     LexeraDebug: LexeraDebugApi;
