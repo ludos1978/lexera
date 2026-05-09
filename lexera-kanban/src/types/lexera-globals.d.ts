@@ -759,6 +759,114 @@ interface LexeraRequestBridgeApi {
   }): LexeraRequestBridgeInstance;
 }
 
+/**
+ * Source: src/workspace/layoutPersistence.js (IIFE;
+ * window.LexeraLayoutPersistence = api). Owns the localStorage /
+ * sessionStorage round-trip for the workspace shell layout — pure
+ * `serialize` / `hydrate` helpers + IO-bound `persist` / `restore`.
+ *
+ * Storage policy: workspace-pinned windows + the boot main window go
+ * to localStorage; transient secondary windows (detached panel-only,
+ * etc.) use sessionStorage so ad-hoc layouts don't pollute persistent
+ * storage. Per-workspace keying so two windows on the same workspace
+ * share one saved layout (last save wins).
+ *
+ * Wire format (versions 1-3 are legacy `panelDocks` groups migrated
+ * via layoutTree.migratePanelDocksToSideDocks; version 4 is the
+ * current `sideDocks` tree shape).
+ *
+ * Stateful — `setup()` must be called once with the live shell state
+ * + helper deps before any other call.
+ */
+interface LexeraLayoutPersistenceSerializedTab {
+  id: string;
+  kind: 'board' | 'panel';
+  /** Set on `kind: 'board'`. */
+  boardId?: string;
+  /** Set on `kind: 'panel'`. Carries the resolved panel instance id. */
+  panelId?: string;
+  /** Optional view discriminator preserved across persistence. */
+  viewKind?: string;
+}
+interface LexeraLayoutPersistenceSerializedTabsNode {
+  type: 'tabs';
+  id: string;
+  activeTabId: string;
+  tabs: Array<LexeraLayoutPersistenceSerializedTab>;
+}
+interface LexeraLayoutPersistenceSerializedSplitNode {
+  type: 'split';
+  id: string;
+  axis: 'horizontal' | 'vertical';
+  ratio: number;
+  first: LexeraLayoutPersistenceSerializedNode | null;
+  second: LexeraLayoutPersistenceSerializedNode | null;
+}
+type LexeraLayoutPersistenceSerializedNode =
+  | LexeraLayoutPersistenceSerializedTabsNode
+  | LexeraLayoutPersistenceSerializedSplitNode;
+
+/**
+ * The narrow slice of the workspace shell `state` this module reads
+ * + writes. Kept structural so persistence stays decoupled from the
+ * umbrella `WorkspaceShellState` typedef in workspaceShell.js.
+ */
+interface LexeraLayoutPersistenceState {
+  mounted: boolean;
+  windowLabel: string;
+  profile: string;
+  /** Centre dock root — `LexeraDockTreeNode | null`. */
+  dockTree: LexeraDockTreeNode | null;
+  sideDocks: { left: LexeraDockTreeNode | null; right: LexeraDockTreeNode | null; bottom: LexeraDockTreeNode | null };
+  dockSizes: { [dockId: string]: number };
+  dockRestoreSizes: { [dockId: string]: number };
+  panelVisibility: { [panelId: string]: boolean };
+  panelInstances: { [panelId: string]: unknown };
+  foldedPanes: { [paneId: string]: number };
+  activePanelId: string;
+  activeLeafId: string;
+  hooks?: { getPersistenceKey?: () => string };
+}
+
+interface LexeraLayoutPersistenceSetupDeps {
+  state: LexeraLayoutPersistenceState;
+  layoutTree: unknown;
+  panelDefs: unknown;
+  nextId: (prefix: string) => string;
+  resolvePanelTarget: (panelId: string | null | undefined) => string;
+  syncIntegratedPanelVisibility: () => void;
+  ensureActiveLeaf: () => void;
+}
+
+interface LexeraLayoutPersistenceApi {
+  /** Bind shell state + helpers. Throws if any required dep is
+   *  missing. Must be called once at boot before any other method. */
+  setup(deps: LexeraLayoutPersistenceSetupDeps): void;
+  /** Pure: serialise a live dock-tree node into the wire shape.
+   *  Returns null for null input. */
+  serialize(node: LexeraDockTreeNode | null | undefined): LexeraLayoutPersistenceSerializedNode | null;
+  /** Pure: rebuild a live dock-tree node from a serialized payload.
+   *  `panelInstances` defaults to `state.panelInstances`. Tolerates
+   *  partial / wrong-shape payloads by returning null. */
+  hydrate(
+    raw: LexeraLayoutPersistenceSerializedNode | null | undefined,
+    panelInstances?: { [panelId: string]: unknown }
+  ): LexeraDockTreeNode | null;
+  /** Side-effecting: serialise `state` and write JSON to the
+   *  resolved storage (local- or sessionStorage). */
+  persist(): void;
+  /** Side-effecting: read JSON from the resolved storage and
+   *  hydrate `state` in place. Returns true on a successful restore;
+   *  false on missing / unparseable / version-mismatch payloads. */
+  restore(): boolean;
+  /** Storage key for the current workspace / window context.
+   *  Honours `state.hooks.getPersistenceKey` override. */
+  getPersistenceKey(): string;
+  /** Pick localStorage vs sessionStorage based on workspace pin +
+   *  windowLabel. */
+  getPersistenceStorage(): Storage;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
@@ -773,7 +881,7 @@ declare global {
     LexeraMultiviewWebview: any;
     LexeraMultiview: any;
     LexeraMessageBridge: LexeraMessageBridgeApi;
-    LexeraLayoutPersistence: any;
+    LexeraLayoutPersistence: LexeraLayoutPersistenceApi;
     LexeraTabDragController: LexeraTabDragControllerApi;
     LexeraGeometryObserver: LexeraGeometryObserverApi;
     LexeraPanelDefinitions: any;
