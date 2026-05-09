@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-08):** ✓ 2641 passed | 2 skipped — `./run-lexera-tests.sh --unit` (215 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK (covers titleHelpers.js + workspace/geometryObserver.js + workspace/workspaceShell.js + workspace/multiviewWebview.js).
+**Last run (2026-05-09):** ✓ 2654 passed | 2 skipped — `./run-lexera-tests.sh --unit` (217 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK (covers titleHelpers.js + workspace/geometryObserver.js + workspace/workspaceShell.js + workspace/multiviewWebview.js).
 
 ## Open Tasks
 
@@ -68,6 +68,10 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 #### Backend management view (2026-05-06)
 
 - [x] (done) ~~**backend management window rendered empty**~~ — user reported "the backend management view doesnt show anything at all! just an empty window!". Root cause: since the workspace-shell module split (Apr 26-28, commits 3d713daf + 27d5c446), `lexera-kanban/src/workspace/workspaceShell.js` throws at parse time if any of its global deps (`LexeraLayoutTree`, `LexeraTreeRegistry`, `LexeraBoardHost`, ...) are missing. `lexera-backend/src/connection-settings.html` only loaded the shell + `sharedPanels.js` — none of the 11 dep files. Throw aborted boot before `connection-settings.js` could `mountManagementShell()`. Fix: extended `sync-frontend-view-assets.mjs` to copy `titleHelpers.js` + the 10 `workspace/*.js` deps into `lexera-backend/src/`, added matching `<script>` tags before `workspaceShell.js` in `connection-settings.html`, extended the `.gitignore`. Pinned by `backendConnectionSettingsShellDepsContract.test.js` (26 assertions — every dep is loaded BEFORE workspaceShell.js AND declared in the sync script). (commit 1ff5bf75)
+
+#### Drag highlight visibility (2026-05-09)
+
+- [x] (done — awaits visual verification) ~~**drag highlight is bad and unusable**~~ — user reported 2026-05-09 that the active drop-zone indicator was visually invisible during drag. Root cause at [app.css:9874](lexera-kanban/src/app.css#L9874): the body-level "Drop indicators / drag feedback — dashed hairlines" override stripped the indicator's solid `var(--accent)` background to a 6% accent fill, and the .active state's `opacity: 0.6` (drop-zone-indicator base rule) collapsed effective visibility on the 4px-wide bar to ~3.6%. Fix: added `body .drop-zone-indicator.active` rule restoring `background: var(--accent)`, `border-color: var(--accent)`, `border-style: solid`, `opacity: 1`. Inactive indicators retain the dashed-hairline design (preserves "candidate position" subtle look). Pinned by `dropZoneIndicatorActiveStyleContract.test.js` (3 cases: hairline override still present, active override matches required props, active rule placed AFTER the hairline group for cascade order). (commit 810e078f) **Awaiting real-app verification** — user drags a row/stack/column/card and confirms the landing-position bar is now clearly visible.
 
 #### Sub-app card title (2026-05-08)
 
