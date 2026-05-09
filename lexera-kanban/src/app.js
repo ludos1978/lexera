@@ -1703,43 +1703,6 @@ var LexeraDashboard = (function () {
     setupSidebarWidthResize();
     setupWorkspaceShell();
 
-    // DIAGNOSTIC: install a universal scroll watcher on the board viewport
-    // so any drift caused by card edits (or anything else) surfaces in the
-    // in-app Log panel with a stack trace showing the responsible caller.
-    // Remove once the card-edit scroll-drift issue is resolved.
-    try {
-      (function installBoardScrollDriftWatcher() {
-        if (typeof document === 'undefined' || typeof logFrontendIssue !== 'function') return;
-        function tryInstall() {
-          var el = document.querySelector('.columns-container');
-          if (!el) { setTimeout(tryInstall, 250); return; }
-          if (el.__lexeraDriftWatcherInstalled) return;
-          el.__lexeraDriftWatcherInstalled = true;
-          var lastLeft = el.scrollLeft;
-          var lastTop = el.scrollTop;
-          el.addEventListener('scroll', function () {
-            var newLeft = el.scrollLeft;
-            var newTop = el.scrollTop;
-            var dx = newLeft - lastLeft;
-            var dy = newTop - lastTop;
-            lastLeft = newLeft;
-            lastTop = newTop;
-            var trace = '';
-            try { throw new Error('scroll-drift'); } catch (e) { trace = e.stack || ''; }
-            try {
-              logFrontendIssue('debug', 'scroll-drift',
-                'dx=' + dx + ' dy=' + dy +
-                ' left=' + newLeft + ' top=' + newTop +
-                ' scrollWidth=' + el.scrollWidth + ' clientWidth=' + el.clientWidth +
-                ' trace=' + trace.split('\n').slice(1, 8).join(' <- '));
-            } catch (_) {}
-          }, { passive: true });
-          try { logFrontendIssue('warn', 'scroll-drift', 'watcher installed'); } catch (_) {}
-        }
-        tryInstall();
-      })();
-    } catch (_) {}
-
     // Init panels that may already exist after workspace shell restore.
     if (ManagementWiring) ManagementWiring.initDelayedPanels();
 
