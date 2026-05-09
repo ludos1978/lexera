@@ -9879,6 +9879,18 @@ body .drop-target {
   background: color-mix(in srgb, var(--accent) 6%, transparent);
   border-radius: var(--radius-sm);
 }
+/* The active drop-zone indicator is the user's confirmation of WHERE
+   the drop will land — the dashed-hairline rule above made it nearly
+   invisible (4px-wide bar with 6% bg × 60% opacity ≈ 3.6% effective).
+   Restore solid accent + full opacity for the active state so the
+   landing position is unmistakable. Reported 2026-05-08 as "drag
+   highlight is bad and unusable". */
+body .drop-zone-indicator.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  border-style: solid;
+  opacity: 1;
+}
 body .tree-stack-drop-zone-empty {
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
