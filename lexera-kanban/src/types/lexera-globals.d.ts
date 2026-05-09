@@ -1602,12 +1602,21 @@ declare global {
     __TAURI__: any;
     __TAURI_INTERNALS__: any;
 
-    // Test seams.
-    __lexeraDebugMutations: any;
+    // Test seams. All optional — only the test runner / debug surface
+    // sets them; production code does truthy-checks before reading.
+    /** Trace every mutation through the in-app logger. Vitest sets
+     *  this to surface state transitions in failing-test diagnostics. */
+    __lexeraDebugMutations?: boolean;
     __lexeraExternalDnd: LexeraExternalDndApi;
-    __lexeraProfileMutations: any;
-    __lexeraRenderColumnsCount: any;
-    __lexeraRenderColumnsEverCalled: any;
+    /** Capture per-mutation profiler entries (timestamps + durations).
+     *  Used by the debug-window profiler trace. */
+    __lexeraProfileMutations?: boolean;
+    /** Monotonic counter incremented on every `renderColumns` call —
+     *  vitest asserts on it to confirm render budgets. */
+    __lexeraRenderColumnsCount?: number;
+    /** True after the first `renderColumns` call lands. Vitest uses
+     *  it as a boot-readiness gate. */
+    __lexeraRenderColumnsEverCalled?: boolean;
   }
 
   // Bare globals (declared without `window.` prefix at their call
