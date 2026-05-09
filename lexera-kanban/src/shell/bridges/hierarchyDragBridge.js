@@ -26,6 +26,26 @@
   // Walk the hierarchy looking for an entity with `targetId`. Returns
   // `{ parent: Array, index: number }` so the caller can splice.
   // Returns null when not found.
+  //
+  // Cards match against EITHER `card.id` (the Loro container id —
+  // shape "crdt-N-…") OR `card.kid` (the persistent 8-char hex id
+  // backend logs report as `state_kids`). The source can carry
+  // either form depending on which API populated the workspace
+  // tree (`getBoardHierarchy` vs `getBoardColumns`); the destination
+  // DOM also exposes both as `data-card-id` / `data-card-kid`. This
+  // mirrors the same id-OR-kid fallback `findColumnRefByStablePath`
+  // uses (commit 966c921f) — without it, a workspace-tree → kanban
+  // card drop with mismatched id formats hits applyEntityReorder,
+  // returns false at locateEntity, and the user-pasted log's
+  // `apply.local-drop.skip(applyDrop-returned-false)` line fires.
+  // Rows / stacks / columns only have `id` so they keep the
+  // single-field match.
+  function matchesCardEntity(card, entityId) {
+    if (!card) return false;
+    if (card.id === entityId) return true;
+    if (card.kid && card.kid === entityId) return true;
+    return false;
+  }
   function locateEntity(board, kind, entityId) {
     if (!board || !entityId) return null;
     var rows = Array.isArray(board.rows) ? board.rows : null;
@@ -59,7 +79,7 @@
           var cards = col && Array.isArray(col.cards) ? col.cards : [];
           if (kind === 'card') {
             for (var ki = 0; ki < cards.length; ki++) {
-              if (cards[ki] && cards[ki].id === entityId) return { parent: cards, index: ki };
+              if (matchesCardEntity(cards[ki], entityId)) return { parent: cards, index: ki };
             }
           }
         }

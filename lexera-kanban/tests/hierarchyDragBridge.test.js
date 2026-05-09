@@ -202,6 +202,41 @@ describe('LexeraHierarchyDragBridge.applyEntityReorder', () => {
       .toEqual(['card-4', 'card-1']);
   });
 
+  it('matches cards by `kid` when source.entityId is the persistent 8-char hex', () => {
+    // 2026-05-10 user-reported regression: targetEntityId in the
+    // [xview-dnd] log was `crdt-…` (Loro container id stored on
+    // card.id) but the source.entityId can be the persistent kid
+    // form. Without the kid fallback, locateEntity returned null and
+    // applyEntityReorder bailed → `apply.local-drop.skip(applyDrop
+    // -returned-false)` repeatedly, drop never landed.
+    const board = {
+      rows: [{
+        id: 'r1', title: 'R',
+        stacks: [{
+          id: 's1', title: 'S',
+          columns: [{
+            id: 'c1', title: 'C',
+            cards: [
+              { id: 'crdt-1-a', kid: 'a6db6c9a', title: 'A' },
+              { id: 'crdt-1-b', kid: 'c88eb77c', title: 'B' }
+            ]
+          }]
+        }]
+      }]
+    };
+    // Source carries the kid form; target carries the Loro id form.
+    // The mixed payload is exactly what the user's log surfaced — both
+    // ends of the chain must accept either id or kid.
+    const ok = bridge.applyEntityReorder(
+      board,
+      { boardId: 'b1', kind: 'card', entityId: 'a6db6c9a' },
+      { boardId: 'b1', kind: 'card', entityId: 'crdt-1-b' }
+    );
+    expect(ok).toBe(true);
+    expect(board.rows[0].stacks[0].columns[0].cards.map((c) => c.kid))
+      .toEqual(['a6db6c9a', 'c88eb77c']);
+  });
+
   it('rejects cross-kind drops', () => {
     const board = makeBoard();
     const ok = bridge.applyEntityReorder(
