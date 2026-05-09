@@ -1479,6 +1479,65 @@ interface LexeraLifecycleApi {
 type LexeraLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 /**
+ * Drag-payload type discriminators handled by the external-DnD bridge
+ * (defined in src/dragdrop/dragDropHandlers.js). The bridge dispatches
+ * to per-kind drop handlers (card / row / stack / column) based on
+ * the `type` field. `tree-*` variants come from sub-app webviews
+ * (workspace-tree / hierarchy panel); `board-*` and `column` come
+ * from in-board drag.
+ */
+type LexeraExternalDndPayloadType =
+  | 'tree-card'
+  | 'board-row'
+  | 'tree-row'
+  | 'board-stack'
+  | 'tree-stack'
+  | 'column'
+  | 'tree-column';
+
+/**
+ * Cross-webview drag payload. `source` shape varies per `type`
+ * (a card-id string for `tree-card`, a row hierarchy object for
+ * `board-row`, etc.) — typed as `unknown` so consumers narrow on
+ * `type` first before destructuring `source`.
+ */
+interface LexeraExternalDndPayload {
+  type: LexeraExternalDndPayloadType | string;
+  source: unknown;
+}
+
+/**
+ * Source: src/dragdrop/dragDropHandlers.js (`registerExternalDndBridge`
+ * installs `window.__lexeraExternalDnd = api`). The cross-Tauri-webview
+ * drag receiver — sub-apps (hierarchyDragBridge, embeddedBoardBridge)
+ * forward pointer events from one webview into the kanban board's
+ * webview via `multiview_emit_to`, and the kanban-side handler relays
+ * them through this API. Pointer events do NOT cross WKWebView
+ * boundaries naturally; this bridge is the workaround.
+ */
+interface LexeraExternalDndApi {
+  /** Update drop preview for the supplied cross-view drag point.
+   *  Returns `true` when a drop target was matched. Inserts the
+   *  per-type drop-zone indicators on the first hover for a new
+   *  drag type. */
+  hover(
+    payload: LexeraExternalDndPayload | null | undefined,
+    x: number,
+    y: number
+  ): boolean;
+  /** Apply the drop at the supplied cross-view drag point. Returns
+   *  `true` when a per-type handler accepted the drop. */
+  drop(
+    payload: LexeraExternalDndPayload | null | undefined,
+    x: number,
+    y: number
+  ): boolean;
+  /** Tear down drop-zone indicators and reset the cached drag-type
+   *  state. Called when the source ends the drag without a drop. */
+  clear(): void;
+}
+
+/**
  * Snapshot returned by `getLogFoldedStatusData()` (defined in
  * src/logging/loggingSystem.js). Drives the four badges rendered in
  * the bottom-dock fold strip when the log panel is collapsed:
@@ -1545,7 +1604,7 @@ declare global {
 
     // Test seams.
     __lexeraDebugMutations: any;
-    __lexeraExternalDnd: any;
+    __lexeraExternalDnd: LexeraExternalDndApi;
     __lexeraProfileMutations: any;
     __lexeraRenderColumnsCount: any;
     __lexeraRenderColumnsEverCalled: any;
