@@ -1,3 +1,84 @@
+// @typedef declarations live at file scope so they're visible to
+// every JSDoc annotation below. A leading line comment is required —
+// without it, TS 5.9 parses the very first JSDoc block as both a
+// module-description comment AND a typedef, producing a spurious
+// `Duplicate identifier` error.
+
+/**
+ * @typedef {Object} LifecycleConfig
+ * @property {number} softCap
+ * @property {number} poolSize
+ * @property {string} poolUrl
+ * @property {string[]} pinnedLabels
+ */
+
+/**
+ * @typedef {Object} SpawnOptions
+ * @property {string} label
+ * @property {string} url
+ * @property {number} x
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ */
+
+/**
+ * @typedef {Object} GeometryUpdate
+ * @property {string} label
+ * @property {number} x
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ */
+
+/**
+ * @typedef {Object} WebviewListEntry
+ * @property {string} label
+ */
+
+/**
+ * @typedef {Object} LifecycleDeps
+ * @property {(opts: SpawnOptions) => Promise<*>} spawn
+ * @property {(label: string) => Promise<*>} destroy
+ * @property {(updates: GeometryUpdate[]) => Promise<*>} setGeometry
+ * @property {(label: string, url: string) => Promise<*>} navigateWebview
+ * @property {() => Promise<WebviewListEntry[]>} listWebviews
+ * @property {string} [locationSearch]
+ * @property {LifecycleConfig} [config]
+ */
+
+/**
+ * @typedef {Object} LifecycleSpawnResult
+ * @property {string} label
+ * @property {boolean} fromPool
+ */
+
+/**
+ * @typedef {Object} LifecycleStatus
+ * @property {LifecycleConfig} config
+ * @property {Object<string, number>} freshness
+ * @property {string[]} pool
+ */
+
+/**
+ * @typedef {Object} LifecycleInstance
+ * @property {(updates: Partial<LifecycleConfig>) => LifecycleConfig} configure
+ * @property {() => LifecycleStatus} status
+ * @property {(opts: SpawnOptions) => Promise<LifecycleSpawnResult>} spawn
+ * @property {(label: string) => void} touch
+ * @property {() => Promise<*>} evictOldestIfOverCap
+ * @property {() => Promise<*>} refillPool
+ * @property {() => LifecycleConfig} _getConfig
+ * @property {() => Object<string, number>} _getFreshness
+ * @property {() => string[]} _getPool
+ */
+
+/**
+ * @typedef {Object} LexeraLifecycleApi
+ * @property {(deps: LifecycleDeps) => LifecycleInstance} create
+ * @property {(searchString?: string) => LifecycleConfig} defaultConfig
+ */
+
 (function () {
   'use strict';
 
@@ -11,6 +92,10 @@
   // API object — `multiviewClient.js` exposes it on
   // `LexeraMultiview.lifecycle`.
 
+  /**
+   * @param {string} [searchString]
+   * @returns {LifecycleConfig}
+   */
   function defaultConfig(searchString) {
     var defaults = {
       softCap: 8,
@@ -34,8 +119,12 @@
     return defaults;
   }
 
+  /**
+   * @param {LifecycleDeps} deps
+   * @returns {LifecycleInstance}
+   */
   function create(deps) {
-    deps = deps || {};
+    if (!deps) deps = /** @type {LifecycleDeps} */ ({});
     var spawn = deps.spawn;
     var destroy = deps.destroy;
     var setGeometry = deps.setGeometry;
@@ -49,13 +138,17 @@
     var locationSearch = deps.locationSearch != null ? deps.locationSearch
       : (typeof window !== 'undefined' && window.location ? window.location.search : '');
     var config = deps.config || defaultConfig(locationSearch);
+    /** @type {Object<string, number>} */
     var freshness = {};       // label -> timestamp of last touch
+    /** @type {string[]} */
     var pool = [];            // pre-warmed webview labels
 
+    /** @param {string} label */
     function touch(label) {
       freshness[label] = Date.now();
     }
 
+    /** @returns {Promise<*>} */
     function evictOldestIfOverCap() {
       return listWebviews().then(function (list) {
         var evictable = list.filter(function (w) {
@@ -84,6 +177,13 @@
     // (caller MUST use this label going forward, NOT the originally
     // requested target — Tauri can't rename webviews), or null if no
     // pool member was available or navigation failed.
+    /**
+     * @param {string} _targetLabel
+     * @param {string} url
+     * @param {{x: number, y: number}} position
+     * @param {{width: number, height: number}} size
+     * @returns {Promise<string|null>}
+     */
     function tryRepurposeFromPool(_targetLabel, url, position, size) {
       if (!pool.length) return Promise.resolve(null);
       var poolLabel = pool.shift();
@@ -101,6 +201,7 @@
         });
     }
 
+    /** @returns {Promise<*>} */
     function refillPool() {
       var deficit = config.poolSize - pool.length;
       if (deficit <= 0) return Promise.resolve();
@@ -124,6 +225,10 @@
     // Returns Promise<{ label, fromPool }>. Callers MUST use the
     // returned `label` for all subsequent operations on the webview —
     // it differs from `opts.label` when the pool was consumed.
+    /**
+     * @param {SpawnOptions} opts
+     * @returns {Promise<LifecycleSpawnResult>}
+     */
     function lifecycleSpawn(opts) {
       var requestedLabel = opts.label;
       var position = { x: opts.x, y: opts.y };
@@ -143,12 +248,17 @@
         });
     }
 
+    /**
+     * @param {Partial<LifecycleConfig>} updates
+     * @returns {LifecycleConfig}
+     */
     function configure(updates) {
       Object.keys(updates || {}).forEach(function (k) { config[k] = updates[k]; });
       if (config.poolSize > 0) refillPool();
       return Object.assign({}, config);
     }
 
+    /** @returns {LifecycleStatus} */
     function status() {
       return {
         config: Object.assign({}, config),
@@ -171,6 +281,7 @@
     };
   }
 
+  /** @type {LexeraLifecycleApi} */
   var api = {
     create: create,
     defaultConfig: defaultConfig
