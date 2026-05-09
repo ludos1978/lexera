@@ -1714,6 +1714,160 @@ interface LexeraLogFoldedStatusData {
   inFlightCount: number;
 }
 
+/**
+ * Source: src/workspace/panelDefinitions.js (IIFE;
+ * window.LexeraPanelDefinitions = api). Owns the canonical panel
+ * registry plus pure normalisers for the persisted shell state
+ * shape. Stateful — `setup({ nextId })` must be called before any
+ * `createDefault*` factory so newly-minted ids come from the
+ * shared layout-tree id counter.
+ */
+type LexeraPanelDefinitionsDockId = 'left' | 'right' | 'bottom';
+type LexeraPanelDefinitionsProfile = 'workspace' | 'detachedBoard' | string;
+
+interface LexeraPanelDefinition {
+  id: string;
+  title: string;
+  // Typed as `string` rather than the narrow `DockId` union so the
+  // bare object literals in `panelDefinitions.js` (`defaultDock: 'left'`)
+  // satisfy the table without an `as const`. JSDoc keeps the
+  // narrower contract documented; this boundary stays permissive
+  // for the JS literal.
+  defaultDock: string;
+  duplicable: boolean;
+  integratedHeader: boolean;
+}
+type LexeraPanelDefinitionTable = { [kind: string]: LexeraPanelDefinition };
+
+interface LexeraPanelDefinitionsInstance {
+  id: string;
+  kind: string;
+}
+type LexeraPanelDefinitionsInstanceMap = { [instanceId: string]: LexeraPanelDefinitionsInstance };
+
+// Carries an index signature in addition to the three known keys so
+// the LayoutPersistence state's looser `{ [dockId: string]: number }`
+// shape stays assignable to it. The typedef-tightening sweep is
+// progressive — both forms must coexist until every consumer
+// migrates to the named keys.
+interface LexeraPanelDefinitionsDockSizeMap {
+  left: number;
+  right: number;
+  bottom: number;
+  [dockId: string]: number;
+}
+interface LexeraPanelDefinitionsDockRestoreSizeMap {
+  left: number;
+  right: number;
+  bottom: number;
+  [dockId: string]: number;
+}
+type LexeraPanelDefinitionsVisibilityMap = { [panelId: string]: boolean };
+
+interface LexeraPanelDefinitionsDockGroups {
+  left: Array<Array<string>>;
+  right: Array<Array<string>>;
+  bottom: Array<Array<string>>;
+}
+
+interface LexeraPanelDefinitionsSideDocksMap {
+  left: LexeraDockTreeNode | null;
+  right: LexeraDockTreeNode | null;
+  bottom: LexeraDockTreeNode | null;
+}
+
+interface LexeraPanelDefinitionsApi {
+  /** Bind the shared layout-tree id factory. Throws if `nextId`
+   *  isn't a function. Must be called once before any
+   *  `createDefault*` factory mints ids. */
+  setup(deps: { nextId: (prefix: string) => string }): void;
+  /** Static panel registry — keyed by panel kind. Read-only at the
+   *  call-site; mutating it would corrupt the runtime. */
+  readonly PANEL_DEFINITIONS: LexeraPanelDefinitionTable;
+  /** Per-kind default visibility used by `createDefaultPanelVisibility`. */
+  readonly DEFAULT_PANEL_VISIBILITY: LexeraPanelDefinitionsVisibilityMap;
+  /** A copy of the runtime allow-list (kinds the current shell may
+   *  show). Defaults to every key in PANEL_DEFINITIONS until
+   *  `configureAllowedPanelKinds` filters it. */
+  getAllowedPanelKinds(): string[];
+  /** True when `kind` is a registered panel AND on the current
+   *  runtime allow-list. */
+  isPanelKindAllowed(kind: string | null | undefined): boolean;
+  /** True when `kind` exists in PANEL_DEFINITIONS, regardless of
+   *  the allow-list. Used by setup-time validation. */
+  isPanelKindAllowedFromDefinitions(kind: string | null | undefined): boolean;
+  /** Replace the runtime allow-list. Empty / invalid input resets
+   *  to "every defined kind". Unknown kinds are dropped silently. */
+  configureAllowedPanelKinds(allowedKinds: string[] | null | undefined): void;
+  /** Default dock layout for a fresh shell — left, right, bottom
+   *  arrays of group arrays. */
+  getDefaultDockGroups(): LexeraPanelDefinitionsDockGroups;
+  /** First kind on the current allow-list, or '' when the
+   *  allow-list is empty. */
+  getFirstAllowedPanelKind(): string;
+  /** Coerce arbitrary input to a registered + allowed kind. Returns
+   *  '' (not the input) when the value isn't permitted. */
+  normalizePanelKind(value: string | null | undefined): string;
+  /** Build a fresh `{ instanceId → instance }` map for every
+   *  allowed panel kind. */
+  createDefaultPanelInstances(): LexeraPanelDefinitionsInstanceMap;
+  /** Coerce a partial / wrong-shape persisted panel-instance map
+   *  into the canonical shape. Drops entries whose kind is no
+   *  longer registered + allowed; mints fresh ids via the bound
+   *  `nextId` for instances missing one. */
+  normalizePanelInstances(raw: unknown): LexeraPanelDefinitionsInstanceMap;
+  /** Resolve an instance id from a stored `value` against the
+   *  current `panelInstances`. Falls back to the kind itself when
+   *  `value` doesn't resolve (back-compat with pre-instance state). */
+  normalizePanelIdWithInstances(
+    value: string | null | undefined,
+    panelInstances: LexeraPanelDefinitionsInstanceMap | null | undefined
+  ): string;
+  /** Clamp a dock pixel size to that dock's allowed range. Bottom
+   *  is the only horizontal-axis dock so it has its own scale. */
+  clampPanelSize(dockId: LexeraPanelDefinitionsDockId, value: unknown): number;
+  /** Coerce + clamp arbitrary persisted-state input to a valid
+   *  pixel size. Non-numeric / sentinel values are mapped to 0
+   *  (collapsed). */
+  normalizeDockSizeValue(dockId: LexeraPanelDefinitionsDockId, value: unknown): number;
+  /** Default `{left, right, bottom}` pixel sizes for a profile.
+   *  `'detachedBoard'` returns all-zero. */
+  createDefaultDockSizes(profile: LexeraPanelDefinitionsProfile): LexeraPanelDefinitionsDockSizeMap;
+  /** Default restore-sizes for the springback-on-uncollapse path. */
+  createDefaultDockRestoreSizes(profile: LexeraPanelDefinitionsProfile): LexeraPanelDefinitionsDockRestoreSizeMap;
+  /** Coerce a persisted DockSizeMap into the canonical shape +
+   *  clamp each axis. */
+  normalizeDockSizes(raw: unknown, profile: LexeraPanelDefinitionsProfile): LexeraPanelDefinitionsDockSizeMap;
+  /** Coerce a persisted DockRestoreSizeMap. */
+  normalizeDockRestoreSizes(raw: unknown, profile: LexeraPanelDefinitionsProfile): LexeraPanelDefinitionsDockRestoreSizeMap;
+  /** Default `{ panelId → boolean }` map for a profile. */
+  createDefaultPanelVisibility(profile: LexeraPanelDefinitionsProfile): LexeraPanelDefinitionsVisibilityMap;
+  /** Helper used by panelDocks normalisers — dedupe a list of
+   *  panel ids in place against `seen`. Mutates `seen`. */
+  ensureUniquePanelIds(
+    ids: string[],
+    seen: { [id: string]: boolean },
+    panelInstances: LexeraPanelDefinitionsInstanceMap | null | undefined
+  ): string[];
+  /** Coerce a persisted panel-docks shape (legacy `{ left, right,
+   *  bottom: Array<Array<string>> }`) into the canonical groups
+   *  shape, dropping unknown / disallowed instance ids. */
+  normalizePanelDocks(
+    raw: unknown,
+    profile: LexeraPanelDefinitionsProfile,
+    panelInstances: LexeraPanelDefinitionsInstanceMap | null | undefined
+  ): LexeraPanelDefinitionsDockGroups;
+  /** Coerce a persisted panel-visibility map. */
+  normalizePanelVisibility(
+    raw: unknown,
+    profile: LexeraPanelDefinitionsProfile,
+    panelInstances: LexeraPanelDefinitionsInstanceMap | null | undefined
+  ): LexeraPanelDefinitionsVisibilityMap;
+  /** Default empty side-docks tree map (all three sides null) for
+   *  a profile that wants no panels. */
+  createDefaultSideDocks(profile: LexeraPanelDefinitionsProfile): LexeraPanelDefinitionsSideDocksMap;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
@@ -1731,7 +1885,7 @@ declare global {
     LexeraLayoutPersistence: LexeraLayoutPersistenceApi;
     LexeraTabDragController: LexeraTabDragControllerApi;
     LexeraGeometryObserver: LexeraGeometryObserverApi;
-    LexeraPanelDefinitions: any;
+    LexeraPanelDefinitions: LexeraPanelDefinitionsApi;
     LexeraTreeRegistry: LexeraTreeRegistryApi;
     LexeraTitleHelpers: LexeraTitleHelpersApi;
     LexeraSharedPanels: LexeraSharedPanelsApi;
