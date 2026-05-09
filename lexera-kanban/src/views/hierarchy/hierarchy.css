@@ -256,20 +256,14 @@ html, body {
   display: none;
 }
 
-/* Phase 2b drop target: visual hint that the dragged entity will land
- * on this sibling. Subtle accent outline rather than a full-row
- * highlight so the existing hover / active states still read. */
-#local-boards .tree-node.is-drop-target {
-  outline: 1.5px dashed var(--accent, #4a9eff);
-  outline-offset: -1px;
-  border-radius: 3px;
-}
-/* Directional indicator for same-kind reorder. The sub-app sets
- * `.is-drop-before` or `.is-drop-after` based on the cursor's vertical
- * position vs the target node's mid-height. Solid 2px accent bar at
- * the matching edge so the user can predict whether the drop will
- * land above or below the highlighted sibling. Cross-kind absorbs
- * (no position) keep just the dashed outline above. */
+/* Drop indicator (2026-05-09): user contract — "only a placement at
+ * a position is valid". The whole-row dashed outline that previously
+ * fired on `.is-drop-target` was removed; the only visual feedback
+ * during drag is now the solid 2px accent bar at the EXACT edge
+ * where the drop will land (top edge for 'before', bottom for 'after').
+ * Cross-kind absorbs (no position) get NO highlight — they're a
+ * separate concern; the user must drop at a specific sibling
+ * position to commit. */
 #local-boards .tree-node.is-drop-target.is-drop-before {
   box-shadow: 0 -2px 0 0 var(--accent, #4a9eff);
 }

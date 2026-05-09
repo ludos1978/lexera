@@ -72,18 +72,11 @@ h3 {
   display: none;
 }
 
-/* Phase 2b drop target: dashed accent outline so the user sees where
- * the dragged sibling will land. */
-#local-boards .tree-node.is-drop-target {
-  outline: 1.5px dashed var(--accent, #4a9eff);
-  outline-offset: -1px;
-  border-radius: 3px;
-}
-/* Directional indicator for same-kind reorder. The sub-app sets
- * `.is-drop-before` / `.is-drop-after` based on cursor Y vs the
- * target node's mid-height. Solid 2px accent bar at the matching
- * edge so the user can predict drop direction. Cross-kind absorbs
- * (no position) keep just the dashed outline above. */
+/* Drop indicator (2026-05-09): user contract — "only a placement at
+ * a position is valid". The whole-row dashed outline that previously
+ * fired on `.is-drop-target` was removed; the only visual feedback
+ * during drag is now the solid 2px accent bar at the EXACT edge
+ * where the drop will land. */
 #local-boards .tree-node.is-drop-target.is-drop-before {
   box-shadow: 0 -2px 0 0 var(--accent, #4a9eff);
 }

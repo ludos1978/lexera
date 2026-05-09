@@ -102,14 +102,27 @@ describe('hierarchy / workspaces drag — pointer-capture contract', () => {
   for (const { name, src } of stylesheets) {
     describe(name, () => {
       it('renders a 2px solid accent bar at the matching edge for `.is-drop-target.is-drop-before/after`', () => {
-        // Solid bar (not dashed) so the directional indicator stands
-        // apart from the dashed `.is-drop-target` outline that signals
-        // the target sibling.
+        // Solid bar at the precise edge — the only drag visual the
+        // user contract permits ("only a placement at a position is
+        // valid", 2026-05-09).
         expect(src).toMatch(
           /\.tree-node\.is-drop-target\.is-drop-before\s*\{[\s\S]{0,160}box-shadow:\s*0\s+-2px\s+0\s+0\s+var\(--accent[^)]*\)/
         );
         expect(src).toMatch(
           /\.tree-node\.is-drop-target\.is-drop-after\s*\{[\s\S]{0,160}box-shadow:\s*0\s+2px\s+0\s+0\s+var\(--accent[^)]*\)/
+        );
+      });
+
+      it('does NOT render a dashed-outline whole-row highlight on `.is-drop-target` (regression fence — user removed it 2026-05-09)', () => {
+        // The previous Phase 2b "subtle accent outline rather than a
+        // full-row highlight" rule (`outline: 1.5px dashed var(--accent)`
+        // bound to bare `.is-drop-target` without the directional
+        // suffix) was removed because it competed with hover styles
+        // and didn't tell the user where exactly the drop would land.
+        // Future regressions that re-introduce the bare-class outline
+        // must update this expectation deliberately.
+        expect(src).not.toMatch(
+          /\.tree-node\.is-drop-target\s*\{[\s\S]{0,200}outline:\s*1(?:\.5)?px\s+dashed/
         );
       });
     });
