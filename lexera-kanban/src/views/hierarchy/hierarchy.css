@@ -256,19 +256,26 @@ html, body {
   display: none;
 }
 
-/* Drop indicator (2026-05-09): user contract — "only a placement at
- * a position is valid". The whole-row dashed outline that previously
- * fired on `.is-drop-target` was removed; the only visual feedback
- * during drag is now the solid 2px accent bar at the EXACT edge
- * where the drop will land (top edge for 'before', bottom for 'after').
- * Cross-kind absorbs (no position) get NO highlight — they're a
- * separate concern; the user must drop at a specific sibling
- * position to commit. */
+/* Drop indicator (2026-05-09): two visual modes.
+ *   Sibling reorder (same-kind): solid 2px accent bar at the exact
+ *     edge where the drop will land (top for 'before', bottom for
+ *     'after').
+ *   Parent absorb (cross-kind, e.g. card → column): user contract
+ *     "if dropped on a parent it should highlight it and append as
+ *     last item" — dashed outline around the whole parent so the
+ *     user sees which container will accept the entity.
+ * Bare `.is-drop-target` (no directional / absorb suffix) carries
+ * no visual on its own; the suffix class is the source of truth. */
 #local-boards .tree-node.is-drop-target.is-drop-before {
   box-shadow: 0 -2px 0 0 var(--accent, #4a9eff);
 }
 #local-boards .tree-node.is-drop-target.is-drop-after {
   box-shadow: 0 2px 0 0 var(--accent, #4a9eff);
+}
+#local-boards .tree-node.is-drop-target.is-drop-absorb {
+  outline: 1.5px dashed var(--accent, #4a9eff);
+  outline-offset: -1px;
+  border-radius: 3px;
 }
 
 /* Inline rename editor: replaces the .tree-label while the user types.

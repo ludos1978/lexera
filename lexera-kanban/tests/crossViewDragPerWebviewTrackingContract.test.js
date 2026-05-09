@@ -78,24 +78,42 @@ describe('per-webview cross-view-drag tracking', () => {
       expect(embeddedBoardBridge).toMatch(/card:\s*['"]tree-card['"]/);
     });
 
-    it('on local pointerup: invokes __lexeraExternalDnd.drop AND broadcasts cross-view-drag-handled', () => {
-      // The drop() call must come BEFORE the broadcast so the source
-      // doesn't tear down its drag state before the destination has
-      // applied the change.
-      const dropIdx = embeddedBoardBridge.search(/api\.drop\(/);
-      const broadcastIdx = embeddedBoardBridge.search(/['"]cross-view-drag-handled['"]/);
-      expect(dropIdx, 'api.drop() call must exist').toBeGreaterThan(-1);
-      expect(broadcastIdx, 'cross-view-drag-handled broadcast must exist').toBeGreaterThan(-1);
-      // The first match for cross-view-drag-handled is in the
-      // multiview_subscribe events array (the listener registration);
-      // we want the broadcast site to come AFTER the drop call.
-      const broadcastSite = embeddedBoardBridge.indexOf(
-        'cross-view-drag-handled', dropIdx
+    it('on local pointerup: resolves a tree-target + broadcasts hierarchy-entity-drop AND cross-view-drag-handled', () => {
+      // The destination MUST NOT call `__lexeraExternalDnd.drop` —
+      // that path mutates the local kanban's board data, which is
+      // wrong for cross-board moves (the source entity still lives
+      // in source.boardId; only the shell can load both boards and
+      // apply atomically). User report 2026-05-09: "doesnt work".
+      // Fix: resolve a tree-shaped target from the destination's DOM
+      // and broadcast `hierarchy-entity-drop` so
+      // hierarchyDragBridge.applyDrop on the shell side handles the
+      // four-helper dispatch (same/cross-board × same/cross-kind).
+      expect(embeddedBoardBridge).toMatch(/function\s+resolveCrossViewTreeTarget\s*\(/);
+      // Tree-target resolution reads canonical kanban DOM data
+      // attributes — card / column / stack / row IDs.
+      expect(embeddedBoardBridge).toMatch(/['"]\.card\[data-card-id\]['"]/);
+      expect(embeddedBoardBridge).toMatch(/['"]\.column\[data-column-id\]['"]/);
+      expect(embeddedBoardBridge).toMatch(/['"]\.board-stack\[data-stack-id\]['"]/);
+      expect(embeddedBoardBridge).toMatch(/['"]\.board-row\[data-row-id\]['"]/);
+      // Active board id for the destination is read off
+      // window.LexeraDashboard so the tree-target carries boardId.
+      expect(embeddedBoardBridge).toMatch(/LexeraDashboard[\s\S]{0,80}getActiveBoardId/);
+      // Cards carry `position: 'before' | 'after'` for sibling
+      // reorder; the column / stack / row branches do NOT set
+      // position (cross-kind absorb appends to children).
+      expect(embeddedBoardBridge).toMatch(
+        /closest\(\s*['"]\.card\[data-card-id\]['"][\s\S]{0,400}position/
       );
-      expect(broadcastSite, 'broadcast must come after the drop() call').toBeGreaterThan(dropIdx);
-      // And the broadcast site is wrapped in `multiview_broadcast`.
-      expect(embeddedBoardBridge.slice(dropIdx, broadcastSite + 30))
-        .toMatch(/multiview_broadcast/);
+      // The pointerup handler broadcasts BOTH the persistence event
+      // (hierarchy-entity-drop) AND the cleanup echo
+      // (cross-view-drag-handled). Persistence broadcast comes
+      // FIRST so the shell applies before sibling webviews tear down.
+      const dropBroadcast = embeddedBoardBridge.search(/['"]hierarchy-entity-drop['"]/);
+      const handledBroadcast = embeddedBoardBridge.indexOf(
+        "'cross-view-drag-handled'", dropBroadcast > -1 ? dropBroadcast : 0
+      );
+      expect(dropBroadcast, 'hierarchy-entity-drop broadcast must exist').toBeGreaterThan(-1);
+      expect(handledBroadcast, 'cross-view-drag-handled echo must exist after the drop broadcast').toBeGreaterThan(dropBroadcast);
     });
 
     it('listens for cross-view-drag-handled to tear down its own tracker (sibling-webview echo)', () => {

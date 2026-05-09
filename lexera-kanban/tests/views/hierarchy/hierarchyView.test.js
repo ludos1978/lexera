@@ -680,11 +680,12 @@ describe('hierarchy view sub-app', () => {
       expect(dropBroadcast.payload.target.position).toBe('after');
     });
 
-    // User contract: stacks can absorb into a row only when the row
-    // has NO stacks yet. With visible stacks the user must drop on a
-    // sibling stack for zone-aware reorder. Same rule for columns
-    // into stacks.
-    it('column → stack absorb is rejected when the stack already has columns', async () => {
+    // User contract 2026-05-09: "if dropped on a parent it should
+    // highlight it and append as last item". Absorb works on ANY
+    // matching parent — empty or not. The shell-side
+    // applyEntityAbsorb appends to the end of the children array
+    // regardless of how many siblings already exist.
+    it('column → stack absorb fires hierarchy-entity-drop on both empty and non-empty parents (append-as-last)', async () => {
       const dom = createDom();
       const { window } = dom;
       let capturedOpts = null;
@@ -715,14 +716,19 @@ describe('hierarchy view sub-app', () => {
       await new Promise((r) => setTimeout(r, 0));
 
       // Drag column c1 onto s1 (stack that already contains c1) —
-      // should be rejected since the stack has columns visible.
+      // now permitted: applyEntityAbsorb appends c1 to s1.columns.
       var sourceCol = window.document.querySelector('.tree-node[data-drag-kind="column"][data-tree-id="c1"]');
       var nonEmptyStack = window.document.querySelector('.tree-node[data-drag-kind="stack"][data-tree-id="s1"]');
       pointerDragSequence(window, sourceCol, nonEmptyStack);
       var dropOnNonEmpty = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
-      expect(dropOnNonEmpty).toBeFalsy();
+      expect(dropOnNonEmpty).toBeTruthy();
+      expect(dropOnNonEmpty.payload.target.kind).toBe('stack');
+      expect(dropOnNonEmpty.payload.target.entityId).toBe('s1');
+      // Cross-kind absorb has no `position` — semantic is "append to
+      // the end of the parent's children".
+      expect(dropOnNonEmpty.payload.target.position).toBeUndefined();
 
-      // But dropping the same column onto s2 (empty stack) IS allowed.
+      // Same source column onto s2 (empty stack) is also permitted.
       broadcastCalls.length = 0;
       var emptyStack = window.document.querySelector('.tree-node[data-drag-kind="stack"][data-tree-id="s2"]');
       pointerDragSequence(window, sourceCol, emptyStack);

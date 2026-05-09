@@ -302,6 +302,62 @@
       row: 'tree-row', stack: 'tree-stack',
       column: 'tree-column', card: 'tree-card'
     };
+    // Resolve the destination kanban's active board id. The shell's
+    // applyDrop needs `{ boardId, kind, entityId }` on the target so
+    // it can load the right board and route through the four
+    // helpers. LexeraDashboard.getActiveBoardId is exposed by app.js
+    // and lives on every kanban webview that boots the dashboard.
+    function getDestinationActiveBoardId() {
+      try {
+        var dash = window.LexeraDashboard;
+        if (dash && typeof dash.getActiveBoardId === 'function') {
+          return dash.getActiveBoardId() || null;
+        }
+      } catch (_) { /* non-fatal */ }
+      return null;
+    }
+    // DOM hit-test → tree-shaped drop target. Cards are sibling-
+    // reorder targets (with `position`); columns / stacks / rows are
+    // absorb targets (no position — append-as-last semantics in
+    // applyEntityAbsorb / applyCrossBoardEntityAbsorb).
+    function resolveCrossViewTreeTarget(x, y) {
+      if (!document.elementFromPoint) return null;
+      var hit = document.elementFromPoint(x, y);
+      if (!hit || typeof hit.closest !== 'function') return null;
+      var boardId = getDestinationActiveBoardId();
+      if (!boardId) return null;
+      // Card: sibling reorder with before/after based on cursor Y vs
+      // the card's vertical midpoint.
+      var card = hit.closest('.card[data-card-id]');
+      if (card) {
+        var cardId = String(card.getAttribute('data-card-id') || '').trim();
+        if (cardId) {
+          var rect = card.getBoundingClientRect();
+          var position = (rect.height > 0 && y >= rect.top + rect.height / 2)
+            ? 'after' : 'before';
+          return { boardId: boardId, kind: 'card', entityId: cardId, position: position };
+        }
+      }
+      // Column / stack / row: cross-kind absorb — the shell's
+      // applyEntityAbsorb appends the source to the target's
+      // children array. Match closest first (deepest containment).
+      var column = hit.closest('.column[data-column-id]');
+      if (column) {
+        var columnId = String(column.getAttribute('data-column-id') || '').trim();
+        if (columnId) return { boardId: boardId, kind: 'column', entityId: columnId };
+      }
+      var stack = hit.closest('.board-stack[data-stack-id]');
+      if (stack) {
+        var stackId = String(stack.getAttribute('data-stack-id') || '').trim();
+        if (stackId) return { boardId: boardId, kind: 'stack', entityId: stackId };
+      }
+      var row = hit.closest('.board-row[data-row-id]');
+      if (row) {
+        var rowId = String(row.getAttribute('data-row-id') || '').trim();
+        if (rowId) return { boardId: boardId, kind: 'row', entityId: rowId };
+      }
+      return null;
+    }
     function teardownCrossDragListeners() {
       if (crossDragMoveHandler) {
         document.removeEventListener('pointermove', crossDragMoveHandler, true);
@@ -347,19 +403,41 @@
       crossDragUpHandler = function (e) {
         if (!crossDragPayload) return;
         var pending = crossDragPayload;
-        var api = window.__lexeraExternalDnd;
-        var dropped = false;
-        if (api && typeof api.drop === 'function') {
-          try { dropped = !!api.drop(pending, e.clientX, e.clientY); } catch (_) { /* non-fatal */ }
-        }
+        // Resolve a tree-shaped target from the local DOM hit-test.
+        // The kanban's own `__lexeraExternalDnd.drop` is intentionally
+        // NOT called here — it mutates THIS webview's local board
+        // data, which is wrong for cross-board moves (the source
+        // entity still lives in source.boardId; only the shell can
+        // load both boards + apply the move atomically). Instead we
+        // build a `{ boardId, kind, entityId, position? }` target and
+        // broadcast `hierarchy-entity-drop` so the shell-side
+        // `hierarchyDragBridge.applyDrop` does the right thing for
+        // both same-board and cross-board cases.
+        var target = resolveCrossViewTreeTarget(e.clientX, e.clientY);
+        var dropped = !!target;
         xviewLog('local-track.pointerup', {
           x: e.clientX, y: e.clientY,
-          payloadType: pending.type, dropped: dropped
+          payloadType: pending.type,
+          targetKind: target && target.kind,
+          targetEntityId: target && target.entityId,
+          targetPosition: target && target.position,
+          dropped: dropped
         });
         teardownCrossDragListeners();
+        if (target) {
+          // Persist via the shell. hierarchyDragBridge listens for
+          // `hierarchy-entity-drop` and routes through applyDrop's
+          // four-helper dispatch (same/cross-board × same/cross-kind).
+          try {
+            invoke('multiview_broadcast', {
+              event: 'hierarchy-entity-drop',
+              payload: { source: pending.source, target: target }
+            });
+          } catch (_) { /* non-fatal */ }
+        }
         // Tell every other webview the drag is over so they tear
-        // down their own trackers. Without this echo, the source
-        // webview's hierarchy.js `activeDrag` state never clears
+        // down their own trackers AND the source webview's
+        // hierarchy.js / workspaces.js resets its activeDrag state
         // (its own pointerup never fired — events stayed local to
         // this destination). Echo also lets sibling receivers drop
         // their stale `__lexeraExternalDnd` indicators.

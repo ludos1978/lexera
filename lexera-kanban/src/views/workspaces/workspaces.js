@@ -254,21 +254,11 @@
       if (!sameKind) {
         var absorbInto = ABSORB_KINDS[dragSource.kind];
         if (absorbInto !== info.kind) return null;
-        // User contract: stacks can only land "in an empty row";
-        // columns "added to an empty stack". When the target row /
-        // stack already has same-source-kind children visible, force
-        // the user to drop on a sibling (zone-aware reorder) instead.
-        // Card → column and row → board absorbs stay permissive — the
-        // user explicitly allowed them at any time.
-        if ((dragSource.kind === 'stack' && info.kind === 'row') ||
-            (dragSource.kind === 'column' && info.kind === 'stack')) {
-          var entry = tgt.parentElement;
-          var children = entry ? entry.querySelector('.tree-children') : null;
-          var anyChild = children
-            ? children.querySelector('.tree-node[data-drag-kind="' + dragSource.kind + '"]')
-            : null;
-          if (anyChild) return null;
-        }
+        // User contract 2026-05-09: "if dropped on a parent it should
+        // highlight it and append as last item". Allow absorb on ANY
+        // matching parent kind (no longer gated on "empty container");
+        // applyEntityAbsorb appends to the end of the children array
+        // regardless of how many siblings already exist.
       }
       // Same-kind drops carry a position ('before' | 'after') derived
       // from the cursor's Y vs the target's vertical midpoint. Cross-
@@ -285,6 +275,7 @@
         activeDropTargetEl.classList.remove('is-drop-target');
         activeDropTargetEl.classList.remove('is-drop-before');
         activeDropTargetEl.classList.remove('is-drop-after');
+        activeDropTargetEl.classList.remove('is-drop-absorb');
         activeDropTargetEl = null;
       }
     };
@@ -367,15 +358,22 @@
       }
       // Same-kind reorder uses match.info.position ('before' | 'after')
       // — surface that as a class so the user sees which side the
-      // dragged sibling will land on. Cross-kind absorbs (no position)
-      // keep just the dashed-outline `.is-drop-target`.
+      // dragged sibling will land on. Cross-kind absorbs (no
+      // position) get `.is-drop-absorb` so the parent itself
+      // highlights — append-as-last semantics per user contract
+      // 2026-05-09.
       if (activeDropTargetEl) {
         activeDropTargetEl.classList.remove('is-drop-before');
         activeDropTargetEl.classList.remove('is-drop-after');
+        activeDropTargetEl.classList.remove('is-drop-absorb');
         if (match && match.info && match.info.position === 'before') {
           activeDropTargetEl.classList.add('is-drop-before');
         } else if (match && match.info && match.info.position === 'after') {
           activeDropTargetEl.classList.add('is-drop-after');
+        } else if (match && match.info) {
+          // Cross-kind absorb — no position, the whole parent
+          // highlights to mean "append into me".
+          activeDropTargetEl.classList.add('is-drop-absorb');
         }
       }
       // No local target → cursor may be over a different webview.
