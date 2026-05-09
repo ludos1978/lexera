@@ -19,6 +19,28 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: src/shell/inspectorShortcuts.js (IIFE;
+ * window.LexeraInspectorShortcuts = api). Pure-logic predicates that
+ * classify a KeyboardEvent as either the single-window inspector
+ * combo (F12 / Cmd-Shift-I / Alt-I) or the all-views inspector
+ * combo (Cmd/Ctrl + Alt + Shift + I). Lives outside the app.js IIFE
+ * so vitest can exercise the predicates without booting the shell;
+ * the actual handlers stay in app.js. Strict-superset note:
+ * isInspectorAllShortcut is a strict superset of isInspectorShortcut,
+ * so callers MUST test it FIRST to win the precedence race.
+ */
+interface LexeraInspectorShortcutsApi {
+  /** True when `e` is the single-window inspector shortcut
+   *  (F12, Cmd/Ctrl+Shift+I without Alt, or Alt+I without Cmd/Ctrl).
+   *  Returns false on null / undefined. */
+  isInspectorShortcut(e: KeyboardEvent | null | undefined): boolean;
+  /** True when `e` is the open-DevTools-for-EVERY-webview shortcut
+   *  (Cmd/Ctrl + Alt + Shift + I). Strict superset of
+   *  isInspectorShortcut — test this first. */
+  isInspectorAllShortcut(e: KeyboardEvent | null | undefined): boolean;
+}
+
+/**
  * Source: src/workspace/layoutTree.js (IIFE;
  * window.LexeraLayoutTree = api). Pure tree primitives — no DOM,
  * no state, no webviews. Every layout-tree mutation in the codebase
@@ -603,7 +625,7 @@ declare global {
     LexeraKeybindingRegistry: LexeraKeybindingRegistryApi;
     LexeraRuntime: any;
     LexeraDialogs: LexeraDialogsApi;
-    LexeraInspectorShortcuts: any;
+    LexeraInspectorShortcuts: LexeraInspectorShortcutsApi;
     LexeraPanelLaunchers: any;
     LexeraLifecycle: any;
 
