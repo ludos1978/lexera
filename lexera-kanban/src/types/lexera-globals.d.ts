@@ -422,15 +422,31 @@ interface LexeraLayoutTreeApi {
    *  clean up frame caches / multiview state for removed ids. */
   replaceTreeRoot(holder: any, key: string, nextTree: any): { removed: string[]; added: string[] };
   createIdFactory(): (prefix: string) => string;
-  createTabsetNode(tabs: any[], idFactory?: (prefix: string) => string): any;
-  createSplitNode(axis: 'horizontal' | 'vertical', first: any, second: any, ratio: number, idFactory?: (prefix: string) => string): any;
+  createTabsetNode(
+    tabs: Array<LexeraDockTreeTab>,
+    idFactory?: (prefix: string) => string
+  ): LexeraDockTreeLeaf;
+  createSplitNode(
+    axis: 'horizontal' | 'vertical',
+    first: LexeraDockTreeNode,
+    second: LexeraDockTreeNode,
+    ratio: number,
+    idFactory?: (prefix: string) => string
+  ): LexeraDockTreeSplit;
   withNormalizedLeaves(
     node: LexeraDockTreeNode | null,
     isRoot: boolean,
     idFactory?: (prefix: string) => string
   ): LexeraDockTreeNode | null;
-  createBoardTab(boardId: string, viewKind: string | null | undefined, idFactory?: (prefix: string) => string): any;
-  createPanelTab(panelId: string, idFactory?: (prefix: string) => string): any;
+  createBoardTab(
+    boardId: string,
+    viewKind: string | null | undefined,
+    idFactory?: (prefix: string) => string
+  ): LexeraDockTreeBoardTab;
+  createPanelTab(
+    panelId: string,
+    idFactory?: (prefix: string) => string
+  ): LexeraDockTreePanelTab;
   migratePanelDocksToSideDocks(panelDocks: any, panelGroupActives: any, idFactory?: (prefix: string) => string): any;
   findLeafContainingBoard(node: any, boardId: string, viewKind?: string): any;
   findAnyLeafContainingBoard(node: any, boardId: string): any;
