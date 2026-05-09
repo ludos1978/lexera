@@ -452,6 +452,73 @@ interface LexeraMessageBridgeApi {
   dispatchAction(tabId: string, scope: string, action: string, context: unknown): boolean;
 }
 
+/**
+ * Source: src/shell/bridges/backendStatusBridge.js (IIFE;
+ * window.LexeraBackendStatusBridge = api). Renders a small fixed-
+ * position pill in the top-right corner reflecting the backend's
+ * connection state. Subscribes to the Tauri runtime `backend-status`
+ * event and re-renders the indicator on each payload.
+ *
+ * State machine (payload.state values handled): `connected` (hides
+ * the pill), `waiting` (initial connect), `reconnecting` (post-drop
+ * with attempt counter), `unavailable` (terminal — optional reason
+ * string). Anything else falls through to a generic
+ * "Backend status: <state>" label so unknown states don't go silent.
+ */
+type LexeraBackendStatusTone = 'connected' | 'waiting' | 'reconnecting' | 'unavailable' | 'unknown';
+
+interface LexeraBackendStatusView {
+  /** Whether the indicator pill is shown. `false` only when
+   *  `state === 'connected'`. */
+  visible: boolean;
+  /** User-facing label for the pill. Empty when not visible. */
+  label: string;
+  /** Coarse mood for theming hooks; written to `data-tone`. */
+  tone: LexeraBackendStatusTone;
+}
+
+interface LexeraBackendStatusPayload {
+  /** Connection state: drives label + visibility. Unknown values
+   *  are rendered as `Backend status: <state>` so the user still
+   *  sees the raw signal. */
+  state?: string | null;
+  /** Reconnect attempt counter — only meaningful when
+   *  `state === 'reconnecting'`. */
+  attempt?: number | null;
+  /** Optional human reason string surfaced when `state === 'unavailable'`. */
+  reason?: string | null;
+}
+
+interface LexeraBackendStatusRuntimeEvent {
+  /** Tauri webview event listener — `runtime.event.listen(name, fn)`. */
+  listen(eventName: string, handler: (event: { payload: LexeraBackendStatusPayload | null }) => void): void;
+}
+
+interface LexeraBackendStatusRuntime {
+  event?: LexeraBackendStatusRuntimeEvent;
+}
+
+interface LexeraBackendStatusBridgeApi {
+  /** Stable Tauri event name the bridge subscribes to. */
+  readonly EVENT_NAME: 'backend-status';
+  /** DOM id used by `ensureElement` so the indicator pill is
+   *  reused across renders. */
+  readonly INDICATOR_ID: 'lexera-backend-status-indicator';
+  /** Pure helper: turn a status payload into the rendered view
+   *  shape (visible / label / tone). No DOM access. */
+  describe(payload: LexeraBackendStatusPayload | null | undefined): LexeraBackendStatusView;
+  /** Render the indicator pill into `doc.body`, creating it on
+   *  first call. Returns the same view shape `describe` would. */
+  render(doc: Document | null | undefined, payload: LexeraBackendStatusPayload | null | undefined): LexeraBackendStatusView;
+  /** Subscribe to `backend-status` events on the supplied Tauri
+   *  runtime so each payload re-renders the pill. Returns `false`
+   *  if the runtime doesn't expose `event.listen`; otherwise `true`. */
+  installWith(
+    runtime: LexeraBackendStatusRuntime | null | undefined,
+    options?: { document?: Document | null }
+  ): boolean;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
@@ -479,7 +546,7 @@ declare global {
     LexeraNavigationBridge: any;
     LexeraRequestBridge: any;
     LexeraManagementBridge: any;
-    LexeraBackendStatusBridge: any;
+    LexeraBackendStatusBridge: LexeraBackendStatusBridgeApi;
     LexeraEmbeddedBoardBridge: any;
     LexeraHierarchyDragBridge: any;
     LexeraKeybindingRegistry: LexeraKeybindingRegistryApi;
