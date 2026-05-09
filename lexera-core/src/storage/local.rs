@@ -1074,10 +1074,23 @@ impl LocalStorage {
     fn sync_board_include_sources(board: &mut KanbanBoard, board_dir: &Path) {
         for column in board.all_columns_mut() {
             if let Some(raw_path) = syntax::extract_include_path(&column.title) {
-                column.include_source = Some(IncludeSource::new(
-                    raw_path.clone(),
-                    crate::include::resolver::resolve_include_path(&raw_path, board_dir),
-                ));
+                let resolved_path =
+                    crate::include::resolver::resolve_include_path(&raw_path, board_dir);
+                // Preserve the `missing` flag carried over from parse so that a
+                // broken include doesn't get silently re-created on save. The
+                // flag only means "parser couldn't read this on load" — it must
+                // never be derived from current disk state, or we'd refuse to
+                // write a brand-new include the user just added by editing the
+                // column title.
+                let missing = match column.include_source.as_ref() {
+                    Some(prior) if prior.raw_path == raw_path => prior.missing,
+                    _ => false,
+                };
+                column.include_source = Some(IncludeSource {
+                    raw_path,
+                    resolved_path,
+                    missing,
+                });
             } else {
                 column.include_source = None;
             }
@@ -1102,8 +1115,20 @@ impl LocalStorage {
         }
 
         for target_col in target.all_columns_mut() {
-            if target_col.include_source.is_some() {
-                continue; // already has include source
+            if let Some(target_src) = target_col.include_source.as_mut() {
+                // Already has include_source from sync. Still propagate the
+                // `missing` flag from source — sync defaults missing=false but
+                // the parser-set flag in source is the authoritative value, and
+                // it must survive CRDT roundtrips so broken includes don't get
+                // silently re-created on save.
+                let matched = include_by_column_id
+                    .get(&target_col.id)
+                    .filter(|s| s.raw_path == target_src.raw_path)
+                    .or_else(|| include_by_raw_path.get(&target_src.raw_path));
+                if let Some(s) = matched {
+                    target_src.missing = s.missing;
+                }
+                continue;
             }
             // Primary: match by column ID (stable across normal saves)
             if let Some(include_source) = include_by_column_id.get(&target_col.id) {
@@ -3440,6 +3465,19 @@ impl LocalStorage {
             StorageError::InvalidBoard("Column is not an include column".to_string())
         })?;
 
+        // Never silently materialize a broken reference. If the include file was
+        // missing when the board loaded, saving the board must not create an
+        // empty placeholder at that path — the user expects broken links to
+        // stay broken until they explicitly create the file.
+        if include_source.missing {
+            log::warn!(
+                "[lexera.storage.include] Skipping write to missing include {:?} (column {:?}) — refusing to create placeholder",
+                include_source.resolved_path,
+                column.title
+            );
+            return Ok(());
+        }
+
         let resolved_path = include_source.resolved_path.clone();
         let slide_content = slide_parser::generate_slides(&column.cards);
 
@@ -5098,6 +5136,39 @@ kanban-plugin: board
         assert!(on_disk_include.contains("# Slide 2"));
         assert!(on_disk_include.contains("Second slide"));
         assert!(on_disk_include.contains("\n\n---\n\n"));
+    }
+
+    #[test]
+    fn test_write_board_does_not_materialize_missing_include() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let missing_include_path = dir.path().join("missing-slides.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./missing-slides.md)!!!\n",
+        )
+        .unwrap();
+        // Intentionally do NOT create missing_include_path.
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        let cols = board.all_columns();
+        assert_eq!(cols.len(), 1);
+        let src = cols[0].include_source.as_ref().expect("column must have include_source");
+        assert!(src.missing, "include must be flagged missing on load");
+        assert!(!missing_include_path.exists(), "precondition: missing file must not exist");
+        drop(cols);
+
+        storage.write_board(&id, &board).unwrap();
+
+        assert!(
+            !missing_include_path.exists(),
+            "saving a board with a missing include must not silently create a zero-byte placeholder at {:?}",
+            missing_include_path
+        );
     }
 
     #[test]
