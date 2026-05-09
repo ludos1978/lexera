@@ -757,8 +757,23 @@ interface LexeraTreeRegistryApi {
   /** Bind shell state + helpers. Throws if any required dep is
    *  missing. Must be called once before any other method. */
   setup(deps: {
-    state: any;
-    layoutTree: any;
+    /** Live reference to the workspace shell state — only the
+     *  layout-tree fields are read/written. The registry never
+     *  copies, so mutations land directly on the shell's source
+     *  of truth. Other shell-state fields exist but are opaque
+     *  to this module. */
+    state: {
+      dockTree?: LexeraDockTreeNode | null;
+      sideDocks?: {
+        left?: LexeraDockTreeNode | null;
+        right?: LexeraDockTreeNode | null;
+        bottom?: LexeraDockTreeNode | null;
+      };
+      [otherKey: string]: unknown;
+    };
+    /** `window.LexeraLayoutTree`. Tree-walk primitives are read off
+     *  this object once setup() runs. */
+    layoutTree: LexeraLayoutTreeApi;
     withNormalizedLeaves: (node: LexeraDockTreeNode, isRoot: boolean) => LexeraDockTreeNode;
     resolvePanelTargetFn: (panelId: string) => string;
   }): void;
