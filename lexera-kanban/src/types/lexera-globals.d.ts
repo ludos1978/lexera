@@ -519,6 +519,57 @@ interface LexeraBackendStatusBridgeApi {
   ): boolean;
 }
 
+/**
+ * Source: src/shell/bridges/requestBridge.js (IIFE;
+ * window.LexeraRequestBridge = api). Request/response IPC pattern
+ * over Tauri events: pairs a request event with a `<event>-response`
+ * event using a unique correlation id. Used for cross-webview features
+ * that need a return value (e.g., "build the context menu for this
+ * scope and give me the items back" — see workspaceShell.js:~4684).
+ *
+ * Caller-side `request` emits to a specific webview and resolves
+ * with its response or rejects on timeout. Responder-side
+ * `handleRequest` installs a handler that auto-broadcasts the
+ * response with the same correlation id.
+ *
+ * Stateful — call `create({ tauri, invoke })` once per webview to
+ * get the `{ request, handleRequest }` instance. Throws if either
+ * dep is missing.
+ */
+interface LexeraRequestBridgeInstance {
+  /** Send `requestEvent` to `targetLabel` and resolve with the
+   *  responder's data, or reject on `_error` / timeout. Default
+   *  timeout 2000ms. The bridge uses the existing tauri runtime's
+   *  `multiview_emit_to` IPC for delivery. */
+  request<TResponse = unknown>(
+    targetLabel: string,
+    requestEvent: string,
+    payload?: unknown,
+    timeoutMs?: number
+  ): Promise<TResponse>;
+  /** Install a handler for `requestEvent` that auto-broadcasts the
+   *  response (with the request's correlation id) on
+   *  `<requestEvent>-response`. The handler may return a value or
+   *  a Promise; thrown / rejected values are forwarded as `_error`
+   *  strings on the response payload. Returns the listen()
+   *  unsubscribe function (wrapped in a Promise — Tauri's
+   *  `listen()` returns a Promise<UnlistenFn>). */
+  handleRequest(
+    requestEvent: string,
+    handler: (data: unknown) => unknown | Promise<unknown>
+  ): Promise<unknown>;
+}
+
+interface LexeraRequestBridgeApi {
+  /** Build a `{ request, handleRequest }` instance bound to the
+   *  supplied Tauri runtime + invoke functions. Throws if either
+   *  required dep is missing. */
+  create(deps: {
+    tauri: () => unknown;
+    invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+  }): LexeraRequestBridgeInstance;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
@@ -544,7 +595,7 @@ declare global {
     LexeraThemeBridge: any;
     LexeraCatalogBridge: any;
     LexeraNavigationBridge: any;
-    LexeraRequestBridge: any;
+    LexeraRequestBridge: LexeraRequestBridgeApi;
     LexeraManagementBridge: any;
     LexeraBackendStatusBridge: LexeraBackendStatusBridgeApi;
     LexeraEmbeddedBoardBridge: any;
