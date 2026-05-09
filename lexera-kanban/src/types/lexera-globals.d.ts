@@ -19,6 +19,44 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: src/shell/bridges/themeBridge.js (IIFE;
+ * window.LexeraThemeBridge = api). Owns the live CSS-custom-property
+ * palette + color-scheme snapshot the shell pushes to every sub-app
+ * webview via the multiview broadcast bus. Sub-apps that opt into
+ * `LexeraSubApp.init({ requestTheme: true })` receive the snapshot
+ * on connect and on every subsequent broadcast.
+ */
+interface LexeraThemeSnapshot {
+  /** Map of CSS custom-property name → value. Includes only the
+   *  whitelisted vars in `THEME_VAR_NAMES`. */
+  palette: { [varName: string]: string };
+  /** Resolved colour scheme — explicit `colorScheme` style on
+   *  documentElement when set, otherwise the `prefers-color-scheme`
+   *  media-query result. */
+  color_scheme: 'light' | 'dark';
+}
+
+interface LexeraThemeBridgeApi {
+  /** The whitelist of CSS custom-property names broadcast in
+   *  snapshots. Snapshot consumers should mirror this list when
+   *  applying. */
+  THEME_VAR_NAMES: string[];
+  /** Capture the current palette + colour scheme. Returns `null`
+   *  when document/documentElement isn't available (test sandboxes). */
+  snapshotTheme(): LexeraThemeSnapshot | null;
+  /** Take a snapshot and broadcast it to every subscribed webview
+   *  via `multiview_broadcast` IPC. Resolves silently when the IPC
+   *  is unavailable (offline / no Tauri). */
+  broadcastTheme(): Promise<unknown>;
+  /** Apply a received snapshot's palette to :root of the current
+   *  document. No-op for snapshots without a palette. */
+  applyThemeSnapshot(snapshot: LexeraThemeSnapshot | null | undefined): void;
+  /** Wire the shell-side listeners that re-broadcast on
+   *  `theme-request` events from sub-apps. Returns a teardown fn. */
+  initListeners(): () => void;
+}
+
+/**
  * Source: src/shell/panelLaunchers.js (IIFE;
  * window.LexeraPanelLaunchers = api). DevTools-console helpers for
  * opening Stage-4 utility sub-apps (log, inspector, workspaces,
@@ -667,7 +705,7 @@ declare global {
     LexeraDashboard: any;
     LexeraDebug: LexeraDebugApi;
     LexeraEmbedMenu: any;
-    LexeraThemeBridge: any;
+    LexeraThemeBridge: LexeraThemeBridgeApi;
     LexeraCatalogBridge: any;
     LexeraNavigationBridge: any;
     LexeraRequestBridge: LexeraRequestBridgeApi;
