@@ -19,6 +19,46 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Source: src/shell/bridges/navigationBridge.js (IIFE;
+ * window.LexeraNavigationBridge = api). Subscribes the shell to
+ * multiview-navigate / multiview-shortcut / focus-changed /
+ * frontend-tests-command events and dispatches them. SHORTCUT_ACTIONS
+ * is the static map of action ids → handlers (open-log-view,
+ * open-inspector, open-workspaces, open-dashboard).
+ */
+interface LexeraNavigationBridgeEvent<P = unknown> {
+  payload?: P;
+  windowLabel?: string;
+}
+
+interface LexeraNavigationBridgeApi {
+  /** Wire listeners via the current webview's `listen()`. Returns
+   *  true on success, false when the webview helper is unavailable
+   *  (test/embedded contexts). */
+  install(): boolean;
+  /** Same as install but accepts an explicit Tauri runtime so the
+   *  bridge can fall back to `runtime.event.listen('Any', …)` when
+   *  the per-webview listener isn't available. Note: webview-scoped
+   *  listening is preferred (see Tauri #11379). */
+  installWith(runtime: unknown): boolean;
+  /** Handle a `multiview-navigate` event payload. */
+  handleNavigate(event: LexeraNavigationBridgeEvent): void;
+  /** Handle a `multiview-shortcut` event payload — looks up the
+   *  action in SHORTCUT_ACTIONS and invokes the handler. */
+  handleShortcut(event: LexeraNavigationBridgeEvent): void;
+  /** Handle a `focus-changed` event broadcast from any webview. */
+  handleFocusChanged(event: LexeraNavigationBridgeEvent): void;
+  /** Handle a `frontend-tests-command` event payload. */
+  handleFrontendTestsCommand(event: LexeraNavigationBridgeEvent): void;
+  /** Re-broadcast the shell's frontend-tests state to every sub-app. */
+  broadcastFrontendTestsState(): Promise<unknown>;
+  /** Action id → handler map. Static; the bridge's only writable
+   *  surface is mutating handlers in place (which the codebase
+   *  doesn't currently do). */
+  SHORTCUT_ACTIONS: { [actionId: string]: () => unknown };
+}
+
+/**
  * Source: src/shell/bridges/themeBridge.js (IIFE;
  * window.LexeraThemeBridge = api). Owns the live CSS-custom-property
  * palette + color-scheme snapshot the shell pushes to every sub-app
@@ -707,7 +747,7 @@ declare global {
     LexeraEmbedMenu: any;
     LexeraThemeBridge: LexeraThemeBridgeApi;
     LexeraCatalogBridge: any;
-    LexeraNavigationBridge: any;
+    LexeraNavigationBridge: LexeraNavigationBridgeApi;
     LexeraRequestBridge: LexeraRequestBridgeApi;
     LexeraManagementBridge: any;
     LexeraBackendStatusBridge: LexeraBackendStatusBridgeApi;
