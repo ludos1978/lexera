@@ -239,6 +239,16 @@
   // so we mirror it here. Broadcast contract stays the same:
   // `hierarchy-entity-drag-start` once the threshold is crossed,
   // `hierarchy-entity-drop` on a valid mouseup target.
+  // Module-scope reference to the drag-block's endDrag so the
+  // LexeraSubApp.init `onCustom` handlers below can clean up local
+  // state when the destination webview broadcasts that it handled
+  // the cross-view drop. The source's own pointerup may never fire
+  // when the user releases over a sibling Tauri webview (events
+  // don't cross WKWebView boundaries) — without this echo the
+  // `is-drop-target` outline + `pendingDrag` / `activeDrag` state
+  // would persist past the drop.
+  var _hierarchyEndDrag = null;
+
   if (localBoardsEl && !localBoardsEl.__hierarchyDragBound) {
     // Container relations:
     //   card → column, column → stack, stack → row, row → board
@@ -338,6 +348,9 @@
       document.removeEventListener('pointerup', onUp, true);
       document.removeEventListener('pointercancel', onUp, true);
     };
+    // Expose to the LexeraSubApp.init `onCustom` handlers below — see
+    // the `_hierarchyEndDrag` declaration just above this block.
+    _hierarchyEndDrag = endDrag;
     var getOwnWebviewLabel = function () {
       try {
         var wv = window.LexeraSubApp && typeof window.LexeraSubApp.getCurrentWebview === 'function'
@@ -655,6 +668,14 @@
     onCustom: {
       'hierarchy-board-changed': function (payload) {
         invalidateBoardHierarchy((payload && payload.boardId) || '');
+      },
+      // Echo emitted by the destination webview (embeddedBoardBridge.js)
+      // when it has handled a cross-view drop. The source's own
+      // pointerup never fires for cross-WKWebView drops, so without
+      // this echo the dashed `.is-drop-target` outline + drag state
+      // would persist past the release.
+      'cross-view-drag-handled': function () {
+        if (typeof _hierarchyEndDrag === 'function') _hierarchyEndDrag();
       }
     },
     onCatalog: function (snap) {

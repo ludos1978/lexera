@@ -183,6 +183,13 @@
   // mousedown → distance-threshold → mousemove → mouseup pattern.
   // Mirror that here so the broadcast contract (and the bridge that
   // listens for it) stays unchanged.
+  // Module-scope reference to the drag-block's endDrag so the
+  // LexeraSubApp.init `onCustom` handlers below can clean up local
+  // state when the destination webview broadcasts that it handled
+  // the cross-view drop. The source's own pointerup may never fire
+  // when the user releases over a sibling Tauri webview.
+  var _workspacesEndDrag = null;
+
   if (localBoardsEl && !localBoardsEl.__workspacesDragBound) {
     // Container relations: drop kind X onto kind Y where Y can hold X.
     //   card   → column  (card joins column.cards)
@@ -290,6 +297,9 @@
       document.removeEventListener('pointerup', onUp, true);
       document.removeEventListener('pointercancel', onUp, true);
     };
+    // Expose to the LexeraSubApp.init `onCustom` handlers below — see
+    // the `_workspacesEndDrag` declaration just above this block.
+    _workspacesEndDrag = endDrag;
     // Sub-app's own webview label — used to tag drag-move broadcasts
     // so the shell-side router can translate this document's cursor
     // coords into top-window coords. Looked up lazily so the runtime
@@ -645,6 +655,13 @@
     onCustom: {
       'hierarchy-board-changed': function (payload) {
         invalidateBoardHierarchy((payload && payload.boardId) || '');
+      },
+      // Echo emitted by the destination webview (embeddedBoardBridge.js)
+      // when it has handled a cross-view drop. The source's own
+      // pointerup never fires for cross-WKWebView drops, so without
+      // this echo the drag state would persist past the release.
+      'cross-view-drag-handled': function () {
+        if (typeof _workspacesEndDrag === 'function') _workspacesEndDrag();
       }
     },
     onCatalog: function (snap) {

@@ -210,7 +210,19 @@
         // which already knows how to map a cross-app drag payload
         // to the right card / column / row / stack drop target.
         'external-dnd-hover',
-        'external-dnd-drop'
+        'external-dnd-drop',
+        // Per-webview cross-view-drag tracking (2026-05-09). Pointer
+        // events do NOT cross separate Tauri WKWebView boundaries
+        // — when the user drags from a sub-app webview into THIS
+        // kanban webview, the source's pointer events stop firing
+        // the moment the cursor crosses the boundary. Each receiver
+        // webview compensates by tracking its OWN local pointer
+        // while a drag is in flight, and routing those local coords
+        // through `__lexeraExternalDnd.hover/drop`. Subscribing here
+        // so the listeners arm as soon as the source broadcasts
+        // `hierarchy-entity-drag-start`.
+        'hierarchy-entity-drag-start',
+        'cross-view-drag-handled'
       ]
     }).catch(function () {});
 
@@ -262,6 +274,126 @@
     }
     wv.listen('external-dnd-hover', function (event) { relayExternalDnd('hover', event); });
     wv.listen('external-dnd-drop', function (event) { relayExternalDnd('drop', event); });
+
+    // ─── Per-webview cross-view drag tracking ──────────────────────
+    //
+    // Tauri WKWebView treats each child webview as a separate process
+    // boundary; pointer / mouse events fired in the source webview
+    // STOP delivering the moment the cursor crosses out of the
+    // source's bounds. The shell-side `hierarchyDragBridge` chain
+    // (source.broadcast → shell.forward → destination.receive) only
+    // fires when the source's own pointermove fires — which it can't
+    // once the cursor is over a different webview. The result: drag
+    // hover preview never appears in the destination kanban view, drop
+    // never lands. (User report 2026-05-09: "still doesnt allow
+    // dragging to the kanban view from the workspace view!!!")
+    //
+    // Fix: each receiver webview watches its OWN pointermove /
+    // pointerup while a drag is in flight, and routes the local
+    // (clientX, clientY) straight into `__lexeraExternalDnd.hover` /
+    // `.drop`. Activated when ANY webview broadcasts
+    // `hierarchy-entity-drag-start`; deactivated on the
+    // `cross-view-drag-handled` echo or a 30s safety timeout.
+    var crossDragPayload = null;        // { source, type } awaiting hover/drop
+    var crossDragMoveHandler = null;
+    var crossDragUpHandler = null;
+    var crossDragSafetyTimer = 0;
+    var KIND_TO_TYPE = {
+      row: 'tree-row', stack: 'tree-stack',
+      column: 'tree-column', card: 'tree-card'
+    };
+    function teardownCrossDragListeners() {
+      if (crossDragMoveHandler) {
+        document.removeEventListener('pointermove', crossDragMoveHandler, true);
+        crossDragMoveHandler = null;
+      }
+      if (crossDragUpHandler) {
+        document.removeEventListener('pointerup', crossDragUpHandler, true);
+        document.removeEventListener('pointercancel', crossDragUpHandler, true);
+        crossDragUpHandler = null;
+      }
+      if (crossDragSafetyTimer) {
+        clearTimeout(crossDragSafetyTimer);
+        crossDragSafetyTimer = 0;
+      }
+      crossDragPayload = null;
+      var api = window.__lexeraExternalDnd;
+      if (api && typeof api.clear === 'function') {
+        try { api.clear(); } catch (_) { /* non-fatal */ }
+      }
+    }
+    wv.listen('hierarchy-entity-drag-start', function (event) {
+      var src = (event && event.payload) || null;
+      if (!src || !src.kind) {
+        xviewLog('local-track.skip(no-source-kind)', {});
+        return;
+      }
+      // Translate source kind to the payload.type strings
+      // `__lexeraExternalDnd` expects (mirror of the table in
+      // hierarchyDragBridge.js:415).
+      var type = KIND_TO_TYPE[src.kind] || ('tree-' + src.kind);
+      crossDragPayload = { source: src, type: type };
+      // Replace any previous tracker (defensive — shouldn't happen,
+      // but a missed cleanup must not leak stale handlers).
+      teardownCrossDragListeners();
+      crossDragPayload = { source: src, type: type };
+      crossDragMoveHandler = function (e) {
+        if (!crossDragPayload) return;
+        var api = window.__lexeraExternalDnd;
+        if (api && typeof api.hover === 'function') {
+          try { api.hover(crossDragPayload, e.clientX, e.clientY); } catch (_) { /* non-fatal */ }
+        }
+      };
+      crossDragUpHandler = function (e) {
+        if (!crossDragPayload) return;
+        var pending = crossDragPayload;
+        var api = window.__lexeraExternalDnd;
+        var dropped = false;
+        if (api && typeof api.drop === 'function') {
+          try { dropped = !!api.drop(pending, e.clientX, e.clientY); } catch (_) { /* non-fatal */ }
+        }
+        xviewLog('local-track.pointerup', {
+          x: e.clientX, y: e.clientY,
+          payloadType: pending.type, dropped: dropped
+        });
+        teardownCrossDragListeners();
+        // Tell every other webview the drag is over so they tear
+        // down their own trackers. Without this echo, the source
+        // webview's hierarchy.js `activeDrag` state never clears
+        // (its own pointerup never fired — events stayed local to
+        // this destination). Echo also lets sibling receivers drop
+        // their stale `__lexeraExternalDnd` indicators.
+        try {
+          invoke('multiview_broadcast', {
+            event: 'cross-view-drag-handled',
+            payload: { dropped: dropped, x: e.clientX, y: e.clientY, sourceKind: pending.source.kind }
+          });
+        } catch (_) { /* non-fatal */ }
+      };
+      document.addEventListener('pointermove', crossDragMoveHandler, true);
+      document.addEventListener('pointerup', crossDragUpHandler, true);
+      document.addEventListener('pointercancel', crossDragUpHandler, true);
+      // Safety net: if no pointerup fires within 30s (window blur,
+      // OS gesture-loss, etc.), clear the tracker so subsequent
+      // drags start clean.
+      crossDragSafetyTimer = setTimeout(function () {
+        xviewLog('local-track.safety-timeout', {});
+        teardownCrossDragListeners();
+      }, 30000);
+      xviewLog('local-track.armed', {
+        sourceKind: src.kind, payloadType: type, label: wv.label
+      });
+    });
+    wv.listen('cross-view-drag-handled', function (event) {
+      // A sibling webview handled the drop; tear down our tracker.
+      // The `dropped` flag is purely informational here — local
+      // cleanup is the same either way.
+      var p = (event && event.payload) || {};
+      if (crossDragPayload) {
+        xviewLog('local-track.handled-elsewhere', { dropped: !!p.dropped });
+      }
+      teardownCrossDragListeners();
+    });
 
     wv.listen('catalog-snapshot', function (event) {
       var p = (event && event.payload) || {};

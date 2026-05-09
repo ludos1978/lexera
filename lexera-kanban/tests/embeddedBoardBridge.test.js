@@ -209,7 +209,15 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
         // is over, and the kanban-board webview routes them into
         // window.__lexeraExternalDnd.
         'external-dnd-hover',
-        'external-dnd-drop'
+        'external-dnd-drop',
+        // Per-webview cross-view-drag tracking (2026-05-09). Pointer
+        // events do NOT cross separate Tauri WKWebView boundaries —
+        // each receiver webview compensates by tracking its OWN local
+        // pointer while a drag is in flight, routing local coords
+        // through __lexeraExternalDnd.hover/drop. See contract test
+        // crossViewDragPerWebviewTrackingContract.test.js.
+        'hierarchy-entity-drag-start',
+        'cross-view-drag-handled'
       ]
     });
     expect(typeof handlers['dashboard-navigate']).toBe('function');
