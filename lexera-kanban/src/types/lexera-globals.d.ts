@@ -1231,6 +1231,88 @@ interface LexeraLayoutPersistenceApi {
   getPersistenceStorage(): Storage;
 }
 
+/**
+ * Source: src/workspace/boardHost.js (IIFE;
+ * window.LexeraBoardHost = api). Owns the shell-side wiring for
+ * embedded board webviews — webview-label minting (with per-shell
+ * boot-id suffix to keep labels globally unique across windows),
+ * embedded URL construction, the connection-health dot, and the
+ * placeholder visibility observer that drives `multiview_set_visible`
+ * + geometry pushes.
+ *
+ * Stateful — `setup({ bootId })` may be called once at boot to set
+ * the unique-suffix; without it, labels fall back to the legacy
+ * `board-tab-<tabId>` shape (single-window unit-test convenience).
+ */
+interface LexeraBoardHostTab {
+  /** The tab id minted by the layout-tree id factory. */
+  id: string;
+  /** Set on board tabs (kind === 'board'). */
+  boardId?: string;
+  /** 'kanban' | 'canvas' — sets the `view=` query param on the
+   *  embedded URL when present. */
+  viewKind?: string;
+  /** Discriminator that matches `LexeraDockTreeTab`'s `kind`. */
+  kind?: string;
+}
+
+interface LexeraBoardHostApi {
+  /** Bind the per-shell bootId. Optional — single-window tests load
+   *  the module without setup and get the legacy un-suffixed label
+   *  shape, which is fine for those scenarios. */
+  setup(deps?: { bootId?: string }): void;
+  /** Resolve the iframe `contentWindow` currently rendering
+   *  `boardId`, or null when no host iframe owns it. Used for
+   *  mutation delegation — workspace-tree drag mutations must land
+   *  inside the iframe whose `fullBoardData` is the live source. */
+  getFrameWindowForBoard(
+    dockTree: LexeraDockTreeNode | null | undefined,
+    frameCache: { [tabId: string]: HTMLIFrameElement } | null | undefined,
+    boardId: string | null | undefined
+  ): Window | null;
+  /** Mint the webview label for a tab id. Includes the per-shell
+   *  bootId suffix when `setup` set it; falls back to
+   *  `board-tab-<tabId>` otherwise. */
+  multiviewLabelForTab(tabId: string): string;
+  /** Inverse: recover a tab id from a webview label. Returns ''
+   *  when the label doesn't carry the `board-tab-` prefix. */
+  tabIdFromBoardLabel(label: string | null | undefined): string;
+  /** Build the embedded-board URL the child webview should load
+   *  for a board tab. Returns '' for non-board tabs. */
+  getEmbeddedUrlForTab(
+    tab: LexeraBoardHostTab | null | undefined,
+    locationHref: string
+  ): string;
+  /** Convert an absolute embedded-board URL into the relative form
+   *  Tauri 2's `WebviewBuilder::App` expects. Returns the input
+   *  unchanged on parse failure. */
+  multiviewUrlForTab(desiredSrc: string | null | undefined): string;
+  /** Ensure the placeholder element has a `.mv-health-dot` child
+   *  reflecting the webview's connection state. Returns the dot
+   *  element, or null when no document is available. */
+  ensureHealthDot(
+    placeholderEl: HTMLElement,
+    doc?: Document
+  ): HTMLElement | null;
+  /** Install the MutationObserver + IntersectionObserver pair that
+   *  drives `multiview_set_visible` IPCs and geometry pushes on
+   *  placeholder visibility changes. Idempotent per tabId — a
+   *  second call for the same `(tabId, placeholderEl)` pair is a
+   *  no-op; a different placeholder rebinds. */
+  watchPlaceholderVisibility(
+    tabId: string,
+    placeholderEl: HTMLElement,
+    pushGeomFn?: () => void,
+    labelOverride?: string
+  ): void;
+  /** Disconnect and forget the visibility observer for a tab.
+   *  Called when the tab's child webview is destroyed or evicted. */
+  cleanupVisibilityObserver(tabId: string): void;
+  /** Test seam — true when a visibility observer is currently
+   *  bound for `tabId`. */
+  hasVisibilityObserver(tabId: string): boolean;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
@@ -1240,7 +1322,7 @@ declare global {
      *  src/workspace/lifecycleReconciler.js (script-mode JS @typedef
      *  declarations leak into the global TS namespace). */
     LexeraLifecycleReconciler: LexeraLifecycleReconcilerApi;
-    LexeraBoardHost: any;
+    LexeraBoardHost: LexeraBoardHostApi;
     LexeraPanelHost: any;
     LexeraMultiviewWebview: any;
     LexeraMultiview: any;
