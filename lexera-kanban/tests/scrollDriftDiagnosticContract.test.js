@@ -145,4 +145,36 @@ describe('scroll-drift diagnostic contract', () => {
     expect(appSrc).toMatch(/scrollWidth=/);
     expect(appSrc).toMatch(/clientWidth=/);
   });
+
+  // ── Focus-trace watcher (document-level focusin listener) ────────
+  // Companion to the universal scroll watcher. Logs every focus
+  // change with the activeElement's bounding rect + viewport size +
+  // an `inView` boolean. Same LEXERA_SCROLL_DRIFT_DEBUG gate. The
+  // user's hypothesis is that focus is landing on an element OUTSIDE
+  // the visible viewport ("focuses in an area where the view isnt"),
+  // and the browser auto-scrolls to follow it. Without focus tracing
+  // we can only see the scroll, not the trigger.
+
+  it('app.js installs the focus-trace watcher on document', () => {
+    expect(appSrc).toMatch(/installFocusTraceWatcher/);
+    expect(appSrc).toMatch(/__lexeraFocusTraceInstalled/);
+    expect(appSrc).toMatch(/document\.addEventListener\(\s*['"]focusin['"]/);
+  });
+
+  it('the focus-trace watcher gates log emission on LEXERA_SCROLL_DRIFT_DEBUG', () => {
+    const block = appSrc.match(/installFocusTraceWatcher[\s\S]{0,3500}/);
+    expect(block).toBeTruthy();
+    expect(block[0]).toMatch(/LEXERA_SCROLL_DRIFT_DEBUG/);
+  });
+
+  it('the focus-trace watcher emits via logFrontendIssue with the focus-trace topic', () => {
+    expect(appSrc).toMatch(/logFrontendIssue\(\s*['"]debug['"]\s*,\s*['"]focus-trace['"]/);
+  });
+
+  it('the focus-trace watcher captures bounding rect + viewport size + inView flag', () => {
+    const block = appSrc.match(/installFocusTraceWatcher[\s\S]{0,3500}/);
+    expect(block[0]).toMatch(/getBoundingClientRect/);
+    expect(block[0]).toMatch(/window\.innerWidth/);
+    expect(block[0]).toMatch(/inView=/);
+  });
 });

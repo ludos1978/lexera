@@ -1766,6 +1766,58 @@ var LexeraDashboard = (function () {
       })();
     } catch (_) {}
 
+    // DIAGNOSTIC: focus-trace companion to the scroll-drift watcher.
+    // The user reports the bug feels like "focus lands somewhere
+    // outside the view" — the browser then auto-scrolls to follow
+    // that focus. The scroll watcher logs WHERE scroll lands; this
+    // logs WHERE focus lands and HOW FAR it is from the viewport,
+    // so we can correlate.
+    //
+    // Logs every focusin event (capture phase) with the activeElement's
+    // bounding rect + viewport size + an `inView` boolean. Gated by
+    // the same `localStorage.LEXERA_SCROLL_DRIFT_DEBUG = '1'` flag,
+    // so toggling one flag turns BOTH logs on at once.
+    try {
+      (function installFocusTraceWatcher() {
+        if (typeof document === 'undefined' || typeof logFrontendIssue !== 'function') return;
+        if (document.__lexeraFocusTraceInstalled) return;
+        document.__lexeraFocusTraceInstalled = true;
+        document.addEventListener('focusin', function (e) {
+          var debug = false;
+          try {
+            debug = typeof localStorage !== 'undefined'
+              && localStorage.getItem('LEXERA_SCROLL_DRIFT_DEBUG') === '1';
+          } catch (_) {}
+          if (!debug) return;
+          var el = e.target;
+          if (!el || !el.getBoundingClientRect) return;
+          var r = el.getBoundingClientRect();
+          var vw = window.innerWidth || 0;
+          var vh = window.innerHeight || 0;
+          var inView = r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh;
+          var aeId = el.id ? '#' + el.id : '';
+          var aeCls = (el.className && typeof el.className === 'string')
+            ? '.' + el.className.split(/\s+/).slice(0, 2).join('.') : '';
+          var aeCi = el.getAttribute ? el.getAttribute('data-col-index') : null;
+          var aeCa = el.getAttribute ? el.getAttribute('data-card-index') : null;
+          var ae = (el.tagName || '?') + aeId + aeCls
+            + (aeCi !== null ? '[col=' + aeCi + ']' : '')
+            + (aeCa !== null ? '[card=' + aeCa + ']' : '');
+          var trace = '';
+          try { throw new Error('focus-trace'); } catch (er) { trace = er.stack || ''; }
+          try {
+            logFrontendIssue('debug', 'focus-trace',
+              'focus=' + ae +
+              ' rect={x=' + Math.round(r.left) + ',y=' + Math.round(r.top) +
+              ',w=' + Math.round(r.width) + ',h=' + Math.round(r.height) + '}' +
+              ' viewport={w=' + vw + ',h=' + vh + '}' +
+              ' inView=' + inView +
+              ' trace=' + trace.split('\n').slice(1, 6).join(' <- '));
+          } catch (_) {}
+        }, { capture: true, passive: true });
+      })();
+    } catch (_) {}
+
     // Init panels that may already exist after workspace shell restore.
     if (ManagementWiring) ManagementWiring.initDelayedPanels();
 
