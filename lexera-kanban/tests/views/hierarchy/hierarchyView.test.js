@@ -575,7 +575,13 @@ describe('hierarchy view sub-app', () => {
 
       const dragBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drag-start');
       expect(dragBroadcast).toBeTruthy();
-      expect(dragBroadcast.payload).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
+      // Stage 17b: drag-start broadcast now includes sourceWebviewLabel
+      // so destination per-webview trackers can self-skip the
+      // broadcasting webview's own drag.
+      expect(dragBroadcast.payload).toEqual({
+        boardId: 'b1', kind: 'card', entityId: 'card-1',
+        sourceWebviewLabel: ''
+      });
     });
 
     // Phase 2b-2-b + Phase 3: dragging a card over a sibling card

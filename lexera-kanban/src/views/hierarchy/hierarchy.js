@@ -269,6 +269,17 @@
   // `LexeraSubApp.init`'s `onCustom` so the events go through the
   // same scoped wv.listen path the rest of the sub-app uses.
   var _hierarchyOnExternalDnd = null;
+  // Stage 17b cross-view RECEIVE-side per-webview pointer tracker.
+  // Mouse events DO NOT cross Tauri WKWebView boundaries, so when a
+  // sibling webview (kanban or another workspace) broadcasts
+  // `hierarchy-entity-drag-start`, we install document-level pointer
+  // listeners HERE that fire when the cursor enters this webview's
+  // bounds. Mirror of the per-webview tracker in
+  // embeddedBoardBridge.js. Self-skips when the broadcast came from
+  // THIS webview (sourceWebviewLabel === own label) so the workspace
+  // tree's own drag doesn't double-track.
+  var _hierarchyArmCrossDragTracker = null;
+  var _hierarchyTeardownCrossDragTracker = null;
 
   if (localBoardsEl && !localBoardsEl.__hierarchyDragBound) {
     // Container relations:
@@ -455,6 +466,84 @@
         return (wv && wv.label) || '';
       } catch (_) { return ''; }
     };
+
+    // ── Stage 17b: per-webview pointer tracker (RECEIVE side) ─────
+    // When a sibling webview broadcasts `hierarchy-entity-drag-start`,
+    // arm document-level pointer listeners HERE that drive the
+    // existing `_hierarchyOnExternalDnd` handler with LOCAL pointer
+    // coords. Mirror of embeddedBoardBridge.js's per-webview tracker.
+    var _crossDragPayload = null;
+    var _crossDragMoveHandler = null;
+    var _crossDragUpHandler = null;
+    var _crossDragSafetyTimer = 0;
+    _hierarchyTeardownCrossDragTracker = function () {
+      if (_crossDragMoveHandler) {
+        document.removeEventListener('pointermove', _crossDragMoveHandler, true);
+        _crossDragMoveHandler = null;
+      }
+      if (_crossDragUpHandler) {
+        document.removeEventListener('pointerup', _crossDragUpHandler, true);
+        document.removeEventListener('pointercancel', _crossDragUpHandler, true);
+        _crossDragUpHandler = null;
+      }
+      if (_crossDragSafetyTimer) {
+        clearTimeout(_crossDragSafetyTimer);
+        _crossDragSafetyTimer = 0;
+      }
+      _crossDragPayload = null;
+      // Clear the destination indicator (drop-target classes).
+      if (typeof _hierarchyOnExternalDnd === 'function') {
+        _hierarchyOnExternalDnd('clear', null);
+      }
+    };
+    _hierarchyArmCrossDragTracker = function (src) {
+      if (!src || !src.kind || !src.entityId) return;
+      // Self-skip: when this webview is the SOURCE, the regular
+      // source-side drag handler (pendingDrag/activeDrag above) is
+      // already running. Don't double-track.
+      var ownLabel = getOwnWebviewLabel();
+      if (src.sourceWebviewLabel && ownLabel && src.sourceWebviewLabel === ownLabel) {
+        return;
+      }
+      var KIND_TO_TYPE = { row: 'tree-row', stack: 'tree-stack', column: 'tree-column', card: 'tree-card' };
+      var type = KIND_TO_TYPE[src.kind] || ('tree-' + src.kind);
+      // Replace any previous tracker (defensive — a missed cleanup
+      // must not leak stale handlers).
+      _hierarchyTeardownCrossDragTracker();
+      _crossDragPayload = { source: src, type: type };
+      _crossDragMoveHandler = function (e) {
+        if (!_crossDragPayload) return;
+        if (typeof _hierarchyOnExternalDnd === 'function') {
+          _hierarchyOnExternalDnd('hover', {
+            payload: _crossDragPayload,
+            x: e.clientX,
+            y: e.clientY
+          });
+        }
+      };
+      _crossDragUpHandler = function (e) {
+        if (!_crossDragPayload) return;
+        if (typeof _hierarchyOnExternalDnd === 'function') {
+          // _hierarchyOnExternalDnd('drop', ...) broadcasts
+          // hierarchy-entity-drop + cross-view-drag-handled itself.
+          _hierarchyOnExternalDnd('drop', {
+            payload: _crossDragPayload,
+            x: e.clientX,
+            y: e.clientY
+          });
+        }
+        _hierarchyTeardownCrossDragTracker();
+      };
+      document.addEventListener('pointermove', _crossDragMoveHandler, true);
+      document.addEventListener('pointerup', _crossDragUpHandler, true);
+      document.addEventListener('pointercancel', _crossDragUpHandler, true);
+      // 30s safety timeout — if no pointerup ever fires (window blur,
+      // OS gesture-loss, etc.), the tracker self-cleans.
+      _crossDragSafetyTimer = setTimeout(function () {
+        _hierarchyTeardownCrossDragTracker();
+      }, 30000);
+    };
+
     // Same `[xview-dnd]` instrumentation as workspaces.js. First-fire
     // flag logs once per drag so the in-app Log panel shows that the
     // source IS broadcasting AND the resolved sourceLabel is non-empty.
@@ -496,7 +585,16 @@
         if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
         activeDrag = { source: pendingDrag.source };
         if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
-          window.LexeraSubApp.broadcast('hierarchy-entity-drag-start', activeDrag.source);
+          // Include sourceWebviewLabel so destination trackers can
+          // self-skip when the broadcast came from THIS webview
+          // (Stage 17b — workspace tree subapps now also arm
+          // per-webview pointer trackers on drag-start, mirroring
+          // embeddedBoardBridge; without the label, a workspace
+          // dragging within itself would arm against its own drag).
+          var dragStartPayload = Object.assign({}, activeDrag.source, {
+            sourceWebviewLabel: getOwnWebviewLabel()
+          });
+          window.LexeraSubApp.broadcast('hierarchy-entity-drag-start', dragStartPayload);
         }
       }
       var match = readDropTargetFromPoint(e.clientX, e.clientY, activeDrag.source);
@@ -781,6 +879,21 @@
       // would persist past the release.
       'cross-view-drag-handled': function () {
         if (typeof _hierarchyEndDrag === 'function') _hierarchyEndDrag();
+        // Stage 17b: also tear down our destination-side tracker
+        // (in case THIS webview is a sibling that armed a tracker
+        // but didn't end up handling the drop).
+        if (typeof _hierarchyTeardownCrossDragTracker === 'function') {
+          _hierarchyTeardownCrossDragTracker();
+        }
+      },
+      // Stage 17b: arm the per-webview pointer tracker when ANY
+      // sibling webview (kanban or another workspace) starts a drag.
+      // The tracker self-skips when payload.sourceWebviewLabel ===
+      // own label so this webview's own drag doesn't double-track.
+      'hierarchy-entity-drag-start': function (payload) {
+        if (typeof _hierarchyArmCrossDragTracker === 'function') {
+          _hierarchyArmCrossDragTracker(payload || null);
+        }
       },
       // Cross-view receive (kanban → workspace). Subscribing ensures
       // wv.listen is registered for these events so multiview_emit_to
