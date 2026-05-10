@@ -549,6 +549,7 @@ var LexeraDragDropHandlers = (function () {
     var el = cardDrag.el;
     lockBoardLayoutForDrag();
     startCrossViewBridge('card');
+    broadcastCrossViewDragStart();
     el.classList.add('dragging');
     _deps.insertDropZoneIndicators('card');
     cacheDropTargetGeometry();
@@ -2114,6 +2115,78 @@ var LexeraDragDropHandlers = (function () {
 
   // --- Ptr Drag Cleanup ---
 
+  // Broadcast `hierarchy-entity-drag-start` so OTHER webviews
+  // (workspace tree sub-apps in hierarchy.js / workspaces.js, sibling
+  // kanban webviews via embeddedBoardBridge) can arm per-webview
+  // pointer trackers. Mouse events DO NOT cross Tauri WKWebView
+  // boundaries, so without per-webview tracking the destination's
+  // pointermove / pointerup never fire when the cursor crosses out
+  // of the source kanban. Mirror of the workspace → kanban
+  // hierarchy-entity-drag-start broadcast in hierarchy.js / workspaces.js.
+  // User report 2026-05-10: "dragging from kanban to workspace isnt
+  // working" — for embedded kanbans, `tryExternalNativeHover/Drop`
+  // are dead code (LexeraMultiviewWebview is shell-only), so this is
+  // the only path that wakes up the workspace tree's drop receiver.
+  function broadcastCrossViewDragStart() {
+    if (typeof window === 'undefined' ||
+        !window.LexeraMultiview ||
+        typeof window.LexeraMultiview.invoke !== 'function') return;
+    var sourceWebviewLabel = '';
+    try {
+      if (typeof window.LexeraMultiview.getCurrentWebview === 'function') {
+        var wv = window.LexeraMultiview.getCurrentWebview();
+        if (wv && wv.label) sourceWebviewLabel = wv.label;
+      }
+    } catch (_) { /* non-fatal */ }
+    var payload = null;
+    if (cardDrag && cardDrag.boardId && cardDrag.cardId) {
+      payload = {
+        boardId: cardDrag.boardId,
+        kind: 'card',
+        entityId: cardDrag.cardId
+      };
+    } else if (ptrDrag && ptrDrag.type) {
+      var typeToKind = {
+        'tree-card': 'card',
+        'tree-column': 'column', 'column': 'column',
+        'tree-stack': 'stack', 'board-stack': 'stack',
+        'tree-row': 'row', 'board-row': 'row'
+      };
+      var kind = typeToKind[ptrDrag.type];
+      if (!kind) return;
+      var src = ptrDrag.source || {};
+      var entityId =
+        kind === 'card' ? src.cardId :
+        kind === 'column' ? src.columnId :
+        kind === 'stack' ? src.stackId :
+        src.rowId;
+      if (!entityId) return;
+      payload = {
+        boardId: src.boardId || '',
+        kind: kind,
+        entityId: entityId
+      };
+    }
+    if (!payload || !payload.boardId || !payload.entityId) return;
+    payload.sourceWebviewLabel = sourceWebviewLabel;
+    window.LexeraMultiview.invoke('multiview_broadcast', {
+      event: 'hierarchy-entity-drag-start',
+      payload: payload
+    }).catch(function () { /* non-fatal */ });
+  }
+
+  // Defensive cleanup invoked from the `cross-view-drag-handled`
+  // echo. When the user releases over a DIFFERENT webview, the
+  // source kanban's own mouseup never fires (events stay local to
+  // the destination). Without this echo-driven cleanup, the dragging
+  // class + ghost element survive past the drop. Both `cleanupCardDrag`
+  // and `cleanupPtrDrag` null-check the drag state, so calling them
+  // when no drag is active is a no-op — safe to invoke unconditionally.
+  function cleanupAllDrag() {
+    if (cardDrag) cleanupCardDrag();
+    if (ptrDrag) cleanupPtrDrag();
+  }
+
   function cleanupPtrDrag() {
     _deps.removeStackDropZones();
     _deps.removeDropZoneIndicators();
@@ -2275,6 +2348,13 @@ var LexeraDragDropHandlers = (function () {
     executeColumnPtrDrop: executeColumnPtrDrop,
     cleanupPtrDrag: cleanupPtrDrag,
     applyPtrDragHiddenTag: applyPtrDragHiddenTag,
+
+    // Cross-view broadcast (Stage 17a): wakes per-webview pointer
+    // trackers in workspace tree sub-apps + sibling kanban webviews.
+    broadcastCrossViewDragStart: broadcastCrossViewDragStart,
+    // Echo-driven cleanup: source kanban's own mouseup never fires
+    // when user releases over a different webview.
+    cleanupAllDrag: cleanupAllDrag,
 
     // Row/Stack/Column drop
     applyRowDropByPoint: applyRowDropByPoint,

@@ -380,6 +380,11 @@ var LexeraDashboard = (function () {
     getDragDropHandlers: function() { return DragDropHandlers; },
     toTopFramePoint: function(win, x, y) { return toTopFramePoint(win, x, y); },
     startCrossViewBridge: function(kind) { startCrossViewBridge(kind); },
+    broadcastCrossViewDragStart: function () {
+      if (DragDropHandlers && typeof DragDropHandlers.broadcastCrossViewDragStart === 'function') {
+        DragDropHandlers.broadcastCrossViewDragStart();
+      }
+    },
     stopCrossViewBridge: function() { stopCrossViewBridge(); },
     targetClosest: function(target, selector) { return targetClosest(target, selector); },
     toggleColumnFoldElement: function(colEl, childrenOnly) { toggleColumnFoldElement(colEl, childrenOnly); },

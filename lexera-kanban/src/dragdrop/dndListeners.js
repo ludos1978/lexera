@@ -135,6 +135,9 @@ var LexeraDndListeners = (function () {
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
+        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
+          _deps.broadcastCrossViewDragStart();
+        }
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -154,6 +157,9 @@ var LexeraDndListeners = (function () {
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
+        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
+          _deps.broadcastCrossViewDragStart();
+        }
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -402,6 +408,9 @@ var LexeraDndListeners = (function () {
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
+        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
+          _deps.broadcastCrossViewDragStart();
+        }
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -443,6 +452,9 @@ var LexeraDndListeners = (function () {
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
+        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
+          _deps.broadcastCrossViewDragStart();
+        }
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -460,6 +472,9 @@ var LexeraDndListeners = (function () {
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
+        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
+          _deps.broadcastCrossViewDragStart();
+        }
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -586,6 +601,9 @@ var LexeraDndListeners = (function () {
           _deps.lockBoardLayoutForDrag();
         }
         _deps.startCrossViewBridge('ptr');
+        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
+          _deps.broadcastCrossViewDragStart();
+        }
         // Stack drop zones are NOT inserted for column drag — columns can only
         // drop onto existing stacks or between other columns, not create new stacks.
         _deps.insertDropZoneIndicators(ptrDrag.type);

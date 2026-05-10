@@ -606,6 +606,19 @@
         xviewLog('local-track.skip(no-source-kind)', {});
         return;
       }
+      // Stage 17a self-skip (2026-05-10): kanban dragDropHandlers now
+      // broadcasts hierarchy-entity-drag-start on its own drag-start
+      // (mirror of the workspace tree's broadcast). The SOURCE kanban
+      // also runs embeddedBoardBridge (it's an embedded webview), so
+      // without this guard the source would arm a tracker against its
+      // OWN drag — pointermove would double-fire __lexeraExternalDnd.hover
+      // and pointerup could double-apply the drop. Workspace broadcasts
+      // don't include `sourceWebviewLabel`, so they fall through to the
+      // normal arming path.
+      if (src.sourceWebviewLabel && wv.label && src.sourceWebviewLabel === wv.label) {
+        xviewLog('local-track.skip(self-source)', { label: wv.label });
+        return;
+      }
       // Translate source kind to the payload.type strings
       // `__lexeraExternalDnd` expects (mirror of the table in
       // hierarchyDragBridge.js:415).
@@ -693,6 +706,19 @@
         xviewLog('local-track.handled-elsewhere', { dropped: !!p.dropped });
       }
       teardownCrossDragListeners();
+      // Stage 17a (2026-05-10): when THIS webview was the source
+      // kanban (we initiated the drag via dragDropHandlers), our
+      // own mouseup never fires because the cursor released over a
+      // different webview. The dragging class + ghost element +
+      // cardDrag/ptrDrag module state would survive past the drop
+      // without an explicit cleanup. cleanupAllDrag null-checks
+      // both states so calling it when no drag is in flight is a
+      // no-op — safe to invoke unconditionally on every echo.
+      if (typeof window !== 'undefined' && window.LexeraDragDropHandlers &&
+          typeof window.LexeraDragDropHandlers.cleanupAllDrag === 'function') {
+        try { window.LexeraDragDropHandlers.cleanupAllDrag(); }
+        catch (_) { /* non-fatal */ }
+      }
     });
 
     // hierarchy-board-changed: dispatched by the shell's
