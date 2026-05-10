@@ -411,9 +411,29 @@
         if (kid) return kid;
         return String(el.getAttribute('data-card-id') || '').trim();
       }
+      // Self-drop guard. The source-side hierarchy.js
+      // readDropTargetFromPoint already filters
+      // `target.entityId === dragSource.entityId`, but the
+      // destination side never had that check — so cross-webview
+      // drops where the cursor lands on the source's own card
+      // (visible in BOTH the workspace tree and the kanban view of
+      // the same board) resolved to a self-target, applyDrop bailed
+      // at the second guard, and the user saw `apply.local-drop.skip
+      // (applyDrop-returned-false) sameEntity:true` in the log.
+      // Compare both card.id (Loro form via data-card-id) AND
+      // card.kid (kid form via data-card-kid) since the source's
+      // entityId can be either form.
+      var sourceEntityId = (source && source.entityId) || '';
+      function isSourceCardEl(el) {
+        if (!el || !sourceEntityId) return false;
+        var kid = String(el.getAttribute('data-card-kid') || '').trim();
+        if (kid && kid === sourceEntityId) return true;
+        var id = String(el.getAttribute('data-card-id') || '').trim();
+        return !!id && id === sourceEntityId;
+      }
       if (sourceKind === 'card') {
         var card = hit.closest('.card[data-card-id]');
-        if (card) {
+        if (card && !isSourceCardEl(card)) {
           var cid = readCardId(card);
           if (cid) {
             var crect = card.getBoundingClientRect();
@@ -424,11 +444,16 @@
         }
         var cardsContainer = hit.closest('.column-cards');
         if (cardsContainer) {
+          // Skip the source's own card when picking the nearest
+          // sibling — otherwise a near-miss in `.column-cards`
+          // empty space adjacent to the source would resolve to
+          // the source itself.
           var siblingCards = cardsContainer.querySelectorAll(':scope > .card[data-card-id]');
           if (siblingCards.length > 0) {
             var nearest = null;
             var nearestDist = Infinity;
             for (var i = 0; i < siblingCards.length; i++) {
+              if (isSourceCardEl(siblingCards[i])) continue;
               var srect = siblingCards[i].getBoundingClientRect();
               var center = srect.top + srect.height / 2;
               var d = Math.abs(y - center);
@@ -442,7 +467,8 @@
               if (nid) return { boardId: boardId, kind: 'card', entityId: nid, position: npos };
             }
           }
-          // Empty column — absorb on parent column.
+          // Empty column (or only contains the source card) —
+          // absorb on parent column.
           var emptyCol = cardsContainer.closest('.column[data-column-id]');
           if (emptyCol) {
             var ecid = String(emptyCol.getAttribute('data-column-id') || '').trim();
@@ -451,12 +477,16 @@
         }
       }
 
-      // 2) Column source: prefer column-sibling reorder.
+      // 2) Column source: prefer column-sibling reorder. Skip the
+      // source's own column so the user dropping a column onto
+      // itself in a sibling kanban view doesn't resolve to a
+      // self-target (applyDrop bails on sameEntity, but we'd rather
+      // just not return a target).
       if (sourceKind === 'column') {
         var col = hit.closest('.column[data-column-id]');
         if (col) {
           var colId = String(col.getAttribute('data-column-id') || '').trim();
-          if (colId) {
+          if (colId && colId !== sourceEntityId) {
             var colRect = col.getBoundingClientRect();
             // Columns are typically arranged horizontally inside a
             // stack — pick before/after on the X axis.
@@ -467,12 +497,12 @@
         }
       }
 
-      // 3) Stack source: prefer stack-sibling reorder.
+      // 3) Stack source: prefer stack-sibling reorder. Skip self.
       if (sourceKind === 'stack') {
         var st = hit.closest('.board-stack[data-stack-id]');
         if (st) {
           var stId = String(st.getAttribute('data-stack-id') || '').trim();
-          if (stId) {
+          if (stId && stId !== sourceEntityId) {
             var stRect = st.getBoundingClientRect();
             // Stacks within a row are typically horizontal too.
             var stPos = (stRect.width > 0 && x >= stRect.left + stRect.width / 2)
@@ -482,12 +512,12 @@
         }
       }
 
-      // 4) Row source: prefer row-sibling reorder.
+      // 4) Row source: prefer row-sibling reorder. Skip self.
       if (sourceKind === 'row') {
         var rw = hit.closest('.board-row[data-row-id]');
         if (rw) {
           var rwId = String(rw.getAttribute('data-row-id') || '').trim();
-          if (rwId) {
+          if (rwId && rwId !== sourceEntityId) {
             var rwRect = rw.getBoundingClientRect();
             // Rows are stacked vertically in a board.
             var rwPos = (rwRect.height > 0 && y >= rwRect.top + rwRect.height / 2)

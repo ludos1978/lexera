@@ -132,6 +132,30 @@ describe('per-webview cross-view-drag tracking', () => {
       expect(handledBroadcast, 'cross-view-drag-handled echo must exist after the drop broadcast').toBeGreaterThan(dropBroadcast);
     });
 
+    it('rejects self-drop targets — destination hit-test must not return the source\'s own card / column / stack / row', () => {
+      // 2026-05-10: user pasted a log where srcId === tgtId === "4ceb2fbc"
+      // (sameEntity:true), causing applyEntityReorder to bail with
+      // `applyDrop-returned-false`. The source-side
+      // hierarchy.js readDropTargetFromPoint already filters
+      // self-drops; the destination needed the same guard so the
+      // user-visible "drop did nothing" log doesn't fire when a
+      // drag lands on the source's own DOM element in a sibling
+      // kanban view of the same board.
+      // Same-kind sibling resolution must compare the candidate's
+      // id/kid to the source's entityId before returning.
+      expect(embeddedBoardBridge).toMatch(/function\s+isSourceCardEl\s*\(/);
+      expect(embeddedBoardBridge).toMatch(/sourceEntityId/);
+      // Card branch: the direct-card hit AND the nearest-card-in-
+      // column-cards loop must skip the source's own element.
+      expect(embeddedBoardBridge).toMatch(/!\s*isSourceCardEl\s*\(\s*card\s*\)/);
+      expect(embeddedBoardBridge).toMatch(/if\s*\(\s*isSourceCardEl\s*\(\s*siblingCards\[i\]\s*\)\s*\)\s*continue/);
+      // Column / stack / row branches each gate the return on
+      // `id !== sourceEntityId`.
+      expect(embeddedBoardBridge).toMatch(/colId\s*&&\s*colId\s*!==\s*sourceEntityId/);
+      expect(embeddedBoardBridge).toMatch(/stId\s*&&\s*stId\s*!==\s*sourceEntityId/);
+      expect(embeddedBoardBridge).toMatch(/rwId\s*&&\s*rwId\s*!==\s*sourceEntityId/);
+    });
+
     it('listens for cross-view-drag-handled to tear down its own tracker (sibling-webview echo)', () => {
       // When ANY destination handles a drop, EVERY other webview
       // tears down its own tracker. Without this, stale __lexeraExternalDnd
