@@ -570,8 +570,15 @@ interface LexeraLayoutTreeApi {
   ): { tab: LexeraDockTreeTab; insertedAt: number } | null;
   /** Wholesale replace `holder[key]` with `nextTree`. Returns the
    *  symmetric `{ removed, added }` tab-id diff so the caller can
-   *  clean up frame caches / multiview state for removed ids. */
-  replaceTreeRoot(holder: any, key: string, nextTree: any): { removed: string[]; added: string[] };
+   *  clean up frame caches / multiview state for removed ids.
+   *  `holder` stays loosely typed because call sites pass either
+   *  the umbrella shell state or the side-docks map — both have
+   *  more fields than just the tree key. */
+  replaceTreeRoot(
+    holder: { [k: string]: any },
+    key: string,
+    nextTree: LexeraDockTreeNode | null
+  ): { removed: string[]; added: string[] };
   createIdFactory(): (prefix: string) => string;
   createTabsetNode(
     tabs: Array<LexeraDockTreeTab>,
