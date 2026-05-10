@@ -2144,6 +2144,16 @@ declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
     lexeraLog(level: LexeraLogLevel, message: string): void;
+    /** Same shape as `lexeraLog` plus an explicit `target` channel
+     *  for routing into per-area filters in the in-app log panel
+     *  (e.g. 'frontend' / 'notification.info' / 'sub-app.setup').
+     *  Set on `window` by subAppRuntime.js's `installSubAppLogger`. */
+    lexeraLogWithTarget(level: LexeraLogLevel, target: string, message: string): void;
+    /** Toast / pill notifications. Installed by
+     *  subAppRuntime.js's `installSubAppNotifications` (and the shell
+     *  has its own implementation). `opts` is loosely-typed for now —
+     *  future slice can tighten to { variant, duration, action, ... }. */
+    showNotification(message: string, opts?: any): void;
     LexeraLayoutTree: LexeraLayoutTreeApi;
     /** Typed via `@typedef LexeraLifecycleReconcilerApi` in
      *  src/workspace/lifecycleReconciler.js (script-mode JS @typedef
