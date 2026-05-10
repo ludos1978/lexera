@@ -1252,4 +1252,92 @@ describe('LexeraHierarchyDragBridge.install', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(onError).toHaveBeenCalled();
   });
+
+  // 2026-05-10: user reported "drag from workspace tree to kanban
+  // (same board) takes ~10s vs instant within-kanban". Root cause in
+  // their pasted log: TWO `apply.local-drop.received` lines fire at
+  // the same millisecond for a single broadcast — the shell has the
+  // apply listener subscribed twice. Both load+apply+save the same
+  // drop, the second save races the first → backend reports
+  // "Same generation but different content, accepting external edit"
+  // → MainFileChanged cascade → live-sync snapshot adopt + full
+  // board reload + 2× full renderColumns of 2324 cards (1745ms +
+  // 1502ms). The double subscription happens whenever
+  // `bootMultiview()` runs twice in the shell — a known regression
+  // (TODOs line 147, fb907e38). The contract here is independent of
+  // why the second call happened: install() must be idempotent per
+  // webview so any future double-boot can't cause the cascade again.
+  it('is idempotent per webview — second install() in the same shell webview is a no-op', async () => {
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    const saveBoard = vi.fn(() => Promise.resolve());
+    const board = makeBoard();
+    const deps = {
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(board),
+      saveBoard: saveBoard,
+      ...shellGeomDeps
+    };
+
+    const firstOk = bridge.install(deps);
+    expect(firstOk).toBe(true);
+    const subscribesAfterFirst = invoke.mock.calls.filter((c) => c[0] === 'multiview_subscribe').length;
+    const listensAfterFirst = wv.listen.mock.calls.length;
+    expect(subscribesAfterFirst).toBe(1);
+    // Shell-mode wires 4 listeners: drop, rename, drag-move, drag-end-external.
+    expect(listensAfterFirst).toBe(4);
+
+    const secondOk = bridge.install(deps);
+    // Second call is a no-op — return value indicates "we did not
+    // re-wire anything in this webview".
+    expect(secondOk).toBe(false);
+    // Crucially: NO additional multiview_subscribe and NO additional
+    // wv.listen calls. Without this guard each broadcast fires every
+    // listener twice → 2× loadBoard + 2× saveBoard for a single drop.
+    const subscribesAfterSecond = invoke.mock.calls.filter((c) => c[0] === 'multiview_subscribe').length;
+    const listensAfterSecond = wv.listen.mock.calls.length;
+    expect(subscribesAfterSecond).toBe(subscribesAfterFirst);
+    expect(listensAfterSecond).toBe(listensAfterFirst);
+
+    // End-to-end: a single drop broadcast must produce a single
+    // saveBoard, even though install() was called twice.
+    wv._fire('hierarchy-entity-drop', {
+      source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      target: { boardId: 'b1', kind: 'card', entityId: 'card-3' }
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(saveBoard).toHaveBeenCalledTimes(1);
+  });
+
+  it('idempotency is keyed per-webview — install() in a SECOND webview still wires its own listeners', async () => {
+    // Different shell webviews (e.g., a popped-out window) must each
+    // be able to install — the guard is a "don't wire the same
+    // webview twice", not a "only one webview ever".
+    const wvA = makeWebview();
+    const wvB = makeWebview();
+    const invokeA = vi.fn(() => Promise.resolve());
+    const invokeB = vi.fn(() => Promise.resolve());
+
+    bridge.install({
+      getCurrentWebview: () => wvA,
+      invoke: invokeA,
+      loadBoard: () => Promise.resolve(makeBoard()),
+      saveBoard: () => Promise.resolve(),
+      ...shellGeomDeps
+    });
+    const okB = bridge.install({
+      getCurrentWebview: () => wvB,
+      invoke: invokeB,
+      loadBoard: () => Promise.resolve(makeBoard()),
+      saveBoard: () => Promise.resolve(),
+      ...shellGeomDeps
+    });
+    expect(okB).toBe(true);
+    expect(invokeB).toHaveBeenCalledWith('multiview_subscribe', expect.objectContaining({
+      label: 'main'
+    }));
+    expect(wvB.listen).toHaveBeenCalledWith('hierarchy-entity-drop', expect.any(Function));
+  });
 });

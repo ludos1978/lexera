@@ -23,6 +23,25 @@
 (function () {
   'use strict';
 
+  // 2026-05-10: track which webviews have already had install() wire
+  // their listeners, to make the call idempotent. The user reported
+  // workspace→kanban drag (same board) taking ~10s vs instant within-
+  // kanban; their pasted log showed TWO `apply.local-drop.received`
+  // lines firing at the same millisecond for a single broadcast →
+  // the shell had the apply listener subscribed twice, both ran
+  // loadBoard+applyDrop+saveBoard, the second save raced the first
+  // and the backend treated it as an external edit, triggering a
+  // MainFileChanged cascade + live-sync snapshot adopt + 2× full
+  // renderColumns of 2324 cards (1745ms + 1502ms). Root cause: a
+  // second `bootMultiview()` call in the shell (separate regression
+  // tracked at TODOs line 147 / fb907e38). The guard below is the
+  // belt-and-braces protection: even if bootMultiview re-runs, the
+  // second install() is a no-op so the listeners stay single-fire.
+  // Keyed by the `wv` object itself (WeakSet) so different shell
+  // webviews — main window + popped-out window — each install
+  // independently; only "same wv twice" is rejected.
+  var _installedWebviews = (typeof WeakSet === 'function') ? new WeakSet() : null;
+
   // Diagnostic helper: collect a summary of every card's (id, kid)
   // pair from a loaded KanbanBoard plus an explicit presence check
   // for `lookupKid` against the WHOLE board (not just the
@@ -416,6 +435,22 @@
 
     var wv = getCurrentWebview();
     if (!wv || typeof wv.listen !== 'function') return false;
+
+    // Idempotency guard — bail if this webview already has listeners
+    // wired from a prior install() call. Returns false to signal
+    // "didn't wire anything this time"; the listeners attached by
+    // the first call are still active. See the WeakSet comment at
+    // module top for the user-reported lag this protects against.
+    if (_installedWebviews && _installedWebviews.has(wv)) {
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        try {
+          window.lexeraLog('debug',
+            '[xview-dnd] install.idempotent-skip {"label":"' + (wv.label || '?') + '"}');
+        } catch (_) { /* non-fatal */ }
+      }
+      return false;
+    }
+    if (_installedWebviews) _installedWebviews.add(wv);
 
     // NOTE: subscription to `hierarchy-entity-drop` and
     // `hierarchy-entity-rename` is now gated on shell-detection
