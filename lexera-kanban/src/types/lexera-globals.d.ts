@@ -2231,6 +2231,12 @@ declare global {
      *  multiple sub-apps loading the script don't double-attach the
      *  observer. Set to `true` at module-load time. */
     __lexeraHealthDotInstalled?: boolean;
+    /** Single-install guards for `shell/bridges/catalogBridge.js` —
+     *  wraps `LexeraMultiview.broadcastCatalog` / `openBoardInView`
+     *  to add tracing without double-wrapping if the bridge initialises
+     *  multiple times (idempotence). */
+    __lexeraMultiviewCatalogWrapped?: boolean;
+    __lexeraMultiviewOpenBoardWrapped?: boolean;
     /** Capture per-mutation profiler entries (timestamps + durations).
      *  Used by the debug-window profiler trace. */
     __lexeraProfileMutations?: boolean;
