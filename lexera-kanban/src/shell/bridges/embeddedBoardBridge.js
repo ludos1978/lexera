@@ -835,7 +835,9 @@
         var rt = window.LexeraRuntime;
         if (!rt || typeof rt.getState !== 'function') return;
         var connected = !!rt.getState('backendConnected');
-        var pendingRenders = rt.getState('pendingRenderCount') || 0;
+        // Coerce: `getState` is typed `unknown`, so the `> 0` comparison
+        // would error without the Number() narrow.
+        var pendingRenders = Number(rt.getState('pendingRenderCount') || 0);
         var s = connected ? (pendingRenders > 0 ? 'yellow' : 'green') : 'red';
         reportHealth(s);
       } catch (_) {}

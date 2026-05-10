@@ -2163,6 +2163,28 @@ declare global {
     LexeraSharedPanels: LexeraSharedPanelsApi;
     LexeraSubApp: LexeraSubAppApi;
     LexeraTreeCrossViewDrop: LexeraTreeCrossViewDropApi;
+    // First-pass `any` declarations — future slices can tighten.
+    // Added 2026-05-10 (Stage 17l) so embeddedBoardBridge.js can
+    // type-check; the actual public surfaces live in their respective
+    // modules' IIFE assignments.
+    LexeraTestApi: any;
+    LexeraDragDropHandlers: any;
+    LexeraOrderHelpers: any;
+    LexeraRowStackMenu: any;
+    LexeraActionRegistry: any;
+    LexeraContentEnhancerRegistry: any;
+    LexeraTagSystem: any;
+    LexeraDropZoneIndicators: any;
+    LexeraPollingService: any;
+    LexeraCanvasMode: any;
+    LexeraCanvasPan: any;
+    LexeraCanvasLayout: any;
+    LexeraColumnContextMenu: any;
+    LexeraKeyboardNavigation: any;
+    LexeraBoardList: any;
+    LexeraSidebarSync: any;
+    LexeraSidebarTree: any;
+    LexeraHierarchyController: any;
     LexeraWorkspaceShell: any;
     LexeraDashboard: any;
     LexeraDebug: LexeraDebugApi;

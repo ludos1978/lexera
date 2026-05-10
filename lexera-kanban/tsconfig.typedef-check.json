@@ -44,6 +44,7 @@
     "src/workspace/workspaceShell.js",
     "src/workspace/multiviewWebview.js",
     "src/views/_shared/treeCrossViewDrop.js",
-    "src/shell/bridges/hierarchyDragBridge.js"
+    "src/shell/bridges/hierarchyDragBridge.js",
+    "src/shell/bridges/embeddedBoardBridge.js"
   ]
 }
