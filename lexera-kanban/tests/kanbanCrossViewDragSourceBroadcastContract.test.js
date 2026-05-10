@@ -42,7 +42,7 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
 
     it('helper guards on window.LexeraMultiview availability (degrades gracefully outside Tauri)', () => {
       const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragStart\s*\(\s*\)/);
-      const tail = dragDropHandlersSrc.slice(idx, idx + 2500);
+      const tail = dragDropHandlersSrc.slice(idx, idx + 4500);
       expect(tail).toMatch(/window\.LexeraMultiview/);
       // Either positive `=== 'function'` or negated `!== 'function'`
       // works — both gate the broadcast on the runtime being available.
@@ -51,7 +51,7 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
 
     it('helper builds a workspace-shape payload { boardId, kind, entityId } for cardDrag and ptrDrag', () => {
       const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragStart\s*\(\s*\)/);
-      const tail = dragDropHandlersSrc.slice(idx, idx + 2500);
+      const tail = dragDropHandlersSrc.slice(idx, idx + 4500);
       // cardDrag → kind: 'card' + entityId from cardDrag.cardId.
       expect(tail).toMatch(/cardDrag[\s\S]{0,200}kind\s*:\s*['"]card['"]/);
       expect(tail).toMatch(/entityId\s*:\s*cardDrag\.cardId/);
@@ -69,15 +69,20 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
     it('helper attaches sourceWebviewLabel for embeddedBoardBridge self-skip', () => {
       // The label is what lets the source kanban skip its OWN broadcast
       // (avoids double-application via its own embeddedBoardBridge tracker).
+      // NOTE: must use `LexeraMultiview.getMyLabel()` — the public API.
+      // `getCurrentWebview` is internal-only on multiviewClient.js
+      // and using it left sourceWebviewLabel empty, breaking self-skip
+      // (user-pasted log 2026-05-10: phantom pointerup with negative
+      // coords from the source's own embedded tracker).
       const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragStart\s*\(\s*\)/);
-      const tail = dragDropHandlersSrc.slice(idx, idx + 2500);
-      expect(tail).toMatch(/getCurrentWebview/);
+      const tail = dragDropHandlersSrc.slice(idx, idx + 4500);
+      expect(tail).toMatch(/getMyLabel/);
       expect(tail).toMatch(/sourceWebviewLabel/);
     });
 
     it('helper invokes multiview_broadcast with event=hierarchy-entity-drag-start', () => {
       const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragStart\s*\(\s*\)/);
-      const tail = dragDropHandlersSrc.slice(idx, idx + 2500);
+      const tail = dragDropHandlersSrc.slice(idx, idx + 4500);
       expect(tail).toMatch(/multiview_broadcast/);
       expect(tail).toMatch(/event\s*:\s*['"]hierarchy-entity-drag-start['"]/);
     });

@@ -2142,9 +2142,17 @@ var LexeraDragDropHandlers = (function () {
     }
     var sourceWebviewLabel = '';
     try {
-      if (typeof window.LexeraMultiview.getCurrentWebview === 'function') {
-        var wv = window.LexeraMultiview.getCurrentWebview();
-        if (wv && wv.label) sourceWebviewLabel = wv.label;
+      // The public API on `LexeraMultiview` is `getMyLabel()` —
+      // returns the current webview's label string. There is NO
+      // `getCurrentWebview()` on the public api (it's an internal
+      // helper inside multiviewClient.js). Without the right API,
+      // sourceWebviewLabel stayed empty, the embeddedBoardBridge
+      // self-skip never matched, and the SOURCE kanban armed a
+      // tracker against its OWN drag — the phantom pointerup with
+      // negative coords beat the workspace tree's pointerup to the
+      // drop persist path.
+      if (typeof window.LexeraMultiview.getMyLabel === 'function') {
+        sourceWebviewLabel = String(window.LexeraMultiview.getMyLabel() || '');
       }
     } catch (_) { /* non-fatal */ }
     var payload = null;
