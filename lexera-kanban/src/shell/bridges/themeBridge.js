@@ -66,6 +66,7 @@
   function snapshotTheme() {
     if (typeof document === 'undefined' || !document.documentElement) return null;
     var cs = getComputedStyle(document.documentElement);
+    /** @type {{ [varName: string]: string }} */
     var palette = {};
     for (var i = 0; i < THEME_VAR_NAMES.length; i++) {
       var v = cs.getPropertyValue(THEME_VAR_NAMES[i]);
@@ -73,7 +74,9 @@
     }
     var isDark = (document.documentElement.style.colorScheme === 'dark') ||
       (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    return { palette: palette, color_scheme: isDark ? 'dark' : 'light' };
+    /** @type {'dark' | 'light'} */
+    var color_scheme = isDark ? 'dark' : 'light';
+    return { palette: palette, color_scheme: color_scheme };
   }
 
   /**

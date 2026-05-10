@@ -47,6 +47,7 @@
     "src/shell/bridges/hierarchyDragBridge.js",
     "src/shell/bridges/embeddedBoardBridge.js",
     "src/views/_shared/subAppRuntime.js",
-    "src/views/_shared/healthDot.js"
+    "src/views/_shared/healthDot.js",
+    "src/shell/bridges/themeBridge.js"
   ]
 }
