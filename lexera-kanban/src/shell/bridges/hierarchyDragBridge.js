@@ -23,33 +23,45 @@
 (function () {
   'use strict';
 
-  // Diagnostic helper: collect a compact summary of every card's
-  // (id, kid) pair from a loaded KanbanBoard. Truncates to `limit`
-  // entries per board so a 100-card board doesn't flood the log.
-  // Used by `apply.local-drop.skip.diagnose` when locateEntity
-  // misses the source or target — surfaces whether the card simply
-  // isn't in the loaded data (data drift) vs an id-format issue.
-  function collectCardIdSummary(board, limit) {
-    var entries = [];
+  // Diagnostic helper: collect a summary of every card's (id, kid)
+  // pair from a loaded KanbanBoard plus an explicit presence check
+  // for `lookupKid` against the WHOLE board (not just the
+  // truncated sample). Sample is capped at `limit` so a 100-card
+  // board doesn't flood the log; `total` reports the real count.
+  // `lookupKidFound` answers the headline question: is the
+  // source's entityId actually in the loaded board, or is the
+  // workspace tree showing stale data?
+  function collectCardIdSummary(board, limit, lookupKid) {
+    var sample = [];
+    var total = 0;
+    var lookupFound = false;
     var rows = board && Array.isArray(board.rows) ? board.rows : [];
-    for (var r = 0; r < rows.length && entries.length < limit; r++) {
+    for (var r = 0; r < rows.length; r++) {
       var stacks = (rows[r] && Array.isArray(rows[r].stacks)) ? rows[r].stacks : [];
-      for (var s = 0; s < stacks.length && entries.length < limit; s++) {
+      for (var s = 0; s < stacks.length; s++) {
         var cols = (stacks[s] && Array.isArray(stacks[s].columns)) ? stacks[s].columns : [];
-        for (var c = 0; c < cols.length && entries.length < limit; c++) {
+        for (var c = 0; c < cols.length; c++) {
           var cards = (cols[c] && Array.isArray(cols[c].cards)) ? cols[c].cards : [];
-          for (var k = 0; k < cards.length && entries.length < limit; k++) {
+          for (var k = 0; k < cards.length; k++) {
             var card = cards[k];
             if (!card) continue;
-            entries.push({
-              id: card.id || null,
-              kid: card.kid || null
-            });
+            total++;
+            if (lookupKid && (card.id === lookupKid || card.kid === lookupKid)) {
+              lookupFound = true;
+            }
+            if (sample.length < limit) {
+              sample.push({ id: card.id || null, kid: card.kid || null });
+            }
           }
         }
       }
     }
-    return { count: entries.length, sample: entries };
+    return {
+      total: total,
+      lookupKid: lookupKid || null,
+      lookupKidFound: lookupKid ? lookupFound : null,
+      sample: sample
+    };
   }
 
   // Walk the hierarchy looking for an entity with `targetId`. Returns
@@ -616,17 +628,34 @@
             sameEntity: source.entityId === target.entityId,
             tgtPosition: target.position
           });
-          // When the lookup of source / target failed, dump every
-          // card id+kid from the loaded board so the next user paste
-          // surfaces the actual ids in play. Tells us if the source
-          // card simply isn't in the loaded board (data drift between
-          // getBoardHierarchy → tree DOM and getBoardColumns → applied
-          // load) vs an id-format issue we haven't covered yet.
+          // When the lookup of source / target failed, dump card
+          // (id, kid) pairs from the loaded boards. The dump now
+          // explicitly checks whether the looked-up kid is present
+          // in the WHOLE board (not just the truncated sample), so
+          // `lookupKidFound: false` is the smoking gun for stale
+          // workspace-tree cache vs id-format issue.
           if (source.kind === 'card' && (!srcLocated || !tgtLocated)) {
             xviewLog('apply.local-drop.skip.diagnose', {
-              srcBoardCards: collectCardIdSummary(srcBoard, 12),
-              tgtBoardCards: sameBoard ? '(sameBoard — see srcBoardCards)' : collectCardIdSummary(tgtBoard, 12)
+              srcBoardCards: collectCardIdSummary(srcBoard, 30, source.entityId),
+              tgtBoardCards: sameBoard ? '(sameBoard — see srcBoardCards)' : collectCardIdSummary(tgtBoard, 30, target.entityId)
             });
+          }
+          // Cache-invalidation: if the SOURCE wasn't findable in
+          // the loaded board, the workspace tree is showing stale
+          // data — broadcast `hierarchy-board-changed` for the
+          // source's boardId so the tree re-fetches its hierarchy
+          // and the user's NEXT drag carries fresh ids. Same fix
+          // path the post-saveBoard broadcast already uses; here it
+          // fires on bail too. The user still loses this drop, but
+          // the next attempt should succeed without manual reload.
+          if (!srcLocated && source.boardId) {
+            xviewLog('apply.local-drop.refresh-stale-tree', { boardId: source.boardId });
+            try {
+              invoke('multiview_broadcast', {
+                event: 'hierarchy-board-changed',
+                payload: { boardId: source.boardId }
+              });
+            } catch (_) { /* non-fatal */ }
           }
           return;
         }
