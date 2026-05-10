@@ -2128,9 +2128,18 @@ var LexeraDragDropHandlers = (function () {
   // are dead code (LexeraMultiviewWebview is shell-only), so this is
   // the only path that wakes up the workspace tree's drop receiver.
   function broadcastCrossViewDragStart() {
+    function _xviewLog(stage, info) {
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        try { window.lexeraLog('debug', '[xview-dnd] ' + stage + ' ' + JSON.stringify(info || {})); }
+        catch (_) { /* non-fatal */ }
+      }
+    }
     if (typeof window === 'undefined' ||
         !window.LexeraMultiview ||
-        typeof window.LexeraMultiview.invoke !== 'function') return;
+        typeof window.LexeraMultiview.invoke !== 'function') {
+      _xviewLog('kanban.broadcast.skip(no-multiview)', {});
+      return;
+    }
     var sourceWebviewLabel = '';
     try {
       if (typeof window.LexeraMultiview.getCurrentWebview === 'function') {
@@ -2153,26 +2162,42 @@ var LexeraDragDropHandlers = (function () {
         'tree-row': 'row', 'board-row': 'row'
       };
       var kind = typeToKind[ptrDrag.type];
-      if (!kind) return;
+      if (!kind) {
+        _xviewLog('kanban.broadcast.skip(unsupported-ptr-type)', { ptrType: ptrDrag.type });
+        return;
+      }
       var src = ptrDrag.source || {};
       var entityId =
         kind === 'card' ? src.cardId :
         kind === 'column' ? src.columnId :
         kind === 'stack' ? src.stackId :
         src.rowId;
-      if (!entityId) return;
+      if (!entityId) {
+        _xviewLog('kanban.broadcast.skip(no-entityId)', { kind: kind, srcKeys: Object.keys(src) });
+        return;
+      }
       payload = {
         boardId: src.boardId || '',
         kind: kind,
         entityId: entityId
       };
     }
-    if (!payload || !payload.boardId || !payload.entityId) return;
+    if (!payload || !payload.boardId || !payload.entityId) {
+      _xviewLog('kanban.broadcast.skip(no-payload)', { hasCardDrag: !!cardDrag, hasPtrDrag: !!ptrDrag });
+      return;
+    }
     payload.sourceWebviewLabel = sourceWebviewLabel;
+    _xviewLog('kanban.broadcast.drag-start', {
+      kind: payload.kind, sourceWebviewLabel: sourceWebviewLabel
+    });
     window.LexeraMultiview.invoke('multiview_broadcast', {
       event: 'hierarchy-entity-drag-start',
       payload: payload
-    }).catch(function () { /* non-fatal */ });
+    }).catch(function (err) {
+      _xviewLog('kanban.broadcast.failed', {
+        err: (err && err.message) ? err.message : String(err)
+      });
+    });
   }
 
   // Defensive cleanup invoked from the `cross-view-drag-handled`

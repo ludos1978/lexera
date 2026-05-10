@@ -314,84 +314,6 @@
     // the `_workspacesEndDrag` declaration just above this block.
     _workspacesEndDrag = endDrag;
 
-    // ── Cross-view receive (kanban → workspace) ────────────────────
-    // The kanban view dispatches `external-dnd-hover` / `external-dnd-drop`
-    // to whichever webview the cursor lands on. Two payload shapes
-    // arrive at this listener — see `mapXviewSourceFromPayload`.
-    function mapXviewSourceFromPayload(p) {
-      var inner = p && p.payload;
-      var src = inner && inner.source;
-      var type = inner && inner.type;
-      if (!src) return null;
-      // Shell-forwarder format (workspace/hierarchy → workspace) already
-      // carries `{ boardId, kind, entityId }`.
-      if (src.kind && src.entityId) {
-        return { boardId: src.boardId || '', kind: src.kind, entityId: src.entityId };
-      }
-      // Kanban dispatch format: `type` is 'tree-card' / 'tree-column' /
-      // 'tree-stack' / 'tree-row'; ids live in per-kind fields.
-      if (!type) return null;
-      var kind = (type === 'tree-card') ? 'card'
-        : (type === 'tree-column') ? 'column'
-        : (type === 'tree-stack') ? 'stack'
-        : (type === 'tree-row') ? 'row'
-        : null;
-      if (!kind) return null;
-      var entityId = (kind === 'card') ? (src.cardId || '')
-        : (kind === 'column') ? (src.columnId || '')
-        : (kind === 'stack') ? (src.stackId || '')
-        : (src.rowId || '');
-      if (!entityId) return null;
-      return { boardId: src.boardId || '', kind: kind, entityId: entityId };
-    }
-    // Destination-side highlight is tracked separately from the
-    // source-side `activeDropTargetEl` so a workspace that's both
-    // dragging AND receiving (e.g., two workspace webviews open) keeps
-    // the two visuals from stomping on each other.
-    var xviewDestTargetEl = null;
-    function clearXviewDestTargetEl() {
-      if (xviewDestTargetEl) {
-        xviewDestTargetEl.classList.remove('is-drop-target');
-        xviewDestTargetEl.classList.remove('is-drop-before');
-        xviewDestTargetEl.classList.remove('is-drop-after');
-        xviewDestTargetEl.classList.remove('is-drop-absorb');
-        xviewDestTargetEl = null;
-      }
-    }
-    _workspacesOnExternalDnd = function (eventKind, payload) {
-      if (eventKind === 'clear') { clearXviewDestTargetEl(); return; }
-      var source = mapXviewSourceFromPayload(payload);
-      var x = (payload && typeof payload.x === 'number') ? payload.x : 0;
-      var y = (payload && typeof payload.y === 'number') ? payload.y : 0;
-      var match = source ? readDropTargetFromPoint(x, y, source) : null;
-      if (eventKind === 'hover') {
-        if (xviewDestTargetEl !== (match && match.node)) {
-          clearXviewDestTargetEl();
-          if (match) {
-            match.node.classList.add('is-drop-target');
-            xviewDestTargetEl = match.node;
-          }
-        }
-        if (xviewDestTargetEl) {
-          xviewDestTargetEl.classList.remove('is-drop-before');
-          xviewDestTargetEl.classList.remove('is-drop-after');
-          xviewDestTargetEl.classList.remove('is-drop-absorb');
-          if (match && match.info) {
-            if (match.info.position === 'before') xviewDestTargetEl.classList.add('is-drop-before');
-            else if (match.info.position === 'after') xviewDestTargetEl.classList.add('is-drop-after');
-            else xviewDestTargetEl.classList.add('is-drop-absorb');
-          }
-        }
-        return;
-      }
-      if (eventKind === 'drop') {
-        clearXviewDestTargetEl();
-        if (match && source && window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
-          window.LexeraSubApp.broadcast('hierarchy-entity-drop', { source: source, target: match.info });
-          window.LexeraSubApp.broadcast('cross-view-drag-handled', {});
-        }
-      }
-    };
     // Sub-app's own webview label — used to tag drag-move broadcasts
     // so the shell-side router can translate this document's cursor
     // coords into top-window coords. Looked up lazily so the runtime
@@ -404,70 +326,21 @@
       } catch (_) { return ''; }
     };
 
-    // ── Stage 17b: per-webview pointer tracker (RECEIVE side) ─────
-    // Mirror of the tracker in hierarchy.js — see that file for
-    // the architectural rationale.
-    var _crossDragPayload = null;
-    var _crossDragMoveHandler = null;
-    var _crossDragUpHandler = null;
-    var _crossDragSafetyTimer = 0;
-    _workspacesTeardownCrossDragTracker = function () {
-      if (_crossDragMoveHandler) {
-        document.removeEventListener('pointermove', _crossDragMoveHandler, true);
-        _crossDragMoveHandler = null;
-      }
-      if (_crossDragUpHandler) {
-        document.removeEventListener('pointerup', _crossDragUpHandler, true);
-        document.removeEventListener('pointercancel', _crossDragUpHandler, true);
-        _crossDragUpHandler = null;
-      }
-      if (_crossDragSafetyTimer) {
-        clearTimeout(_crossDragSafetyTimer);
-        _crossDragSafetyTimer = 0;
-      }
-      _crossDragPayload = null;
-      if (typeof _workspacesOnExternalDnd === 'function') {
-        _workspacesOnExternalDnd('clear', null);
-      }
-    };
-    _workspacesArmCrossDragTracker = function (src) {
-      if (!src || !src.kind || !src.entityId) return;
-      var ownLabel = getOwnWebviewLabel();
-      if (src.sourceWebviewLabel && ownLabel && src.sourceWebviewLabel === ownLabel) {
-        return;
-      }
-      var KIND_TO_TYPE = { row: 'tree-row', stack: 'tree-stack', column: 'tree-column', card: 'tree-card' };
-      var type = KIND_TO_TYPE[src.kind] || ('tree-' + src.kind);
-      _workspacesTeardownCrossDragTracker();
-      _crossDragPayload = { source: src, type: type };
-      _crossDragMoveHandler = function (e) {
-        if (!_crossDragPayload) return;
-        if (typeof _workspacesOnExternalDnd === 'function') {
-          _workspacesOnExternalDnd('hover', {
-            payload: _crossDragPayload,
-            x: e.clientX,
-            y: e.clientY
-          });
-        }
-      };
-      _crossDragUpHandler = function (e) {
-        if (!_crossDragPayload) return;
-        if (typeof _workspacesOnExternalDnd === 'function') {
-          _workspacesOnExternalDnd('drop', {
-            payload: _crossDragPayload,
-            x: e.clientX,
-            y: e.clientY
-          });
-        }
-        _workspacesTeardownCrossDragTracker();
-      };
-      document.addEventListener('pointermove', _crossDragMoveHandler, true);
-      document.addEventListener('pointerup', _crossDragUpHandler, true);
-      document.addEventListener('pointercancel', _crossDragUpHandler, true);
-      _crossDragSafetyTimer = setTimeout(function () {
-        _workspacesTeardownCrossDragTracker();
-      }, 30000);
-    };
+    // ── Cross-view DROP receiver (Stage 14 + 17b, consolidated) ────
+    // Wire the shared `LexeraTreeCrossViewDrop` module — it owns the
+    // payload-shape mapper, destination indicator paint logic, and
+    // per-webview pointer tracker. hierarchy.js wires the same module
+    // with its own readDropTargetFromPoint closure.
+    if (window.LexeraTreeCrossViewDrop &&
+        typeof window.LexeraTreeCrossViewDrop.install === 'function') {
+      var crossViewDropReceiver = window.LexeraTreeCrossViewDrop.install({
+        readDropTargetFromPoint: readDropTargetFromPoint,
+        getOwnWebviewLabel: getOwnWebviewLabel
+      });
+      _workspacesOnExternalDnd = crossViewDropReceiver.onExternalDnd;
+      _workspacesArmCrossDragTracker = crossViewDropReceiver.armCrossDragTracker;
+      _workspacesTeardownCrossDragTracker = crossViewDropReceiver.teardownCrossDragTracker;
+    }
 
     // First-fire flag: log ONE [xview-dnd] source.broadcast line per
     // drag session so the user can see in the in-app Log panel that
