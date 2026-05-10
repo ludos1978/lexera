@@ -137,6 +137,33 @@ describe('shared destination cross-view drop receiver — _shared/treeCrossViewD
     const tail = sharedSrc.slice(installIdx, installIdx + 6000);
     expect(tail).toMatch(/onExternalDnd\(\s*['"]drop['"][\s\S]{0,500}teardownCrossDragTracker/);
   });
+
+  it('emits Stage-17f diagnostic logs that pin where the kanban→workspace chain breaks', () => {
+    // User-reported failure mode (2026-05-10): workspace tracker
+    // arms but no pointerup ever fires. These three first-fire-per-drag
+    // diagnostics tell apart "OS isn't routing pointer events to the
+    // workspace at all" vs "pointermove fires but target lookup
+    // fails" vs "match found but user released outside the node".
+    expect(sharedSrc).toMatch(/tree\.tracker\.armed/);
+    expect(sharedSrc).toMatch(/tree\.tracker\.pointermove\(first\)/);
+    expect(sharedSrc).toMatch(/tree\.tracker\.hover\.match/);
+    expect(sharedSrc).toMatch(/tree\.tracker\.hover\.no-match/);
+    expect(sharedSrc).toMatch(/tree\.tracker\.pointerup/);
+    expect(sharedSrc).toMatch(/tree\.tracker\.skip\(self\)/);
+  });
+
+  it('first-fire flags reset on every armCrossDragTracker so consecutive drags each emit', () => {
+    // Without the reset, a user dragging twice in a row would only
+    // see hover.match / hover.no-match for the FIRST drag — then
+    // silence, masking whether the second drag's chain is actually
+    // working.
+    const armIdx = sharedSrc.search(/function\s+armCrossDragTracker\s*\(/);
+    expect(armIdx).toBeGreaterThan(-1);
+    const tail = sharedSrc.slice(armIdx, armIdx + 4000);
+    expect(tail).toMatch(/_xviewLogFlags\.hoverNoMatch\s*=\s*false/);
+    expect(tail).toMatch(/_xviewLogFlags\.hoverMatch\s*=\s*false/);
+    expect(tail).toMatch(/_firstMoveLogged\s*=\s*false/);
+  });
 });
 
 function pinSubAppWiring(label, src, htmlSrc, prefix) {

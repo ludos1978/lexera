@@ -183,7 +183,20 @@
     var crossDragUpHandler = null;
     var crossDragSafetyTimer = 0;
 
-    function teardownCrossDragTracker() {
+    function teardownCrossDragTracker(reason) {
+      // Diagnose teardown cause — when the user-pasted log shows
+      // `tree.tracker.armed` followed by silence (no pointerup), this
+      // line tells whether the 30s safety timer expired, the
+      // cross-view-drag-handled echo arrived from a sibling, or the
+      // pointerup handler itself ran cleanup. Without it the silent
+      // teardown is opaque.
+      var hadHandler = !!(crossDragMoveHandler || crossDragUpHandler);
+      if (hadHandler && typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        try {
+          window.lexeraLog('debug', '[xview-dnd] tree.tracker.teardown ' +
+            JSON.stringify({ reason: reason || 'unknown' }));
+        } catch (_) { /* non-fatal */ }
+      }
       if (crossDragMoveHandler) {
         document.removeEventListener('pointermove', crossDragMoveHandler, true);
         crossDragMoveHandler = null;
@@ -222,7 +235,7 @@
       var type = KIND_TO_TYPE[src.kind] || ('tree-' + src.kind);
       // Replace any previous tracker (defensive — a missed cleanup
       // must not leak stale handlers).
-      teardownCrossDragTracker();
+      teardownCrossDragTracker('arm-replace');
       crossDragPayload = { source: src, type: type };
       // Reset diagnostic flags so the next drag's first hover line
       // emits regardless of what the previous drag logged.
@@ -252,14 +265,16 @@
         // onExternalDnd('drop', ...) broadcasts hierarchy-entity-drop +
         // cross-view-drag-handled itself.
         onExternalDnd('drop', { payload: crossDragPayload, x: e.clientX, y: e.clientY });
-        teardownCrossDragTracker();
+        teardownCrossDragTracker('pointerup');
       };
       document.addEventListener('pointermove', crossDragMoveHandler, true);
       document.addEventListener('pointerup', crossDragUpHandler, true);
       document.addEventListener('pointercancel', crossDragUpHandler, true);
       // 30s safety timeout — if no pointerup ever fires (window blur,
       // OS gesture-loss, etc.), the tracker self-cleans.
-      crossDragSafetyTimer = setTimeout(teardownCrossDragTracker, 30000);
+      crossDragSafetyTimer = setTimeout(function () {
+        teardownCrossDragTracker('safety-timeout-30s');
+      }, 30000);
       _xviewLog('tree.tracker.armed', {
         sourceKind: src.kind,
         sourceLabel: src.sourceWebviewLabel || '',
