@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-10):** ✓ 2763 passed | 2 skipped — `./run-lexera-tests.sh --unit` (226 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK (covers titleHelpers.js + workspace/geometryObserver.js + workspace/workspaceShell.js + workspace/multiviewWebview.js + the layoutTreeApi narrow-by-kind tightening — slice A 2026-05-10; LayoutTreeApi `any`-typed methods now all replaced — finder returns + replaceTreeRoot + migratePanelDocksToSideDocks done in commits f2d91b7c / cf9766c2 / 7c6e9cfd / 1abd310c).
+**Last run (2026-05-10):** ✓ 2782 passed | 2 skipped — `./run-lexera-tests.sh --unit` (227 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK.
 
 ## Open Tasks
 
