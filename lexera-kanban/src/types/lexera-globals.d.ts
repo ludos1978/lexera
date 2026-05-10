@@ -208,6 +208,129 @@ interface LexeraInspectorShortcutsApi {
 }
 
 /**
+ * Source: src/shell/multiviewClient.js (IIFE;
+ * window.LexeraMultiview = api). The umbrella front-door for every
+ * shell ⇄ Rust IPC the multiview architecture exposes — webview
+ * lifecycle (spawn / destroy / setGeometry / navigate), drag
+ * coordination (dragStart / dragPointerMove / dragPointerUp /
+ * dragCancel / dropAck), scoped event listeners, sub-app launchers
+ * (openLogView / openInspector / openWorkspaces / openDashboard +
+ * close-pairs), modal dialogs (confirmModal / promptModal), drag
+ * ghost window (ghost*), request/response IPC (request /
+ * handleRequest), and a `lifecycle` sub-API delegating to
+ * LexeraLifecycle (Stage 8 of the multiview migration).
+ *
+ * Many of the methods below are already-typed via other interfaces
+ * — sub-app launchers use the LexeraPanelLaunchers* shapes, theme
+ * broadcast methods mirror LexeraThemeBridgeApi, etc. Where a
+ * method's signature isn't worth re-stating here (low call-site
+ * count + delegated to a typed bridge), it stays as
+ * `(...args: any[]) => any` for now and gets tightened in a
+ * follow-up slice.
+ */
+interface LexeraMultiviewSpawnOpts {
+  label: string;
+  url: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface LexeraMultiviewGeometryUpdate {
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface LexeraMultiviewLifecycleApi {
+  /** Update the soft-cap / pool-size config in place. */
+  configure(updates: Partial<{ softCap: number; poolSize: number; poolUrl: string; pinnedLabels: string[] }>): unknown;
+  /** Snapshot of the current config + freshness map + pool ids. */
+  status(): unknown;
+  /** Spawn that participates in lifecycle (touches freshness, may
+   *  trigger eviction). Resolves to `{ label, fromPool }`. */
+  spawn(opts: LexeraMultiviewSpawnOpts): Promise<{ label: string; fromPool: boolean }>;
+  /** Bump a label's freshness timestamp (touch the LRU). */
+  touch(label: string): void;
+  /** Walk the freshness map; if over softCap, destroy the oldest
+   *  non-pinned non-pool webview. */
+  evictOldestIfOverCap(): Promise<unknown>;
+  /** Top up the pool to poolSize by pre-spawning offscreen
+   *  webviews with the configured poolUrl. */
+  refillPool(): Promise<unknown>;
+}
+
+interface LexeraMultiviewApi {
+  // ── Webview lifecycle ──────────────────────────────────────
+  spawn(opts: LexeraMultiviewSpawnOpts): Promise<unknown>;
+  destroy(label: string): Promise<unknown>;
+  setGeometry(updates: LexeraMultiviewGeometryUpdate[]): Promise<unknown>;
+  pushGeomDeferred(
+    update: LexeraMultiviewGeometryUpdate,
+    options?: { immediate?: boolean }
+  ): unknown;
+  fpsMeter: unknown;
+  navigate(label: string, url: string): Promise<unknown>;
+  listWebviews(): Promise<Array<{ label: string }>>;
+
+  // ── Drag coordinator ───────────────────────────────────────
+  dragStart(...args: any[]): unknown;
+  dragPointerMove(...args: any[]): unknown;
+  dragPointerUp(...args: any[]): unknown;
+  dragCancel(...args: any[]): unknown;
+  dropAck(...args: any[]): unknown;
+
+  // ── Scoped event bus ───────────────────────────────────────
+  listen(event: string, handler: (data: unknown) => void): unknown;
+  getMyLabel(): string;
+  invoke(cmd: string, args?: unknown): Promise<unknown>;
+
+  // ── Demo / dev ─────────────────────────────────────────────
+  demo(): Promise<unknown>;
+  demoStop(): Promise<unknown>;
+
+  // ── Sub-app launchers (Stage 4) ────────────────────────────
+  openLogView(opts?: LexeraPanelLaunchersLauncherOpts): Promise<unknown>;
+  closeLogView(): Promise<unknown>;
+  openInspector(opts?: LexeraPanelLaunchersLauncherOpts): Promise<unknown>;
+  closeInspector(): Promise<unknown>;
+  openWorkspaces(opts?: LexeraPanelLaunchersLauncherOpts): Promise<unknown>;
+  closeWorkspaces(): Promise<unknown>;
+  openDashboard(opts?: LexeraPanelLaunchersLauncherOpts): Promise<unknown>;
+  closeDashboard(): Promise<unknown>;
+  openAsSidePanel(opts: LexeraPanelLaunchersSidePanelOpts): Promise<unknown>;
+  closeSidePanel(label: string): Promise<unknown>;
+
+  // ── Logging / theme / catalog bridges ──────────────────────
+  broadcastLog(...args: any[]): Promise<unknown>;
+  broadcastTheme(): Promise<unknown>;
+  snapshotTheme(): LexeraThemeSnapshot | null;
+  applyThemeSnapshot(snapshot: LexeraThemeSnapshot | null | undefined): void;
+  broadcastCatalog(snapshot: unknown): Promise<unknown>;
+  getLastCatalog(): unknown;
+
+  // ── Modal-as-window dialogs (Stage 6) ──────────────────────
+  confirmModal(opts: { title?: string; message: string }): Promise<boolean>;
+  promptModal(opts: { title?: string; message: string; initial?: string }): Promise<string | null>;
+
+  // ── Drag ghost window (Stage 7) ────────────────────────────
+  ghostEnsure(...args: any[]): Promise<unknown>;
+  ghostMove(x: number, y: number): unknown;
+  ghostHide(): unknown;
+  ghostSetContent(...args: any[]): unknown;
+
+  // ── Request/response IPC ───────────────────────────────────
+  request(...args: any[]): Promise<unknown>;
+  handleRequest(...args: any[]): unknown;
+
+  // ── Lifecycle sub-API (Stage 8) ────────────────────────────
+  lifecycle: LexeraMultiviewLifecycleApi;
+}
+
+/**
  * Source: src/core/moduleRuntime.js (IIFE;
  * window.LexeraRuntime = api). Shared infrastructure for IIFE
  * modules — a reactive state store with change-listeners + an event
@@ -1880,7 +2003,7 @@ declare global {
     LexeraBoardHost: LexeraBoardHostApi;
     LexeraPanelHost: LexeraPanelHostApi;
     LexeraMultiviewWebview: any;
-    LexeraMultiview: any;
+    LexeraMultiview: LexeraMultiviewApi;
     LexeraMessageBridge: LexeraMessageBridgeApi;
     LexeraLayoutPersistence: LexeraLayoutPersistenceApi;
     LexeraTabDragController: LexeraTabDragControllerApi;
