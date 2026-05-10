@@ -278,6 +278,7 @@
     return window.LexeraTitleHelpers.resolveBoardLabel(meta);
   }
 
+  /** @param {DockTreeTab} tab */
   function getEmbeddedUrlForTab(tab) {
     return boardHost.getEmbeddedUrlForTab(tab, window.location.href);
   }
@@ -2615,6 +2616,7 @@
     return true;
   }
 
+  /** @param {DockTreeTab|null|undefined} tab */
   function handleRemovedPanelTab(tab) {
     if (!isPanelTab(tab)) return;
     var panelId = resolvePanelTarget(tab.panelId);
