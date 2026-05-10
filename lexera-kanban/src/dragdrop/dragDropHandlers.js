@@ -2261,9 +2261,15 @@ var LexeraDragDropHandlers = (function () {
       }
     }).catch(function () { /* non-fatal */ });
   }
+  // First-fire flag so 60Hz mousemove doesn't spam the log; one
+  // diagnostic line per drag session.
+  var _xviewKanbanRouteLogged = false;
   function _flushCrossViewMove() {
     _xviewMoveRaf = 0;
-    if (!cardDrag && !ptrDrag) return;
+    if (!cardDrag && !ptrDrag) {
+      _xviewKanbanRouteLogged = false;
+      return;
+    }
     if (typeof window === 'undefined' ||
         !window.LexeraMultiview ||
         typeof window.LexeraMultiview.invoke !== 'function') return;
@@ -2275,6 +2281,24 @@ var LexeraDragDropHandlers = (function () {
     } catch (_) { /* non-fatal */ }
     var source = _buildCrossViewSource();
     if (!source) return;
+    // Log the FIRST route attempt per drag so the user can confirm
+    // the kanban is actually invoking the Rust router with screen
+    // coords. If this fires but the workspace never logs
+    // `[xview-dnd] receive.hover` for the corresponding kanban→workspace
+    // direction, the bug is in delivery (Tauri emit_to during a
+    // WKWebView drag-tracking gesture), not in the source-side route.
+    if (!_xviewKanbanRouteLogged && typeof window.lexeraLog === 'function') {
+      try {
+        window.lexeraLog('debug', '[xview-dnd] kanban.source.route.hover ' +
+          JSON.stringify({
+            kind: source.kind,
+            screenX: _xviewMoveLastScreenX,
+            screenY: _xviewMoveLastScreenY,
+            sourceWebviewLabel: label
+          }));
+      } catch (_) { /* non-fatal */ }
+      _xviewKanbanRouteLogged = true;
+    }
     _routeExternalDndAtScreenPoint(
       'external-dnd-hover',
       source,

@@ -114,8 +114,28 @@
 
     // First-fire flags so 60Hz pointermove doesn't spam the log; one
     // diagnostic line per drag session per outcome.
-    var _xviewLogFlags = { hoverNoMatch: false, hoverMatch: false };
+    var _xviewLogFlags = { hoverNoMatch: false, hoverMatch: false, firstReceive: false };
     function onExternalDnd(eventKind, payload) {
+      // Log the FIRST receive per drag session so we can correlate
+      // kanban send-time vs workspace receive-time. User report
+      // 2026-05-11: kanban→workspace indicator only appears AFTER
+      // mouseup — if first-receive timestamp matches mouseup time,
+      // delivery is batched until release (WKWebView event queue
+      // backlog). If it matches first mousemove, paint is being
+      // delayed by something else.
+      if (!_xviewLogFlags.firstReceive && eventKind !== 'clear') {
+        _xviewLogFlags.firstReceive = true;
+        if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+          try {
+            window.lexeraLog('debug', '[xview-dnd] receive.first ' +
+              JSON.stringify({
+                eventKind: eventKind,
+                x: payload && payload.x,
+                y: payload && payload.y
+              }));
+          } catch (_) { /* non-fatal */ }
+        }
+      }
       if (eventKind === 'clear') { clearXviewDestTargetEl(); return; }
       var source = mapXviewSourceFromPayload(payload);
       var x = (payload && typeof payload.x === 'number') ? payload.x : 0;
@@ -241,6 +261,7 @@
       // emits regardless of what the previous drag logged.
       _xviewLogFlags.hoverNoMatch = false;
       _xviewLogFlags.hoverMatch = false;
+      _xviewLogFlags.firstReceive = false;
       var _firstMoveLogged = false;
       crossDragMoveHandler = function (e) {
         if (!crossDragPayload) return;
