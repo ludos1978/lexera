@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-10):** ✓ 2782 passed | 2 skipped — `./run-lexera-tests.sh --unit` (227 test files, full vitest suite). Update this line after each `--unit` run. `--typedefs` gate: OK.
+**Last run (2026-05-10):** ✓ 2782 frontend passed | 2 skipped (227 files); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`). `--typedefs` gate: OK.
 
 ## Open Tasks
 
