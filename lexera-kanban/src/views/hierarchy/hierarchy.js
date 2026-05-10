@@ -549,7 +549,21 @@
     // source IS broadcasting AND the resolved sourceLabel is non-empty.
     // Drag-move fires ~60Hz; we log only the first call per drag.
     var _xviewSourceLogged = false;
-    var broadcastCrossViewMove = function (clientX, clientY) {
+    // Throttle drag-move broadcasts to one per animation frame.
+    // Without this, every pointermove (~60Hz under pointer capture)
+    // fired an IPC roundtrip: source broadcast → shell route →
+    // multiview_emit_to(destination) → destination hover handler.
+    // User report 2026-05-10 "extremely slow when dragging from
+    // workspace to kanban". rAF coalesces to 1/frame and adapts to
+    // system load. Pointer capture means pointermove fires AT the
+    // source even after cursor leaves; we just always remember the
+    // most recent coords and flush once per frame.
+    var _xviewMoveRaf = 0;
+    var _xviewLastClientX = 0;
+    var _xviewLastClientY = 0;
+    var _flushCrossViewMove = function () {
+      _xviewMoveRaf = 0;
+      if (!activeDrag) return;
       if (!window.LexeraSubApp || typeof window.LexeraSubApp.broadcast !== 'function') return;
       var label = getOwnWebviewLabel();
       if (!_xviewSourceLogged && typeof window.lexeraLog === 'function') {
@@ -562,8 +576,8 @@
       var promise = window.LexeraSubApp.broadcast('hierarchy-entity-drag-move', {
         source: activeDrag.source,
         sourceWebviewLabel: label,
-        sourceClientX: clientX,
-        sourceClientY: clientY
+        sourceClientX: _xviewLastClientX,
+        sourceClientY: _xviewLastClientY
       });
       if (promise && typeof promise.catch === 'function') {
         promise.catch(function (err) {
@@ -574,6 +588,16 @@
             } catch (_) {}
           }
         });
+      }
+    };
+    var broadcastCrossViewMove = function (clientX, clientY) {
+      _xviewLastClientX = clientX;
+      _xviewLastClientY = clientY;
+      if (_xviewMoveRaf) return; // already scheduled — coalesce
+      if (typeof requestAnimationFrame === 'function') {
+        _xviewMoveRaf = requestAnimationFrame(_flushCrossViewMove);
+      } else {
+        _flushCrossViewMove();
       }
     };
 

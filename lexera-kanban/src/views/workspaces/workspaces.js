@@ -474,7 +474,17 @@
     // the source side IS emitting (rules out "stage 1 never fires"
     // failure mode). drag-move fires ~60Hz; we don't spam.
     var _xviewSourceLogged = false;
-    var broadcastCrossViewMove = function (clientX, clientY) {
+    // rAF throttle — see hierarchy.js for the rationale (user report
+    // 2026-05-10 "extremely slow when dragging from workspace to
+    // kanban"). Per-pointermove broadcast was an IPC roundtrip
+    // (source broadcast → shell route → multiview_emit_to(destination)
+    // → destination hover handler) at ~60Hz; rAF coalesces to 1/frame.
+    var _xviewMoveRaf = 0;
+    var _xviewLastClientX = 0;
+    var _xviewLastClientY = 0;
+    var _flushCrossViewMove = function () {
+      _xviewMoveRaf = 0;
+      if (!activeDrag) return;
       if (!window.LexeraSubApp || typeof window.LexeraSubApp.broadcast !== 'function') return;
       var label = getOwnWebviewLabel();
       if (!_xviewSourceLogged && typeof window.lexeraLog === 'function') {
@@ -487,8 +497,8 @@
       var promise = window.LexeraSubApp.broadcast('hierarchy-entity-drag-move', {
         source: activeDrag.source,
         sourceWebviewLabel: label,
-        sourceClientX: clientX,
-        sourceClientY: clientY
+        sourceClientX: _xviewLastClientX,
+        sourceClientY: _xviewLastClientY
       });
       // Surface IPC failures — silent failure here is the most common
       // cause of "drag from workspace doesn't fire any event".
@@ -501,6 +511,16 @@
             } catch (_) {}
           }
         });
+      }
+    };
+    var broadcastCrossViewMove = function (clientX, clientY) {
+      _xviewLastClientX = clientX;
+      _xviewLastClientY = clientY;
+      if (_xviewMoveRaf) return; // already scheduled — coalesce
+      if (typeof requestAnimationFrame === 'function') {
+        _xviewMoveRaf = requestAnimationFrame(_flushCrossViewMove);
+      } else {
+        _flushCrossViewMove();
       }
     };
 
