@@ -49,6 +49,9 @@
     "src/views/_shared/subAppRuntime.js",
     "src/views/_shared/healthDot.js",
     "src/shell/bridges/themeBridge.js",
-    "src/shell/bridges/catalogBridge.js"
+    "src/shell/bridges/catalogBridge.js",
+    "src/shell/bridges/requestBridge.js",
+    "src/shell/bridges/navigationBridge.js",
+    "src/shell/bridges/managementBridge.js"
   ]
 }

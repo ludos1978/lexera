@@ -2195,6 +2195,7 @@ declare global {
     LexeraSidebarSync: any;
     LexeraSidebarTree: any;
     LexeraHierarchyController: any;
+    LexeraFrontendTests: any;
     LexeraWorkspaceShell: any;
     LexeraDashboard: any;
     LexeraDebug: LexeraDebugApi;
