@@ -5322,7 +5322,32 @@ var LexeraDashboard = (function () {
 
   async function overwriteBoardWithLocalDraft(trigger) { return BoardDataStore.overwriteBoardWithLocalDraft(trigger); }
 
-  async function saveFullBoard() { return BoardDataStore.saveFullBoard(); }
+  async function saveFullBoard() {
+    var ok = await BoardDataStore.saveFullBoard();
+    // Broadcast `hierarchy-board-changed` to sibling webviews so the
+    // workspace tree (and any other kanban view showing this board)
+    // refreshes after a kanban-internal save. Without this, edits in
+    // one kanban view leave the workspace tree stale until the user
+    // forces a refresh manually (user report 2026-05-10 "workspace
+    // doesnt update if i change the same board in the kanban view").
+    // The receivers — hierarchy.js / workspaces.js (cache invalidate)
+    // and embeddedBoardBridge → app.js (Stage 15 reload handler) —
+    // are already wired; the missing piece was the kanban-side
+    // broadcast on its own save success.
+    if (ok && activeBoardId &&
+        typeof window !== 'undefined' &&
+        window.LexeraMultiview &&
+        typeof window.LexeraMultiview.invoke === 'function') {
+      window.LexeraMultiview.invoke('multiview_broadcast', {
+        event: 'hierarchy-board-changed',
+        payload: { boardId: activeBoardId }
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'save.hierarchy-broadcast',
+          'Failed to broadcast hierarchy-board-changed after kanban save', err);
+      });
+    }
+    return ok;
+  }
 
   // Board dirty state is now owned by BoardDataStore.
   function resetBoardDirtyState(reason, boardId) { BoardDataStore.resetBoardDirtyState(reason, boardId); }
