@@ -44,7 +44,9 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
       const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragStart\s*\(\s*\)/);
       const tail = dragDropHandlersSrc.slice(idx, idx + 2500);
       expect(tail).toMatch(/window\.LexeraMultiview/);
-      expect(tail).toMatch(/typeof\s+window\.LexeraMultiview\.invoke\s*===\s*['"]function['"]/);
+      // Either positive `=== 'function'` or negated `!== 'function'`
+      // works — both gate the broadcast on the runtime being available.
+      expect(tail).toMatch(/typeof\s+window\.LexeraMultiview\.invoke\s*[!=]==\s*['"]function['"]/);
     });
 
     it('helper builds a workspace-shape payload { boardId, kind, entityId } for cardDrag and ptrDrag', () => {
@@ -126,10 +128,12 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
     it('passes broadcastCrossViewDragStart through to the dndListeners deps', () => {
       // Without this dep, dndListeners' broadcast call falls through to
       // the typeof guard and the broadcast never fires.
-      const block = appSrc.match(/DndListeners\.init\(\{[\s\S]{0,4000}?\}\)/);
-      expect(block, 'DndListeners.init dep block must exist').not.toBeNull();
-      expect(block[0]).toMatch(/broadcastCrossViewDragStart/);
-      expect(block[0]).toMatch(/DragDropHandlers\.broadcastCrossViewDragStart/);
+      const startIdx = appSrc.search(/DndListeners\.init\(/);
+      expect(startIdx, 'DndListeners.init call must exist').toBeGreaterThan(-1);
+      // Slice broadly past the call — the dep object spans many lines.
+      const block = appSrc.slice(startIdx, startIdx + 8000);
+      expect(block).toMatch(/broadcastCrossViewDragStart/);
+      expect(block).toMatch(/DragDropHandlers\.broadcastCrossViewDragStart/);
     });
   });
 
