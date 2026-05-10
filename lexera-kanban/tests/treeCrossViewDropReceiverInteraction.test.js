@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // Real-interaction test for the cross-view drop receiver.
 //
 // User feedback 2026-05-10: source-level regex tests pin code shape
@@ -15,7 +17,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -113,6 +115,19 @@ describe('LexeraTreeCrossViewDrop — real-interaction destination receiver', ()
     });
   });
 
+  afterEach(() => {
+    // Each install() registers document-level pointer listeners on
+    // arm. Without an explicit teardown between tests, leftover
+    // listeners from previous tests fire on the next test's
+    // dispatchEvent and double/triple-count broadcasts. Calling
+    // teardown here is a no-op when no tracker is armed but cleans
+    // up any active one from the test that just ran.
+    if (receiver && typeof receiver.teardownCrossDragTracker === 'function') {
+      receiver.teardownCrossDragTracker('test-cleanup');
+    }
+    document.body.innerHTML = '';
+  });
+
   it('cursor over card-A paints is-drop-target + is-drop-after; pointerup broadcasts hierarchy-entity-drop with the resolved target', () => {
     receiver.armCrossDragTracker({
       boardId: 'b2', kind: 'card', entityId: 'src-card-X',
@@ -132,8 +147,12 @@ describe('LexeraTreeCrossViewDrop — real-interaction destination receiver', ()
 
     const dropCalls = broadcastSpy.mock.calls.filter((c) => c[0] === 'hierarchy-entity-drop');
     expect(dropCalls.length).toBe(1);
+    // mapXviewSourceFromPayload strips sourceWebviewLabel — the
+    // hierarchy-entity-drop broadcast carries the entity coords only
+    // ({ boardId, kind, entityId }). The shell's hierarchyDragBridge
+    // doesn't need the source webview label past the routing stage.
     expect(dropCalls[0][1].source).toEqual({
-      boardId: 'b2', kind: 'card', entityId: 'src-card-X', sourceWebviewLabel: 'board-tab-source'
+      boardId: 'b2', kind: 'card', entityId: 'src-card-X'
     });
     expect(dropCalls[0][1].target).toEqual({
       boardId: 'b1', kind: 'card', entityId: 'card-A', position: 'after'

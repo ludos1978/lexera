@@ -52,7 +52,7 @@ describe('shared destination cross-view drop receiver — _shared/treeCrossViewD
   it('install returns { onExternalDnd, armCrossDragTracker, teardownCrossDragTracker }', () => {
     const installIdx = sharedSrc.search(/function\s+install\s*\(/);
     expect(installIdx).toBeGreaterThan(-1);
-    const tail = sharedSrc.slice(installIdx, installIdx + 8000);
+    const tail = sharedSrc.slice(installIdx, installIdx + 12000);
     // The install body is large (handler + tracker definitions).
     // Just verify the three return-shape members are emitted as
     // object properties before the closing brace of the install body.
@@ -83,7 +83,7 @@ describe('shared destination cross-view drop receiver — _shared/treeCrossViewD
 
   it('onExternalDnd hover paints is-drop-before / -after / -absorb classes from match.info.position', () => {
     const installIdx = sharedSrc.search(/function\s+install\s*\(/);
-    const tail = sharedSrc.slice(installIdx, installIdx + 6000);
+    const tail = sharedSrc.slice(installIdx, installIdx + 12000);
     expect(tail).toMatch(/is-drop-before/);
     expect(tail).toMatch(/is-drop-after/);
     expect(tail).toMatch(/is-drop-absorb/);
@@ -93,7 +93,7 @@ describe('shared destination cross-view drop receiver — _shared/treeCrossViewD
 
   it('onExternalDnd drop broadcasts hierarchy-entity-drop AND cross-view-drag-handled, gated on resolved match', () => {
     const installIdx = sharedSrc.search(/function\s+install\s*\(/);
-    const tail = sharedSrc.slice(installIdx, installIdx + 6000);
+    const tail = sharedSrc.slice(installIdx, installIdx + 12000);
     expect(tail).toMatch(/broadcast\(\s*['"]hierarchy-entity-drop['"]/);
     expect(tail).toMatch(/broadcast\(\s*['"]cross-view-drag-handled['"]/);
     expect(tail).toMatch(/if\s*\(\s*match\s*&&\s*source\s*&&[\s\S]{0,400}broadcast\(\s*['"]hierarchy-entity-drop['"]/);
@@ -101,13 +101,13 @@ describe('shared destination cross-view drop receiver — _shared/treeCrossViewD
 
   it('armCrossDragTracker self-skips when payload.sourceWebviewLabel === own label', () => {
     const installIdx = sharedSrc.search(/function\s+install\s*\(/);
-    const tail = sharedSrc.slice(installIdx, installIdx + 6000);
+    const tail = sharedSrc.slice(installIdx, installIdx + 12000);
     expect(tail).toMatch(/sourceWebviewLabel\s*&&\s*ownLabel\s*&&\s*src\.sourceWebviewLabel\s*===\s*ownLabel/);
   });
 
   it('armCrossDragTracker installs document pointermove + pointerup + pointercancel listeners with 30s safety teardown', () => {
     const installIdx = sharedSrc.search(/function\s+install\s*\(/);
-    const tail = sharedSrc.slice(installIdx, installIdx + 6000);
+    const tail = sharedSrc.slice(installIdx, installIdx + 12000);
     expect(tail).toMatch(/document\.addEventListener\(\s*['"]pointermove['"]/);
     expect(tail).toMatch(/document\.addEventListener\(\s*['"]pointerup['"]/);
     expect(tail).toMatch(/document\.addEventListener\(\s*['"]pointercancel['"]/);
@@ -116,7 +116,7 @@ describe('shared destination cross-view drop receiver — _shared/treeCrossViewD
 
   it('teardownCrossDragTracker removes the three listeners + clears the safety timer + clears destination indicator via onExternalDnd("clear")', () => {
     const installIdx = sharedSrc.search(/function\s+install\s*\(/);
-    const tail = sharedSrc.slice(installIdx, installIdx + 6000);
+    const tail = sharedSrc.slice(installIdx, installIdx + 12000);
     expect(tail).toMatch(/removeEventListener\(\s*['"]pointermove['"]/);
     expect(tail).toMatch(/removeEventListener\(\s*['"]pointerup['"]/);
     expect(tail).toMatch(/removeEventListener\(\s*['"]pointercancel['"]/);
@@ -126,7 +126,7 @@ describe('shared destination cross-view drop receiver — _shared/treeCrossViewD
 
   it('move handler routes through onExternalDnd("hover", ...) with local pointer coords', () => {
     const installIdx = sharedSrc.search(/function\s+install\s*\(/);
-    const tail = sharedSrc.slice(installIdx, installIdx + 6000);
+    const tail = sharedSrc.slice(installIdx, installIdx + 12000);
     expect(tail).toMatch(/onExternalDnd\(\s*['"]hover['"]/);
     expect(tail).toMatch(/x\s*:\s*e\.clientX/);
     expect(tail).toMatch(/y\s*:\s*e\.clientY/);
@@ -134,8 +134,10 @@ describe('shared destination cross-view drop receiver — _shared/treeCrossViewD
 
   it('up handler routes through onExternalDnd("drop", ...) before teardown', () => {
     const installIdx = sharedSrc.search(/function\s+install\s*\(/);
-    const tail = sharedSrc.slice(installIdx, installIdx + 6000);
-    expect(tail).toMatch(/onExternalDnd\(\s*['"]drop['"][\s\S]{0,500}teardownCrossDragTracker/);
+    const tail = sharedSrc.slice(installIdx, installIdx + 12000);
+    // Generous gap — teardown is called with a `'pointerup'` reason
+    // string so the regex needs slack for the argument.
+    expect(tail).toMatch(/onExternalDnd\(\s*['"]drop['"][\s\S]{0,800}teardownCrossDragTracker/);
   });
 
   it('emits Stage-17f diagnostic logs that pin where the kanban→workspace chain breaks', () => {
