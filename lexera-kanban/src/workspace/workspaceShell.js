@@ -4631,7 +4631,10 @@
     }
     if (data.type === 'lexera-pane-board-change') {
       var found = findTab(state.dockTree, data.pane);
-      if (!found) return;
+      // TS predicate narrows `found.tab` to DockTreeBoardTab so
+      // `.boardId` is reachable. Panel tabs don't carry boardId
+      // and aren't valid targets for this message anyway.
+      if (!found || !isBoardTab(found.tab)) return;
       var nextBoardId = data.boardId || found.tab.boardId;
       if (nextBoardId === found.tab.boardId) return;
       found.tab.boardId = nextBoardId;
@@ -4830,21 +4833,25 @@
     if (!tabId) return;
     var found = findTab(state.dockTree, tabId);
     if (!found) return;
+    // `isBoardTab(tab)` is a TS type predicate so the inline call
+    // narrows `tab` to `DockTreeBoardTab` inside the truthy branch
+    // — letting tab.boardId / tab.viewKind type-check directly.
+    // The two prior `if (isBoardKind)` branches are merged into
+    // one narrowed block (same predicate, no functional change).
     var tab = found.tab;
-    var isBoardKind = tab.kind === 'board';
-    var boardMeta = isBoardKind && tab.boardId ? state.boardsById[tab.boardId] : null;
+    // Inline the predicate call (NOT a stored boolean) so TS narrows
+    // `tab` to DockTreeBoardTab inside the truthy branch.
+    var boardMeta = isBoardTab(tab) && tab.boardId ? state.boardsById[tab.boardId] : null;
     var boardFilePath = boardMeta ? boardMeta.filePath || '' : '';
     var items = [];
 
-    if (isBoardKind) {
+    if (isBoardTab(tab)) {
       var isKanban = tab.viewKind !== 'canvas';
       items.push({ id: 'set-layout:kanban', label: 'Kanban view', disabled: isKanban });
       items.push({ id: 'set-layout:canvas', label: 'Canvas view', disabled: !isKanban });
       items.push({ separator: true });
-    }
 
-    // Board actions (same as right-click on board in sidebar)
-    if (isBoardKind) {
+      // Board actions (same as right-click on board in sidebar).
       items.push({ id: 'detach', label: 'Open in Detached Window' });
       if (boardFilePath) {
         items.push({ id: 'reveal', label: 'Reveal in Finder' });

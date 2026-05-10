@@ -148,16 +148,21 @@
   }
 
   /**
-   * @param {*} tab
-   * @returns {boolean}
+   * TS type predicate — narrows arbitrary values to `DockTreePanelTab`
+   * so callers can read `.panelId` after the guard without an
+   * explicit cast (mirror of LexeraLayoutTreeApi.isPanelTab in
+   * lexera-globals.d.ts).
+   *
+   * @param {unknown} tab
+   * @returns {tab is DockTreePanelTab}
    */
   function isPanelTab(tab) {
-    return !!(tab && tab.kind === 'panel');
+    return !!(tab && /** @type {*} */ (tab).kind === 'panel');
   }
 
   /**
-   * @param {*} tab
-   * @returns {boolean}
+   * @param {unknown} tab
+   * @returns {tab is DockTreeBoardTab}
    */
   function isBoardTab(tab) {
     return !!tab && !isPanelTab(tab);

@@ -488,8 +488,13 @@ interface LexeraLayoutTreeApi {
   /** Coerce a viewKind string to one of the known kinds; falls
    *  back to 'default' on null/unknown. */
   normalizeViewKind(value: string | null | undefined): 'canvas' | 'kanban' | 'default';
-  isPanelTab(tab: any): boolean;
-  isBoardTab(tab: any): boolean;
+  /** TS type predicate — narrows arbitrary values to
+   *  `LexeraDockTreePanelTab` so callers can read `.panelId` after
+   *  the guard without an explicit cast. */
+  isPanelTab(tab: unknown): tab is LexeraDockTreePanelTab;
+  /** TS type predicate — narrows arbitrary values to
+   *  `LexeraDockTreeBoardTab`. */
+  isBoardTab(tab: unknown): tab is LexeraDockTreeBoardTab;
   visitTree(
     node: any,
     visitor: (candidate: any, parent: any, side: 'first' | 'second' | '') => void,
@@ -511,10 +516,14 @@ interface LexeraLayoutTreeApi {
     parent: LexeraDockTreeNode | null;
     side: 'first' | 'second' | '';
   } | null;
+  /** Walk the tree for a tab with `id === tabId`. The tab is
+   *  typed as the discriminated `LexeraDockTreeTab` union — call
+   *  sites narrow on `tab.kind` (or via `isBoardTab` / `isPanelTab`)
+   *  to read board-only / panel-only fields. */
   findTab(
     node: LexeraDockTreeNode | null,
     tabId: string
-  ): { tab: any; leaf: LexeraDockTreeLeaf; index: number } | null;
+  ): { tab: LexeraDockTreeTab; leaf: LexeraDockTreeLeaf; index: number } | null;
   /** Walk to the split that DIRECTLY contains the leaf with id
    *  `targetLeafId`. Returns null when the leaf isn't reachable
    *  from `node`, or when the leaf IS the root (no parent split). */
@@ -606,7 +615,14 @@ interface LexeraLayoutTreeApi {
     node: LexeraDockTreeNode | null,
     boardId: string
   ): { tab: LexeraDockTreeBoardTab; leaf: LexeraDockTreeLeaf } | null;
-  findLeafContainingPanel(node: any, panelId: string, resolvePanelTarget?: (id: string) => string): { tab: any; leaf: any } | null;
+  /** Find the leaf containing a panel tab whose `panelId` matches.
+   *  `resolvePanelTarget` lets callers map a stored panel id to
+   *  the runtime instance id. */
+  findLeafContainingPanel(
+    node: LexeraDockTreeNode | null,
+    panelId: string,
+    resolvePanelTarget?: (id: string) => string
+  ): { tab: LexeraDockTreePanelTab; leaf: LexeraDockTreeLeaf } | null;
 }
 
 /**
