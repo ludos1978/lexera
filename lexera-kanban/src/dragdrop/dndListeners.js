@@ -550,6 +550,14 @@ var LexeraDndListeners = (function () {
           });
         }
       }
+      // Stage 17i: broadcast drag-move so the shell's forwarder can
+      // route external-dnd-hover to whichever webview the cursor is
+      // over. The kanban's own mousemove fires reliably for the
+      // whole gesture under WKWebView (even when cursor leaves
+      // bounds), so this is the dependable source-side signal.
+      if (typeof _deps.broadcastCrossViewDragMove === 'function') {
+        _deps.broadcastCrossViewDragMove(e.clientX, e.clientY);
+      }
     });
     document.addEventListener('mouseup', function (e) {
       var DDH = getDragDropHandlers();
@@ -558,6 +566,13 @@ var LexeraDndListeners = (function () {
       if (!cd.started) {
         DDH.setCardDrag(null);
         return;
+      }
+      // Stage 17i: broadcast drag-end-external BEFORE local cleanup
+      // so the shell's forwarder can route external-dnd-drop to the
+      // destination webview while cardDrag state is still populated
+      // (the broadcast helper reads cardDrag.boardId / cardDrag.cardId).
+      if (typeof _deps.broadcastCrossViewDragEnd === 'function') {
+        _deps.broadcastCrossViewDragEnd(e.clientX, e.clientY);
       }
       if (cardDragRaf) { cancelAnimationFrame(cardDragRaf); cardDragRaf = 0; }
       _deps.finishCardDrag(e.clientX, e.clientY);
@@ -665,6 +680,11 @@ var LexeraDndListeners = (function () {
           _deps.updatePtrDropTarget(pmx, pmy);
         });
       }
+      // Stage 17i: cross-view broadcast — see card mousemove handler
+      // for the rationale.
+      if (typeof _deps.broadcastCrossViewDragMove === 'function') {
+        _deps.broadcastCrossViewDragMove(e.clientX, e.clientY);
+      }
       } catch (err) {
         logFrontendIssue('error', 'drag.ptr', 'Error in ptr mousemove handler', err);
         _deps.cleanupPtrDrag();
@@ -682,6 +702,15 @@ var LexeraDndListeners = (function () {
         DDH.setPtrDrag(null);
         _deps.stopCrossViewBridge();
         return;
+      }
+      // Stage 17i: broadcast drag-end-external BEFORE local cleanup
+      // so the shell forwarder can route external-dnd-drop while
+      // ptrDrag state is still populated. See card mouseup handler
+      // for full rationale (WKWebView gesture-routes pointerup back
+      // to source; the workspace destination needs the source to
+      // signal "release" instead of relying on its own pointerup).
+      if (typeof _deps.broadcastCrossViewDragEnd === 'function') {
+        _deps.broadcastCrossViewDragEnd(e.clientX, e.clientY);
       }
       // If the drop lands on a different window (iframe or parent),
       // let the cross-view bridge handle it — just clean up local drag state

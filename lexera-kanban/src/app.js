@@ -385,6 +385,16 @@ var LexeraDashboard = (function () {
         DragDropHandlers.broadcastCrossViewDragStart();
       }
     },
+    broadcastCrossViewDragMove: function (clientX, clientY) {
+      if (DragDropHandlers && typeof DragDropHandlers.broadcastCrossViewDragMove === 'function') {
+        DragDropHandlers.broadcastCrossViewDragMove(clientX, clientY);
+      }
+    },
+    broadcastCrossViewDragEnd: function (clientX, clientY) {
+      if (DragDropHandlers && typeof DragDropHandlers.broadcastCrossViewDragEnd === 'function') {
+        DragDropHandlers.broadcastCrossViewDragEnd(clientX, clientY);
+      }
+    },
     stopCrossViewBridge: function() { stopCrossViewBridge(); },
     targetClosest: function(target, selector) { return targetClosest(target, selector); },
     toggleColumnFoldElement: function(colEl, childrenOnly) { toggleColumnFoldElement(colEl, childrenOnly); },

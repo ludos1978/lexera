@@ -2220,6 +2220,109 @@ var LexeraDragDropHandlers = (function () {
     if (ptrDrag) cleanupPtrDrag();
   }
 
+  // Stage 17i (2026-05-10): WKWebView gesture-routes pointerup back
+  // to the pointerdown owner. User-pasted log shows pointermove
+  // fires on the workspace destination but pointerup never does —
+  // user has to click TWICE for the drop to register. Fix: kanban
+  // broadcasts drag-move + drag-end-external during ITS OWN mouse
+  // events (which DO fire reliably for the entire gesture). Shell's
+  // hierarchyDragBridge.forwardCrossViewDrag routes via cursor
+  // position to whatever webview is under the cursor and emits
+  // external-dnd-hover/-drop. Symmetric with workspace→kanban.
+  //
+  // rAF throttle on move (60Hz mousemove → 1 IPC roundtrip per frame).
+  var _xviewMoveRaf = 0;
+  var _xviewMoveLastX = 0;
+  var _xviewMoveLastY = 0;
+  function _flushCrossViewMove() {
+    _xviewMoveRaf = 0;
+    if (!cardDrag && !ptrDrag) return;
+    if (typeof window === 'undefined' ||
+        !window.LexeraMultiview ||
+        typeof window.LexeraMultiview.invoke !== 'function') return;
+    var label = '';
+    try {
+      if (typeof window.LexeraMultiview.getMyLabel === 'function') {
+        label = String(window.LexeraMultiview.getMyLabel() || '');
+      }
+    } catch (_) { /* non-fatal */ }
+    var source = _buildCrossViewSource();
+    if (!source) return;
+    window.LexeraMultiview.invoke('multiview_broadcast', {
+      event: 'hierarchy-entity-drag-move',
+      payload: {
+        source: source,
+        sourceWebviewLabel: label,
+        sourceClientX: _xviewMoveLastX,
+        sourceClientY: _xviewMoveLastY
+      }
+    }).catch(function () { /* non-fatal */ });
+  }
+  function broadcastCrossViewDragMove(clientX, clientY) {
+    _xviewMoveLastX = clientX;
+    _xviewMoveLastY = clientY;
+    if (_xviewMoveRaf) return;
+    if (typeof requestAnimationFrame === 'function') {
+      _xviewMoveRaf = requestAnimationFrame(_flushCrossViewMove);
+    } else {
+      _flushCrossViewMove();
+    }
+  }
+  function broadcastCrossViewDragEnd(clientX, clientY) {
+    if (typeof window === 'undefined' ||
+        !window.LexeraMultiview ||
+        typeof window.LexeraMultiview.invoke !== 'function') return;
+    var label = '';
+    try {
+      if (typeof window.LexeraMultiview.getMyLabel === 'function') {
+        label = String(window.LexeraMultiview.getMyLabel() || '');
+      }
+    } catch (_) { /* non-fatal */ }
+    var source = _buildCrossViewSource();
+    if (!source) return;
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      try {
+        window.lexeraLog('debug', '[xview-dnd] kanban.broadcast.drag-end-external ' +
+          JSON.stringify({ kind: source.kind, x: clientX, y: clientY, sourceWebviewLabel: label }));
+      } catch (_) { /* non-fatal */ }
+    }
+    window.LexeraMultiview.invoke('multiview_broadcast', {
+      event: 'hierarchy-entity-drag-end-external',
+      payload: {
+        source: source,
+        sourceWebviewLabel: label,
+        sourceClientX: clientX,
+        sourceClientY: clientY
+      }
+    }).catch(function () { /* non-fatal */ });
+  }
+  // Builds the workspace-shape source from cardDrag / ptrDrag state.
+  // Shared by drag-start / drag-move / drag-end-external broadcasts.
+  function _buildCrossViewSource() {
+    if (cardDrag && cardDrag.boardId && cardDrag.cardId) {
+      return { boardId: cardDrag.boardId, kind: 'card', entityId: cardDrag.cardId };
+    }
+    if (ptrDrag && ptrDrag.type) {
+      var typeToKind = {
+        'tree-card': 'card',
+        'tree-column': 'column', 'column': 'column',
+        'tree-stack': 'stack', 'board-stack': 'stack',
+        'tree-row': 'row', 'board-row': 'row'
+      };
+      var kind = typeToKind[ptrDrag.type];
+      if (!kind) return null;
+      var src = ptrDrag.source || {};
+      var entityId =
+        kind === 'card' ? src.cardId :
+        kind === 'column' ? src.columnId :
+        kind === 'stack' ? src.stackId :
+        src.rowId;
+      if (!entityId) return null;
+      return { boardId: src.boardId || '', kind: kind, entityId: entityId };
+    }
+    return null;
+  }
+
   function cleanupPtrDrag() {
     _deps.removeStackDropZones();
     _deps.removeDropZoneIndicators();
@@ -2385,6 +2488,12 @@ var LexeraDragDropHandlers = (function () {
     // Cross-view broadcast (Stage 17a): wakes per-webview pointer
     // trackers in workspace tree sub-apps + sibling kanban webviews.
     broadcastCrossViewDragStart: broadcastCrossViewDragStart,
+    // Stage 17i: drag-move + drag-end-external broadcasts so the
+    // shell's hierarchyDragBridge forwarder can route based on
+    // cursor coords (works around WKWebView gesture-routing
+    // pointerup back to the source).
+    broadcastCrossViewDragMove: broadcastCrossViewDragMove,
+    broadcastCrossViewDragEnd: broadcastCrossViewDragEnd,
     // Echo-driven cleanup: source kanban's own mouseup never fires
     // when user releases over a different webview.
     cleanupAllDrag: cleanupAllDrag,

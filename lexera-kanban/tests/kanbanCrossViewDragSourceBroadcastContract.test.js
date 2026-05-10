@@ -142,6 +142,82 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
     });
   });
 
+  describe('Stage 17i — drag-move + drag-end-external broadcasts', () => {
+    it('defines and exports broadcastCrossViewDragMove + broadcastCrossViewDragEnd', () => {
+      expect(dragDropHandlersSrc).toMatch(/function\s+broadcastCrossViewDragMove\s*\(/);
+      expect(dragDropHandlersSrc).toMatch(/function\s+broadcastCrossViewDragEnd\s*\(/);
+      expect(dragDropHandlersSrc).toMatch(/broadcastCrossViewDragMove\s*:\s*broadcastCrossViewDragMove/);
+      expect(dragDropHandlersSrc).toMatch(/broadcastCrossViewDragEnd\s*:\s*broadcastCrossViewDragEnd/);
+    });
+
+    it('drag-move helper rAF-throttles its broadcast (one IPC roundtrip per frame, not per pointer event)', () => {
+      // Without throttling, 60Hz mousemove → 60 IPC hops per second.
+      const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragMove\s*\(/);
+      expect(idx).toBeGreaterThan(-1);
+      const tail = dragDropHandlersSrc.slice(idx, idx + 2000);
+      expect(tail).toMatch(/requestAnimationFrame/);
+      expect(tail).toMatch(/_xviewMoveRaf/);
+    });
+
+    it('drag-end helper invokes multiview_broadcast with event=hierarchy-entity-drag-end-external', () => {
+      const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragEnd\s*\(/);
+      const tail = dragDropHandlersSrc.slice(idx, idx + 2500);
+      expect(tail).toMatch(/multiview_broadcast/);
+      expect(tail).toMatch(/event\s*:\s*['"]hierarchy-entity-drag-end-external['"]/);
+    });
+
+    it('both helpers carry sourceWebviewLabel + sourceClientX/Y so the shell forwarder can route by cursor position', () => {
+      // The forwarder calls routeCrossViewDragPoint with these fields
+      // — without them the destination resolution returns null and
+      // no external-dnd-hover/drop is emitted.
+      const moveIdx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragMove\s*\(/);
+      const moveTail = dragDropHandlersSrc.slice(moveIdx, moveIdx + 2500);
+      expect(moveTail).toMatch(/sourceWebviewLabel/);
+      expect(moveTail).toMatch(/sourceClientX/);
+      expect(moveTail).toMatch(/sourceClientY/);
+
+      const endIdx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragEnd\s*\(/);
+      const endTail = dragDropHandlersSrc.slice(endIdx, endIdx + 2500);
+      expect(endTail).toMatch(/sourceWebviewLabel/);
+      expect(endTail).toMatch(/sourceClientX/);
+      expect(endTail).toMatch(/sourceClientY/);
+    });
+
+    it('dndListeners card mousemove + ptr mousemove BOTH call _deps.broadcastCrossViewDragMove', () => {
+      // Without the broadcast, the destination workspace's
+      // external-dnd-hover handler never fires for kanban→workspace.
+      const moveCalls = dndListenersSrc.match(/_deps\.broadcastCrossViewDragMove/g);
+      expect(moveCalls, 'must call _deps.broadcastCrossViewDragMove from mousemove').not.toBeNull();
+      // 2 mousemove handlers (card + ptr).
+      expect(moveCalls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('dndListeners card mouseup + ptr mouseup BOTH call _deps.broadcastCrossViewDragEnd BEFORE local cleanup', () => {
+      // Order matters: cleanupCardDrag/cleanupPtrDrag null out
+      // cardDrag/ptrDrag, after which _buildCrossViewSource returns
+      // null and the drag-end-external broadcast bails silently.
+      const cardIdx = dndListenersSrc.indexOf("_deps.broadcastCrossViewDragEnd");
+      expect(cardIdx).toBeGreaterThan(-1);
+      const endCalls = dndListenersSrc.match(/_deps\.broadcastCrossViewDragEnd/g);
+      expect(endCalls.length).toBeGreaterThanOrEqual(2);
+      // Find the FIRST broadcastCrossViewDragEnd and verify the
+      // closest cleanup call is AFTER it (local file order proxy
+      // for runtime order).
+      const slice = dndListenersSrc.slice(cardIdx, cardIdx + 800);
+      expect(slice).toMatch(/cleanupCardDrag|cleanupPtrDrag|finishCardDrag|executePtrDrop/);
+    });
+
+    it('app.js DndListeners.init wires broadcastCrossViewDragMove + broadcastCrossViewDragEnd through to deps', () => {
+      const startIdx = appSrc.search(/DndListeners\.init\(/);
+      expect(startIdx).toBeGreaterThan(-1);
+      const block = appSrc.slice(startIdx, startIdx + 8000);
+      expect(block).toMatch(/broadcastCrossViewDragMove/);
+      expect(block).toMatch(/broadcastCrossViewDragEnd/);
+      expect(block).toMatch(/DragDropHandlers\.broadcastCrossViewDragMove/);
+      expect(block).toMatch(/DragDropHandlers\.broadcastCrossViewDragEnd/);
+    });
+  });
+
   describe('embeddedBoardBridge.js — self-skip + echo cleanup', () => {
     it('hierarchy-entity-drag-start handler skips when payload.sourceWebviewLabel === wv.label', () => {
       // Without this guard the source kanban arms a tracker against
