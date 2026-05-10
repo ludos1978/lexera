@@ -226,6 +226,7 @@
   // board, across all trees (center + side docks). Used by the
   // multiview mutation-delegation bridge in app.js to address the
   // owning board webview by label.
+  /** @param {string} boardId */
   function getTabIdForBoard(boardId) {
     if (!boardId) return '';
     var ids = allTreeIds();
@@ -237,7 +238,13 @@
         if (foundId || !candidate || candidate.type !== 'tabs') return;
         for (var i = 0; i < candidate.tabs.length; i++) {
           var tab = candidate.tabs[i];
-          if (tab && tab.boardId === boardId) {
+          // Narrow off the board-tab discriminator so `.boardId` is
+          // typed access on `DockTreeBoardTab`, not implicit-any read
+          // through `DockTreeTab`. Panel tabs have no `boardId` so
+          // the prior `tab.boardId === boardId` check coincidentally
+          // worked, but typedef-gating future regressions needs the
+          // explicit narrow.
+          if (tab && isBoardTab(tab) && tab.boardId === boardId) {
             foundId = tab.id;
             return;
           }
@@ -2258,6 +2265,7 @@
     return 'S(' + node.id + ':' + node.axis + ':' + buildLeafTopologySignature(node.first) + ':' + buildLeafTopologySignature(node.second) + ')';
   }
 
+  /** @param {DockTreeTab|null|undefined} tab */
   function getTabTitle(tab) {
     if (!tab) return 'Untitled';
     if (isPanelTab(tab)) return getPanelTitle(tab.panelId);
@@ -2265,6 +2273,7 @@
     return getBoardMetaLabel(meta || { id: tab.boardId || 'Untitled' });
   }
 
+  /** @param {DockTreeTab|null|undefined} tab */
   function getTabMetaLabel(tab) {
     if (!tab) return '';
     if (isPanelTab(tab)) {
