@@ -217,7 +217,15 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
         // through __lexeraExternalDnd.hover/drop. See contract test
         // crossViewDragPerWebviewTrackingContract.test.js.
         'hierarchy-entity-drag-start',
-        'cross-view-drag-handled'
+        'cross-view-drag-handled',
+        // Stage 13 follow-up (2026-05-10): destination kanban needs
+        // an explicit reload trigger now that the legacy
+        // relayExternalDnd('drop') local-mutation path is skipped on
+        // a successful broadcast. Subscribing to the shell's
+        // post-saveBoard hierarchy-board-changed broadcast lets the
+        // bridge dispatch a `lexera-hierarchy-board-changed` message
+        // into app.js so the active board reloads automatically.
+        'hierarchy-board-changed'
       ]
     });
     expect(typeof handlers['dashboard-navigate']).toBe('function');

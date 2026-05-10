@@ -222,7 +222,18 @@
         // so the listeners arm as soon as the source broadcasts
         // `hierarchy-entity-drag-start`.
         'hierarchy-entity-drag-start',
-        'cross-view-drag-handled'
+        'cross-view-drag-handled',
+        // Stage 13 made the apply path shell-only — the legacy local
+        // `relayExternalDnd('drop')` mutation is skipped when a
+        // tree-target was resolved + broadcast. So the destination
+        // kanban needs a different reload trigger or the user sees
+        // stale UI until they click the tab to force a refetch (user
+        // report 2026-05-10 "doesnt immediately drop, it only drops
+        // after i click on the target board again"). The shell's
+        // hierarchyDragBridge broadcasts `hierarchy-board-changed`
+        // post-saveBoard; subscribing here lets us dispatch a reload
+        // message into app.js when the active board changed.
+        'hierarchy-board-changed'
       ]
     }).catch(function () {});
 
@@ -682,6 +693,19 @@
         xviewLog('local-track.handled-elsewhere', { dropped: !!p.dropped });
       }
       teardownCrossDragListeners();
+    });
+
+    // hierarchy-board-changed: dispatched by the shell's
+    // hierarchyDragBridge after applyDrop+saveBoard completes. Surface
+    // it as a `lexera-hierarchy-board-changed` message so app.js can
+    // reload its in-memory board if the changed board is active.
+    // Without this the Stage-13 shell-only apply path leaves the
+    // kanban's local data stale until the user clicks the tab.
+    wv.listen('hierarchy-board-changed', function (event) {
+      var p = (event && event.payload) || {};
+      if (p.boardId) {
+        dispatchAsMessage({ type: 'lexera-hierarchy-board-changed', boardId: p.boardId });
+      }
     });
 
     wv.listen('catalog-snapshot', function (event) {

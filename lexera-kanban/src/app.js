@@ -5380,6 +5380,26 @@ var LexeraDashboard = (function () {
       if (data.active) document.body.classList.add('is-dragging-layout');
       else document.body.classList.remove('is-dragging-layout');
     });
+    // After the shell-only apply path persists a cross-view drop, the
+    // shell broadcasts `hierarchy-board-changed`. embeddedBoardBridge
+    // turns that into `lexera-hierarchy-board-changed` per webview.
+    // If the affected board is THIS kanban's active board AND we don't
+    // have a save in flight or unsaved changes, reload from disk so
+    // the user sees the move immediately. Without this the user has
+    // to click the board tab to trigger a refetch (user report
+    // 2026-05-10 "doesnt immediately drop, it only drops after i
+    // click on the target board again").
+    window.addEventListener('message', function (event) {
+      var data = event && event.data;
+      if (!data || data.type !== 'lexera-hierarchy-board-changed') return;
+      if (!data.boardId || data.boardId !== activeBoardId) return;
+      if (isBoardDirty()) return;
+      if (BoardDataStore.getSaveInFlight()) return;
+      Promise.resolve(loadBoard(activeBoardId)).catch(function (err) {
+        logFrontendIssue('warn', 'hierarchy-board-changed.reload',
+          'Failed to reload active board after hierarchy-board-changed', err);
+      });
+    });
   }
 
   function ensureCardAutoSizeObserver() {
