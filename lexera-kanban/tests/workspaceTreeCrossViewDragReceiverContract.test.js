@@ -52,10 +52,16 @@ describe('shared destination cross-view drop receiver — _shared/treeCrossViewD
   it('install returns { onExternalDnd, armCrossDragTracker, teardownCrossDragTracker }', () => {
     const installIdx = sharedSrc.search(/function\s+install\s*\(/);
     expect(installIdx).toBeGreaterThan(-1);
-    const tail = sharedSrc.slice(installIdx, installIdx + 6000);
-    expect(tail).toMatch(/return\s*\{[\s\S]{0,500}onExternalDnd\s*:/);
-    expect(tail).toMatch(/armCrossDragTracker\s*:/);
-    expect(tail).toMatch(/teardownCrossDragTracker\s*:/);
+    const tail = sharedSrc.slice(installIdx, installIdx + 8000);
+    // The install body is large (handler + tracker definitions).
+    // Just verify the three return-shape members are emitted as
+    // object properties before the closing brace of the install body.
+    const returnIdx = tail.search(/return\s*\{/);
+    expect(returnIdx, 'install must `return { ... }`').toBeGreaterThan(-1);
+    const returnTail = tail.slice(returnIdx, returnIdx + 800);
+    expect(returnTail).toMatch(/onExternalDnd\s*:/);
+    expect(returnTail).toMatch(/armCrossDragTracker\s*:/);
+    expect(returnTail).toMatch(/teardownCrossDragTracker\s*:/);
   });
 
   it('mapXviewSourceFromPayload accepts both shell-forwarder shape AND kanban-dispatch shape', () => {
