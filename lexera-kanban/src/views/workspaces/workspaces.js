@@ -342,53 +342,73 @@
       _workspacesTeardownCrossDragTracker = crossViewDropReceiver.teardownCrossDragTracker;
     }
 
-    // First-fire flag: log ONE [xview-dnd] source.broadcast line per
+    // First-fire flag: log ONE [xview-dnd] source.route line per
     // drag session so the user can see in the in-app Log panel that
-    // the source side IS emitting (rules out "stage 1 never fires"
+    // the source side IS routing (rules out "stage 1 never fires"
     // failure mode). drag-move fires ~60Hz; we don't spam.
     var _xviewSourceLogged = false;
     // rAF throttle — see hierarchy.js for the rationale (user report
     // 2026-05-10 "extremely slow when dragging from workspace to
-    // kanban"). Per-pointermove broadcast was an IPC roundtrip
-    // (source broadcast → shell route → multiview_emit_to(destination)
-    // → destination hover handler) at ~60Hz; rAF coalesces to 1/frame.
+    // kanban"). Per-pointermove routing would be an IPC roundtrip to
+    // the destination hover handler at ~60Hz; rAF coalesces to 1/frame.
     var _xviewMoveRaf = 0;
-    var _xviewLastClientX = 0;
-    var _xviewLastClientY = 0;
+    var _xviewLastScreenX = null;
+    var _xviewLastScreenY = null;
+    var getExternalDndType = function (source) {
+      var kindToType = { row: 'tree-row', stack: 'tree-stack', column: 'tree-column', card: 'tree-card' };
+      return kindToType[source && source.kind] || ('tree-' + (source && source.kind));
+    };
+    var routeExternalDndAtScreenPoint = function (eventName, source, sourceWebviewLabel, screenX, screenY) {
+      if (!source || typeof screenX !== 'number' || typeof screenY !== 'number') return null;
+      if (!window.LexeraSubApp || typeof window.LexeraSubApp.invoke !== 'function') return null;
+      return window.LexeraSubApp.invoke('multiview_route_external_dnd', {
+        request: {
+          event: eventName,
+          sourceWebviewLabel: sourceWebviewLabel || null,
+          screenX: screenX,
+          screenY: screenY,
+          source: source,
+          dndType: getExternalDndType(source)
+        }
+      });
+    };
     var _flushCrossViewMove = function () {
       _xviewMoveRaf = 0;
       if (!activeDrag) return;
-      if (!window.LexeraSubApp || typeof window.LexeraSubApp.broadcast !== 'function') return;
+      if (!window.LexeraSubApp || typeof window.LexeraSubApp.invoke !== 'function') return;
       var label = getOwnWebviewLabel();
       if (!_xviewSourceLogged && typeof window.lexeraLog === 'function') {
         try {
-          window.lexeraLog('debug', '[xview-dnd] source.broadcast { view: "workspaces", sourceLabel: "' +
+          window.lexeraLog('debug', '[xview-dnd] source.route { view: "workspaces", sourceLabel: "' +
             String(label) + '", hasLabel: ' + (!!label) + ' }');
         } catch (_) {}
         _xviewSourceLogged = true;
       }
-      var promise = window.LexeraSubApp.broadcast('hierarchy-entity-drag-move', {
-        source: activeDrag.source,
-        sourceWebviewLabel: label,
-        sourceClientX: _xviewLastClientX,
-        sourceClientY: _xviewLastClientY
-      });
-      // Surface IPC failures — silent failure here is the most common
+      var promise = routeExternalDndAtScreenPoint(
+        'external-dnd-hover',
+        activeDrag.source,
+        label,
+        _xviewLastScreenX,
+        _xviewLastScreenY
+      );
+      // Surface IPC failures: silent failure here is the most common
       // cause of "drag from workspace doesn't fire any event".
       if (promise && typeof promise.catch === 'function') {
         promise.catch(function (err) {
           if (typeof window.lexeraLog === 'function') {
             try {
-              window.lexeraLog('warn', '[xview-dnd] source.broadcast.failed view=workspaces err=' +
+              window.lexeraLog('warn', '[xview-dnd] source.route.failed view=workspaces err=' +
                 ((err && err.message) ? err.message : String(err)));
             } catch (_) {}
           }
         });
       }
     };
-    var broadcastCrossViewMove = function (clientX, clientY) {
-      _xviewLastClientX = clientX;
-      _xviewLastClientY = clientY;
+    var broadcastCrossViewMove = function (clientX, clientY, screenX, screenY) {
+      void clientX;
+      void clientY;
+      _xviewLastScreenX = typeof screenX === 'number' ? screenX : null;
+      _xviewLastScreenY = typeof screenY === 'number' ? screenY : null;
       if (_xviewMoveRaf) return; // already scheduled — coalesce
       if (typeof requestAnimationFrame === 'function') {
         _xviewMoveRaf = requestAnimationFrame(_flushCrossViewMove);
@@ -441,12 +461,12 @@
           activeDropTargetEl.classList.add('is-drop-absorb');
         }
       }
-      // No local target → cursor may be over a different webview.
-      // Broadcast drag-move so the shell-side router can forward to
-      // that webview's `__lexeraExternalDnd.hover`. Pointer capture
-      // (set on pointerdown) keeps these events flowing even after
-      // the cursor crosses into a sibling Tauri webview.
-      if (!match) broadcastCrossViewMove(e.clientX, e.clientY);
+      // No local target: cursor may be over a different webview.
+      // Route drag-move directly to the webview under the screen
+      // cursor. Pointer capture (set on pointerdown) keeps these
+      // events flowing even after the cursor crosses into a sibling
+      // Tauri webview.
+      if (!match) broadcastCrossViewMove(e.clientX, e.clientY, e.screenX, e.screenY);
     };
     var onUp = function (e) {
       if (!activeDrag) {
@@ -494,10 +514,10 @@
             });
           }
         } else {
-          // Cursor was outside this webview at release — let the
-          // shell-side router try to dispatch this as an
-          // `external-dnd-drop` to whichever webview the cursor was
-          // over. The shell ignores it if no other webview matches.
+          // Cursor was outside this webview at release. Dispatch this
+          // as `external-dnd-drop` to the single webview under the
+          // screen-space cursor. The native route ignores it if no
+          // other webview matches.
           var endLabel = getOwnWebviewLabel();
           if (typeof window.lexeraLog === 'function') {
             try {
@@ -505,12 +525,13 @@
                 String(endLabel) + '", x: ' + clientX + ', y: ' + clientY + ' }');
             } catch (_) {}
           }
-          var endPromise = window.LexeraSubApp.broadcast('hierarchy-entity-drag-end-external', {
-            source: src,
-            sourceWebviewLabel: endLabel,
-            sourceClientX: clientX,
-            sourceClientY: clientY
-          });
+          var endPromise = routeExternalDndAtScreenPoint(
+            'external-dnd-drop',
+            src,
+            endLabel,
+            typeof e.screenX === 'number' ? e.screenX : null,
+            typeof e.screenY === 'number' ? e.screenY : null
+          );
           if (endPromise && typeof endPromise.catch === 'function') {
             endPromise.catch(function (err) {
               if (typeof window.lexeraLog === 'function') {
@@ -534,10 +555,9 @@
       // Pointer capture on the source tree-node so pointermove/pointerup
       // keep firing on this webview even after the user drags the
       // cursor into a sibling Tauri webview (the kanban view). Without
-      // this, mouse events stop at the webview boundary and the
-      // `hierarchy-entity-drag-move` broadcast never fires for cross-
-      // webview drops. Mirrors the kanban tab-drag pattern in
-      // tabDragController.js.
+      // this, mouse events stop at the webview boundary and the direct
+      // external-DnD route never fires for cross-webview drops. Mirrors
+      // the kanban tab-drag pattern in tabDragController.js.
       var srcEl = e.target.closest && e.target.closest('.tree-node[data-drag-kind]');
       if (srcEl && typeof srcEl.setPointerCapture === 'function' && typeof e.pointerId === 'number') {
         try {

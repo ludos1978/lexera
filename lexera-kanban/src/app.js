@@ -5353,7 +5353,7 @@ var LexeraDashboard = (function () {
         typeof window !== 'undefined' &&
         window.LexeraMultiview &&
         typeof window.LexeraMultiview.invoke === 'function') {
-      window.LexeraMultiview.invoke('multiview_broadcast', {
+      window.LexeraMultiview.invoke('multiview_broadcast_global_subscribers', {
         event: 'hierarchy-board-changed',
         payload: { boardId: activeBoardId }
       }).catch(function (err) {

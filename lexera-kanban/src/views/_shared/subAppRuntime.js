@@ -742,6 +742,12 @@
     });
   }
 
+  var GLOBAL_SUBSCRIBER_EVENTS = {
+    'hierarchy-entity-drag-start': true,
+    'cross-view-drag-handled': true,
+    'hierarchy-board-changed': true
+  };
+
   function broadcast(event, payload) {
     var enriched = Object.assign({}, payload || {});
     if (!enriched._sourceWindow) {
@@ -752,7 +758,10 @@
         enriched._sourceWindow = 'main';
       }
     }
-    return invoke('multiview_broadcast', { event: event, payload: enriched });
+    var command = GLOBAL_SUBSCRIBER_EVENTS[event]
+      ? 'multiview_broadcast_global_subscribers'
+      : 'multiview_broadcast';
+    return invoke(command, { event: event, payload: enriched });
   }
 
   window.LexeraSubApp = {

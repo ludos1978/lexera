@@ -3,10 +3,9 @@
 // Cross-webview drag from the workspace tree → into a kanban view
 // requires pointer events with setPointerCapture on the source
 // tree-node. With bare mouse events, mousemove stops firing the
-// moment the cursor crosses the source webview's bounds — so the
-// `hierarchy-entity-drag-move` broadcast never fires, the shell
-// never forwards `external-dnd-hover` to the destination kanban,
-// and no drop preview / drop ever happens.
+// moment the cursor crosses the source webview's bounds, so the
+// external-DnD route never fires and no drop preview / drop ever
+// happens.
 //
 // The fix (2026-05-09) ports the pattern from tabDragController.js:
 // listen for pointerdown / pointermove / pointerup, and call

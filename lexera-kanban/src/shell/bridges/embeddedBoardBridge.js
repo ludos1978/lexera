@@ -255,6 +255,15 @@
         window.lexeraLog('debug', '[xview-dnd] ' + stage + ' ' + JSON.stringify(info || {}));
       } catch (_) { /* non-fatal */ }
     }
+    function broadcastCrossViewDragHandled(payload) {
+      try {
+        var promise = invoke('multiview_broadcast_global_subscribers', {
+          event: 'cross-view-drag-handled',
+          payload: payload || {}
+        });
+        if (promise && typeof promise.catch === 'function') promise.catch(function () {});
+      } catch (_) { /* non-fatal */ }
+    }
     function relayExternalDnd(method, event) {
       var p = (event && event.payload) || {};
       var api = window.__lexeraExternalDnd;
@@ -319,6 +328,12 @@
             invoke('multiview_broadcast', {
               event: 'hierarchy-entity-drop',
               payload: { source: src, target: target }
+            });
+            broadcastCrossViewDragHandled({
+              dropped: true,
+              x: p.x,
+              y: p.y,
+              sourceKind: src.kind
             });
             broadcastFired = true;
           } catch (_) { /* non-fatal */ }
@@ -677,9 +692,11 @@
         // this destination). Echo also lets sibling receivers drop
         // their stale `__lexeraExternalDnd` indicators.
         try {
-          invoke('multiview_broadcast', {
-            event: 'cross-view-drag-handled',
-            payload: { dropped: dropped, x: e.clientX, y: e.clientY, sourceKind: pending.source.kind }
+          broadcastCrossViewDragHandled({
+            dropped: dropped,
+            x: e.clientX,
+            y: e.clientY,
+            sourceKind: pending.source.kind
           });
         } catch (_) { /* non-fatal */ }
       };

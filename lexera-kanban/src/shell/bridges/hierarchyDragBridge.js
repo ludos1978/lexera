@@ -496,37 +496,33 @@
         window.lexeraLog('debug', '[xview-dnd] ' + stage + ' ' + JSON.stringify(info || {}));
       } catch (_) { /* non-fatal */ }
     }
-    function forwardCrossViewDrag(eventName, payload) {
-      var isDragEnd = eventName === 'external-dnd-drop';
-      if (!payload || !payload.source) {
-        xviewLog('forward.skip(no-payload-source)', { eventName: eventName });
-        return;
-      }
-      var routed = routeCrossViewDragPoint({
-        sourceWebviewLabel: payload.sourceWebviewLabel || '',
-        sourceClientX: payload.sourceClientX,
-        sourceClientY: payload.sourceClientY,
-        getWebviewRect: getWebviewRect,
-        getWebviewLabelAtTopPoint: getWebviewLabelAtTopPoint
+    function broadcastBoardChanged(boardId) {
+      return invoke('multiview_broadcast_global_subscribers', {
+        event: 'hierarchy-board-changed',
+        payload: { boardId: boardId }
       });
-      if (!routed) {
-        // Always log on drop (low frequency); throttle on hover so a
-        // 60Hz drag doesn't flood the log panel.
-        if (isDragEnd || !_xviewLogged.dragMove) {
-          xviewLog('forward.skip(no-target-webview-at-cursor)', {
-            eventName: eventName,
-            sourceWebviewLabel: payload.sourceWebviewLabel,
-            sourceClientX: payload.sourceClientX,
-            sourceClientY: payload.sourceClientY
-          });
-          _xviewLogged.dragMove = !isDragEnd;
-        }
-        return;
-      }
-      // Map our `kind` ('row' | 'stack' | 'column' | 'card') to the
-      // type strings the in-shell `__lexeraExternalDnd` API expects.
+    }
+    function getExternalDndType(source) {
       var kindToType = { row: 'tree-row', stack: 'tree-stack', column: 'tree-column', card: 'tree-card' };
-      var type = kindToType[payload.source.kind] || ('tree-' + payload.source.kind);
+      var kind = source && source.kind;
+      return kindToType[kind] || ('tree-' + kind);
+    }
+    function logNoForwardTarget(eventName, payload, isDragEnd) {
+      if (isDragEnd || !_xviewLogged.dragMove) {
+        xviewLog('forward.skip(no-target-webview-at-cursor)', {
+          eventName: eventName,
+          sourceWebviewLabel: payload && payload.sourceWebviewLabel,
+          sourceClientX: payload && payload.sourceClientX,
+          sourceClientY: payload && payload.sourceClientY,
+          sourceScreenX: payload && payload.sourceScreenX,
+          sourceScreenY: payload && payload.sourceScreenY
+        });
+        _xviewLogged.dragMove = !isDragEnd;
+      }
+    }
+    function emitForwardedDnd(eventName, payload, routed) {
+      var isDragEnd = eventName === 'external-dnd-drop';
+      var type = getExternalDndType(payload.source);
       if (isDragEnd || !_xviewLogged.dragMove) {
         xviewLog('forward.emit', {
           eventName: eventName,
@@ -549,6 +545,64 @@
         xviewLog('forward.emit.failed', {
           eventName: eventName,
           targetLabel: routed.targetLabel,
+          err: (err && err.message) ? err.message : String(err)
+        });
+      });
+    }
+    function forwardCrossViewDrag(eventName, payload) {
+      var isDragEnd = eventName === 'external-dnd-drop';
+      if (!payload || !payload.source) {
+        xviewLog('forward.skip(no-payload-source)', { eventName: eventName });
+        return;
+      }
+      var routed = routeCrossViewDragPoint({
+        sourceWebviewLabel: payload.sourceWebviewLabel || '',
+        sourceClientX: payload.sourceClientX,
+        sourceClientY: payload.sourceClientY,
+        getWebviewRect: getWebviewRect,
+        getWebviewLabelAtTopPoint: getWebviewLabelAtTopPoint
+      });
+      if (routed) {
+        emitForwardedDnd(eventName, payload, routed);
+        return;
+      }
+
+      // Top-level-window to top-level-window routing cannot be
+      // resolved from the source shell's local webview registry. Only
+      // the shell that owns the source webview asks Rust for a global
+      // screen-coordinate hit-test, then emits directly to the target
+      // label. Other shells receive the global drag lifecycle event
+      // too, but ignore it because they do not own sourceWebviewLabel.
+      var ownsSource = false;
+      try {
+        ownsSource = !!(payload.sourceWebviewLabel && getWebviewRect(payload.sourceWebviewLabel));
+      } catch (_) { ownsSource = false; }
+      if (!ownsSource ||
+          typeof payload.sourceScreenX !== 'number' ||
+          typeof payload.sourceScreenY !== 'number') {
+        logNoForwardTarget(eventName, payload, isDragEnd);
+        return;
+      }
+
+      invoke('multiview_webview_at_screen_point', {
+        screenX: payload.sourceScreenX,
+        screenY: payload.sourceScreenY,
+        sourceWebviewLabel: payload.sourceWebviewLabel || null
+      }).then(function (hit) {
+        if (!hit || !hit.label) {
+          logNoForwardTarget(eventName, payload, isDragEnd);
+          return;
+        }
+        emitForwardedDnd(eventName, payload, {
+          targetLabel: hit.label,
+          localX: hit.localX,
+          localY: hit.localY,
+          topX: hit.screenX,
+          topY: hit.screenY
+        });
+      }).catch(function (err) {
+        xviewLog('forward.global-hit-test.failed', {
+          eventName: eventName,
           err: (err && err.message) ? err.message : String(err)
         });
       });
@@ -608,10 +662,7 @@
         if (!board) return;
         if (!applyEntityRename(board, source, newTitle)) return;
         return Promise.resolve(saveBoard(source.boardId, board)).then(function () {
-          invoke('multiview_broadcast', {
-            event: 'hierarchy-board-changed',
-            payload: { boardId: source.boardId }
-          }).catch(function () { /* non-fatal */ });
+          broadcastBoardChanged(source.boardId).catch(function () { /* non-fatal */ });
           if (typeof deps.onApplied === 'function') deps.onApplied(source.boardId);
         });
       }).catch(function (err) {
@@ -708,10 +759,7 @@
           if (!srcLocated && source.boardId) {
             xviewLog('apply.local-drop.refresh-stale-tree', { boardId: source.boardId });
             try {
-              invoke('multiview_broadcast', {
-                event: 'hierarchy-board-changed',
-                payload: { boardId: source.boardId }
-              });
+              broadcastBoardChanged(source.boardId).catch(function () { /* non-fatal */ });
             } catch (_) { /* non-fatal */ }
           }
           return;
@@ -731,10 +779,7 @@
           // its stale `boardHierarchies` cache.
           var affected = sameBoard ? [source.boardId] : [source.boardId, target.boardId];
           for (var i = 0; i < affected.length; i++) {
-            invoke('multiview_broadcast', {
-              event: 'hierarchy-board-changed',
-              payload: { boardId: affected[i] }
-            }).catch(function () { /* non-fatal */ });
+            broadcastBoardChanged(affected[i]).catch(function () { /* non-fatal */ });
           }
           if (typeof deps.onApplied === 'function') {
             deps.onApplied(source.boardId);

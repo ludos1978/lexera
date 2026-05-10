@@ -123,7 +123,10 @@ var LexeraDndListeners = (function () {
           source.rowId = String(treeNode.getAttribute('data-row-id') || '').trim() || null;
           source.stackId = String(treeNode.getAttribute('data-stack-id') || '').trim() || null;
           source.columnId = String(treeNode.getAttribute('data-column-id') || '').trim() || null;
-          source.cardId = String(treeNode.getAttribute('data-card-id') || '').trim() || null;
+          source.cardId =
+            String(treeNode.getAttribute('data-card-kid') || '').trim() ||
+            String(treeNode.getAttribute('data-card-id') || '').trim() ||
+            null;
           source.cardIndexMode = source.boardId === activeBoardId ? 'visible' : 'full';
           source.indexMode = source.boardId === activeBoardId ? 'display' : 'full';
         }
@@ -135,9 +138,6 @@ var LexeraDndListeners = (function () {
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
-        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
-          _deps.broadcastCrossViewDragStart();
-        }
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -157,9 +157,6 @@ var LexeraDndListeners = (function () {
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
-        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
-          _deps.broadcastCrossViewDragStart();
-        }
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -361,7 +358,10 @@ var LexeraDndListeners = (function () {
           rowId: stackEl ? (String(stackEl.getAttribute('data-row-id') || '').trim() || null) : null,
           stackId: stackEl ? (String(stackEl.getAttribute('data-stack-id') || '').trim() || null) : null,
           columnId: colEl ? (String(colEl.getAttribute('data-column-id') || '').trim() || null) : null,
-          cardId: String(cardEl.getAttribute('data-card-id') || '').trim() || null,
+          cardId:
+            String(cardEl.getAttribute('data-card-kid') || '').trim() ||
+            String(cardEl.getAttribute('data-card-id') || '').trim() ||
+            null,
           startX: e.clientX,
           startY: e.clientY,
           started: false,
@@ -408,9 +408,6 @@ var LexeraDndListeners = (function () {
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
-        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
-          _deps.broadcastCrossViewDragStart();
-        }
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -452,9 +449,6 @@ var LexeraDndListeners = (function () {
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
-        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
-          _deps.broadcastCrossViewDragStart();
-        }
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -472,9 +466,6 @@ var LexeraDndListeners = (function () {
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
-        if (typeof _deps.broadcastCrossViewDragStart === 'function') {
-          _deps.broadcastCrossViewDragStart();
-        }
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -506,7 +497,10 @@ var LexeraDndListeners = (function () {
             rowId: stackEl ? (String(stackEl.getAttribute('data-row-id') || '').trim() || null) : null,
             stackId: stackEl ? (String(stackEl.getAttribute('data-stack-id') || '').trim() || null) : null,
             columnId: colEl ? (String(colEl.getAttribute('data-column-id') || '').trim() || null) : null,
-            cardId: String(cardEl.getAttribute('data-card-id') || '').trim() || null,
+            cardId:
+              String(cardEl.getAttribute('data-card-kid') || '').trim() ||
+              String(cardEl.getAttribute('data-card-id') || '').trim() ||
+              null,
             startX: e.clientX,
             startY: e.clientY,
             started: false,
@@ -550,13 +544,12 @@ var LexeraDndListeners = (function () {
           });
         }
       }
-      // Stage 17i: broadcast drag-move so the shell's forwarder can
-      // route external-dnd-hover to whichever webview the cursor is
-      // over. The kanban's own mousemove fires reliably for the
-      // whole gesture under WKWebView (even when cursor leaves
-      // bounds), so this is the dependable source-side signal.
+      // Stage 17i: route drag-move to whichever webview the screen
+      // cursor is over. The kanban's own mousemove fires reliably
+      // for the whole gesture under WKWebView (even when cursor
+      // leaves bounds), so this is the dependable source-side signal.
       if (typeof _deps.broadcastCrossViewDragMove === 'function') {
-        _deps.broadcastCrossViewDragMove(e.clientX, e.clientY);
+        _deps.broadcastCrossViewDragMove(e.clientX, e.clientY, e.screenX, e.screenY);
       }
     });
     document.addEventListener('mouseup', function (e) {
@@ -567,12 +560,12 @@ var LexeraDndListeners = (function () {
         DDH.setCardDrag(null);
         return;
       }
-      // Stage 17i: broadcast drag-end-external BEFORE local cleanup
-      // so the shell's forwarder can route external-dnd-drop to the
-      // destination webview while cardDrag state is still populated
-      // (the broadcast helper reads cardDrag.boardId / cardDrag.cardId).
+      // Stage 17i: route drag-end-external BEFORE local cleanup so
+      // the destination webview gets external-dnd-drop while cardDrag
+      // state is still populated (the route helper reads
+      // cardDrag.boardId / cardDrag.cardId).
       if (typeof _deps.broadcastCrossViewDragEnd === 'function') {
-        _deps.broadcastCrossViewDragEnd(e.clientX, e.clientY);
+        _deps.broadcastCrossViewDragEnd(e.clientX, e.clientY, e.screenX, e.screenY);
       }
       if (cardDragRaf) { cancelAnimationFrame(cardDragRaf); cardDragRaf = 0; }
       _deps.finishCardDrag(e.clientX, e.clientY);
@@ -680,10 +673,10 @@ var LexeraDndListeners = (function () {
           _deps.updatePtrDropTarget(pmx, pmy);
         });
       }
-      // Stage 17i: cross-view broadcast — see card mousemove handler
-      // for the rationale.
+      // Stage 17i: cross-view route; see card mousemove handler for
+      // the rationale.
       if (typeof _deps.broadcastCrossViewDragMove === 'function') {
-        _deps.broadcastCrossViewDragMove(e.clientX, e.clientY);
+        _deps.broadcastCrossViewDragMove(e.clientX, e.clientY, e.screenX, e.screenY);
       }
       } catch (err) {
         logFrontendIssue('error', 'drag.ptr', 'Error in ptr mousemove handler', err);
@@ -703,14 +696,14 @@ var LexeraDndListeners = (function () {
         _deps.stopCrossViewBridge();
         return;
       }
-      // Stage 17i: broadcast drag-end-external BEFORE local cleanup
-      // so the shell forwarder can route external-dnd-drop while
-      // ptrDrag state is still populated. See card mouseup handler
-      // for full rationale (WKWebView gesture-routes pointerup back
-      // to source; the workspace destination needs the source to
-      // signal "release" instead of relying on its own pointerup).
+      // Stage 17i: route drag-end-external BEFORE local cleanup so
+      // external-dnd-drop fires while ptrDrag state is still
+      // populated. See card mouseup handler for full rationale
+      // (WKWebView gesture-routes pointerup back to source; the
+      // workspace destination needs the source to signal "release"
+      // instead of relying on its own pointerup).
       if (typeof _deps.broadcastCrossViewDragEnd === 'function') {
-        _deps.broadcastCrossViewDragEnd(e.clientX, e.clientY);
+        _deps.broadcastCrossViewDragEnd(e.clientX, e.clientY, e.screenX, e.screenY);
       }
       // If the drop lands on a different window (iframe or parent),
       // let the cross-view bridge handle it — just clean up local drag state

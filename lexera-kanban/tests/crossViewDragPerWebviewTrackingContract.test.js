@@ -4,10 +4,9 @@
 // boundaries — when the user drags from a sub-app webview into a
 // kanban-view webview, the source's own pointermove stops firing
 // the moment the cursor crosses out of the source's bounds. The
-// shell-side `hierarchyDragBridge` chain (source.broadcast →
-// shell.forward → destination.receive) only fires when the source's
-// pointermove is alive, so without per-webview tracking the
-// destination kanban view never gets `external-dnd-hover` events.
+// source-side drag route only fires when the source's pointermove is
+// alive, so without per-webview tracking the destination kanban view
+// never gets `external-dnd-hover` events.
 //
 // User report 2026-05-09: "still doesnt allow dragging to the
 // kanban view from the workspace view!!!". Fix (commits TBD): each

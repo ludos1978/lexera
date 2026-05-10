@@ -992,6 +992,153 @@ pub fn multiview_broadcast(
     Ok(())
 }
 
+/// Global subscriber-only broadcaster.
+///
+/// Most multiview events MUST stay scoped to the caller window (see
+/// `multiview_broadcast`). Drag/drop lifecycle and board-invalidation
+/// events are different: a drag can start in one top-level window and
+/// finish over a view in another, and saved board changes must refresh
+/// every open view of that board. This command emits only to webviews
+/// that explicitly subscribed to `event`; there is intentionally no
+/// no-subscriber fan-out fallback.
+#[tauri::command]
+pub fn multiview_broadcast_global_subscribers(
+    app: AppHandle,
+    event: String,
+    payload: serde_json::Value,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    let reg: State<SubscriptionRegistry> = app.state();
+    for label in subscribers_for(&reg, &event) {
+        let _ = app.emit_to(label.as_str(), &event, payload.clone());
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebviewScreenHit {
+    pub label: String,
+    pub local_x: f64,
+    pub local_y: f64,
+    pub screen_x: f64,
+    pub screen_y: f64,
+}
+
+fn webview_at_screen_point(
+    app: &AppHandle,
+    registry: &WebviewRegistry,
+    screen_x: f64,
+    screen_y: f64,
+    source_webview_label: Option<&str>,
+) -> Option<WebviewScreenHit> {
+    let metas: Vec<WebviewMeta> = registry.inner.read().values().cloned().collect();
+    let webviews = app.webviews();
+    for meta in metas {
+        if source_webview_label == Some(meta.label.as_str()) {
+            continue;
+        }
+        let Some(wv) = webviews.get(meta.label.as_str()) else {
+            continue;
+        };
+        let window = wv.window();
+        let Ok(window_pos) = window.outer_position() else {
+            continue;
+        };
+        let scale = window.scale_factor().unwrap_or(1.0);
+        let window_x = (window_pos.x as f64) / scale;
+        let window_y = (window_pos.y as f64) / scale;
+        let left = window_x + meta.x;
+        let top = window_y + meta.y;
+        let right = left + meta.width;
+        let bottom = top + meta.height;
+        if screen_x >= left && screen_x <= right && screen_y >= top && screen_y <= bottom {
+            return Some(WebviewScreenHit {
+                label: meta.label,
+                local_x: screen_x - left,
+                local_y: screen_y - top,
+                screen_x,
+                screen_y,
+            });
+        }
+    }
+    None
+}
+
+/// Hit-test a screen-space point against every registered child
+/// webview, across every top-level window.
+///
+/// Child geometry is stored in logical coordinates relative to the
+/// parent window. Tauri returns the top-level window position in
+/// physical pixels, so we divide by that window's scale factor before
+/// combining the two coordinate spaces. This mirrors the drag ghost
+/// positioning path in `drag_coordinator.rs`.
+#[tauri::command]
+pub fn multiview_webview_at_screen_point(
+    app: AppHandle,
+    registry: State<WebviewRegistry>,
+    screen_x: f64,
+    screen_y: f64,
+    source_webview_label: Option<String>,
+) -> Result<Option<WebviewScreenHit>, String> {
+    Ok(webview_at_screen_point(
+        &app,
+        &registry,
+        screen_x,
+        screen_y,
+        source_webview_label.as_deref(),
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalDndRouteRequest {
+    pub event: String,
+    pub source_webview_label: Option<String>,
+    pub screen_x: f64,
+    pub screen_y: f64,
+    pub source: serde_json::Value,
+    pub dnd_type: String,
+}
+
+/// Route a semantic external-DnD hover/drop to the single webview
+/// under the screen-space cursor. This is the hot drag path, so it
+/// avoids process-wide drag-move broadcasts and emits directly to
+/// the resolved destination.
+#[tauri::command]
+pub fn multiview_route_external_dnd(
+    app: AppHandle,
+    registry: State<WebviewRegistry>,
+    request: ExternalDndRouteRequest,
+) -> Result<Option<WebviewScreenHit>, String> {
+    use tauri::Emitter;
+    if request.event != "external-dnd-hover" && request.event != "external-dnd-drop" {
+        return Err(format!(
+            "unsupported external dnd route event '{}'",
+            request.event
+        ));
+    }
+    let Some(hit) = webview_at_screen_point(
+        &app,
+        &registry,
+        request.screen_x,
+        request.screen_y,
+        request.source_webview_label.as_deref(),
+    ) else {
+        return Ok(None);
+    };
+    let payload = serde_json::json!({
+        "payload": {
+            "source": request.source,
+            "type": request.dnd_type,
+        },
+        "x": hit.local_x,
+        "y": hit.local_y,
+    });
+    let _ = app.emit_to(hit.label.as_str(), request.event.as_str(), payload);
+    Ok(Some(hit))
+}
+
 /// Emit an event to a specific webview by label. Used when the
 /// main shell wants to send a targeted message (e.g., a board
 /// action to the currently-active board webview).

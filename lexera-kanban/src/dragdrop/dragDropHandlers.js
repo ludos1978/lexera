@@ -2206,7 +2206,7 @@ var LexeraDragDropHandlers = (function () {
     _xviewLog('kanban.broadcast.drag-start', {
       kind: payload.kind, sourceWebviewLabel: sourceWebviewLabel
     });
-    window.LexeraMultiview.invoke('multiview_broadcast', {
+    window.LexeraMultiview.invoke('multiview_broadcast_global_subscribers', {
       event: 'hierarchy-entity-drag-start',
       payload: payload
     }).catch(function (err) {
@@ -2232,16 +2232,35 @@ var LexeraDragDropHandlers = (function () {
   // to the pointerdown owner. User-pasted log shows pointermove
   // fires on the workspace destination but pointerup never does —
   // user has to click TWICE for the drop to register. Fix: kanban
-  // broadcasts drag-move + drag-end-external during ITS OWN mouse
-  // events (which DO fire reliably for the entire gesture). Shell's
-  // hierarchyDragBridge.forwardCrossViewDrag routes via cursor
-  // position to whatever webview is under the cursor and emits
-  // external-dnd-hover/-drop. Symmetric with workspace→kanban.
+  // routes drag-move + drag-end-external during ITS OWN mouse events
+  // (which DO fire reliably for the entire gesture). The native route
+  // hit-tests the screen cursor and emits external-dnd-hover/-drop
+  // only to the webview under it. Symmetric with workspace→kanban.
   //
-  // rAF throttle on move (60Hz mousemove → 1 IPC roundtrip per frame).
+  // rAF throttle on move (60Hz mousemove to 1 IPC roundtrip per frame).
   var _xviewMoveRaf = 0;
-  var _xviewMoveLastX = 0;
-  var _xviewMoveLastY = 0;
+  var _xviewMoveLastScreenX = null;
+  var _xviewMoveLastScreenY = null;
+  function _externalDndTypeForSource(source) {
+    var kindToType = { row: 'tree-row', stack: 'tree-stack', column: 'tree-column', card: 'tree-card' };
+    return kindToType[source && source.kind] || ('tree-' + (source && source.kind));
+  }
+  function _routeExternalDndAtScreenPoint(eventName, source, sourceWebviewLabel, screenX, screenY) {
+    if (!source || typeof screenX !== 'number' || typeof screenY !== 'number') return;
+    if (typeof window === 'undefined' ||
+        !window.LexeraMultiview ||
+        typeof window.LexeraMultiview.invoke !== 'function') return;
+    window.LexeraMultiview.invoke('multiview_route_external_dnd', {
+      request: {
+        event: eventName,
+        sourceWebviewLabel: sourceWebviewLabel || null,
+        screenX: screenX,
+        screenY: screenY,
+        source: source,
+        dndType: _externalDndTypeForSource(source)
+      }
+    }).catch(function () { /* non-fatal */ });
+  }
   function _flushCrossViewMove() {
     _xviewMoveRaf = 0;
     if (!cardDrag && !ptrDrag) return;
@@ -2256,19 +2275,19 @@ var LexeraDragDropHandlers = (function () {
     } catch (_) { /* non-fatal */ }
     var source = _buildCrossViewSource();
     if (!source) return;
-    window.LexeraMultiview.invoke('multiview_broadcast', {
-      event: 'hierarchy-entity-drag-move',
-      payload: {
-        source: source,
-        sourceWebviewLabel: label,
-        sourceClientX: _xviewMoveLastX,
-        sourceClientY: _xviewMoveLastY
-      }
-    }).catch(function () { /* non-fatal */ });
+    _routeExternalDndAtScreenPoint(
+      'external-dnd-hover',
+      source,
+      label,
+      _xviewMoveLastScreenX,
+      _xviewMoveLastScreenY
+    );
   }
-  function broadcastCrossViewDragMove(clientX, clientY) {
-    _xviewMoveLastX = clientX;
-    _xviewMoveLastY = clientY;
+  function broadcastCrossViewDragMove(clientX, clientY, screenX, screenY) {
+    void clientX;
+    void clientY;
+    _xviewMoveLastScreenX = typeof screenX === 'number' ? screenX : null;
+    _xviewMoveLastScreenY = typeof screenY === 'number' ? screenY : null;
     if (_xviewMoveRaf) return;
     if (typeof requestAnimationFrame === 'function') {
       _xviewMoveRaf = requestAnimationFrame(_flushCrossViewMove);
@@ -2276,7 +2295,7 @@ var LexeraDragDropHandlers = (function () {
       _flushCrossViewMove();
     }
   }
-  function broadcastCrossViewDragEnd(clientX, clientY) {
+  function broadcastCrossViewDragEnd(clientX, clientY, screenX, screenY) {
     if (typeof window === 'undefined' ||
         !window.LexeraMultiview ||
         typeof window.LexeraMultiview.invoke !== 'function') return;
@@ -2294,18 +2313,16 @@ var LexeraDragDropHandlers = (function () {
           JSON.stringify({ kind: source.kind, x: clientX, y: clientY, sourceWebviewLabel: label }));
       } catch (_) { /* non-fatal */ }
     }
-    window.LexeraMultiview.invoke('multiview_broadcast', {
-      event: 'hierarchy-entity-drag-end-external',
-      payload: {
-        source: source,
-        sourceWebviewLabel: label,
-        sourceClientX: clientX,
-        sourceClientY: clientY
-      }
-    }).catch(function () { /* non-fatal */ });
+    _routeExternalDndAtScreenPoint(
+      'external-dnd-drop',
+      source,
+      label,
+      typeof screenX === 'number' ? screenX : null,
+      typeof screenY === 'number' ? screenY : null
+    );
   }
   // Builds the workspace-shape source from cardDrag / ptrDrag state.
-  // Shared by drag-start / drag-move / drag-end-external broadcasts.
+  // Shared by drag-start broadcast and drag-move / drag-end routing.
   function _buildCrossViewSource() {
     if (cardDrag && cardDrag.boardId && cardDrag.cardId) {
       return { boardId: cardDrag.boardId, kind: 'card', entityId: cardDrag.cardId };

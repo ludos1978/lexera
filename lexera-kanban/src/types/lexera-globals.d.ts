@@ -2066,7 +2066,7 @@ interface LexeraPanelDefinitionsApi {
 interface LexeraSubAppApi {
   init(opts: any): void;
   navigate(payload: any): Promise<unknown>;
-  /** Wraps `invoke('multiview_broadcast', { event, payload })`. */
+  /** Broadcasts to sibling-window or global subscribers depending on event kind. */
   broadcast(event: string, payload?: any): Promise<unknown>;
   invoke(cmd: string, args?: any): Promise<unknown>;
   getQueryParam(name: string): string;

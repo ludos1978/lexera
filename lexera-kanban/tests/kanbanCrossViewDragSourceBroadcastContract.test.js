@@ -80,10 +80,10 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
       expect(tail).toMatch(/sourceWebviewLabel/);
     });
 
-    it('helper invokes multiview_broadcast with event=hierarchy-entity-drag-start', () => {
+    it('helper invokes the global subscriber broadcast with event=hierarchy-entity-drag-start', () => {
       const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragStart\s*\(\s*\)/);
       const tail = dragDropHandlersSrc.slice(idx, idx + 4500);
-      expect(tail).toMatch(/multiview_broadcast/);
+      expect(tail).toMatch(/multiview_broadcast_global_subscribers/);
       expect(tail).toMatch(/event\s*:\s*['"]hierarchy-entity-drag-start['"]/);
     });
 
@@ -114,18 +114,21 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
   });
 
   describe('dndListeners.js — ptr drag broadcast hook', () => {
-    it('every _deps.startCrossViewBridge(\'ptr\') call is followed by _deps.broadcastCrossViewDragStart()', () => {
-      // 5 separate ptrDrag entry points (line ~137, 156, 404, 445, 462,
-      // 588 in current source). All must broadcast.
+    it('ptr sources broadcast drag-start only after the drag threshold is crossed', () => {
+      // Multiple ptrDrag entry points arm state on mousedown, but the
+      // cross-window broadcast must not fire for a click. The one
+      // broadcast belongs in the shared mousemove threshold path.
       const startCalls = dndListenersSrc.match(/_deps\.startCrossViewBridge\(\s*['"]ptr['"]/g);
       expect(startCalls, 'must have multiple ptr drag entry points').not.toBeNull();
       expect(startCalls.length).toBeGreaterThanOrEqual(5);
-      // Each entry point's surrounding code must guard on the function's
-      // availability (graceful degradation pre-Stage-17a deps).
-      const broadcastCalls = dndListenersSrc.match(/_deps\.broadcastCrossViewDragStart/g);
+      const broadcastCalls = dndListenersSrc.match(/_deps\.broadcastCrossViewDragStart\(/g);
       expect(broadcastCalls, 'must call _deps.broadcastCrossViewDragStart').not.toBeNull();
-      // Same count — every ptr-bridge-start has a paired broadcast.
-      expect(broadcastCalls.length).toBeGreaterThanOrEqual(startCalls.length);
+      expect(broadcastCalls.length).toBe(1);
+      const idx = dndListenersSrc.indexOf('_deps.broadcastCrossViewDragStart(');
+      expect(idx).toBeGreaterThan(-1);
+      expect(dndListenersSrc).toMatch(
+        /ptrDrag\.started\s*=\s*true[\s\S]*?_deps\.startCrossViewBridge\(\s*['"]ptr['"]\s*\)[\s\S]*?_deps\.broadcastCrossViewDragStart\(/
+      );
     });
   });
 
@@ -142,7 +145,7 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
     });
   });
 
-  describe('Stage 17i — drag-move + drag-end-external broadcasts', () => {
+  describe('Stage 17i — drag-move + drag-end-external routing', () => {
     it('defines and exports broadcastCrossViewDragMove + broadcastCrossViewDragEnd', () => {
       expect(dragDropHandlersSrc).toMatch(/function\s+broadcastCrossViewDragMove\s*\(/);
       expect(dragDropHandlersSrc).toMatch(/function\s+broadcastCrossViewDragEnd\s*\(/);
@@ -150,7 +153,7 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
       expect(dragDropHandlersSrc).toMatch(/broadcastCrossViewDragEnd\s*:\s*broadcastCrossViewDragEnd/);
     });
 
-    it('drag-move helper rAF-throttles its broadcast (one IPC roundtrip per frame, not per pointer event)', () => {
+    it('drag-move helper rAF-throttles its routing (one IPC roundtrip per frame, not per pointer event)', () => {
       // Without throttling, 60Hz mousemove → 60 IPC hops per second.
       const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragMove\s*\(/);
       expect(idx).toBeGreaterThan(-1);
@@ -159,32 +162,44 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
       expect(tail).toMatch(/_xviewMoveRaf/);
     });
 
-    it('drag-end helper invokes multiview_broadcast with event=hierarchy-entity-drag-end-external', () => {
+    it('drag-move and drag-end helpers route directly to the webview under the screen cursor', () => {
+      const helperIdx = dragDropHandlersSrc.search(/function\s+_routeExternalDndAtScreenPoint\s*\(/);
+      const helperTail = dragDropHandlersSrc.slice(helperIdx, helperIdx + 1200);
+      expect(helperTail).toMatch(/multiview_route_external_dnd/);
+      expect(helperTail).toMatch(/event\s*:\s*eventName/);
+      expect(helperTail).toMatch(/sourceWebviewLabel/);
+      expect(helperTail).toMatch(/screenX/);
+      expect(helperTail).toMatch(/screenY/);
+      expect(helperTail).toMatch(/dndType/);
+
+      const moveIdx = dragDropHandlersSrc.search(/function\s+_flushCrossViewMove\s*\(/);
+      const moveTail = dragDropHandlersSrc.slice(moveIdx, moveIdx + 2500);
+      expect(moveTail).toMatch(/external-dnd-hover/);
+      expect(moveTail).toMatch(/_routeExternalDndAtScreenPoint/);
+
       const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragEnd\s*\(/);
       const tail = dragDropHandlersSrc.slice(idx, idx + 2500);
-      expect(tail).toMatch(/multiview_broadcast/);
-      expect(tail).toMatch(/event\s*:\s*['"]hierarchy-entity-drag-end-external['"]/);
+      expect(tail).toMatch(/_routeExternalDndAtScreenPoint/);
+      expect(tail).toMatch(/['"]external-dnd-drop['"]/);
+      expect(tail).not.toMatch(/hierarchy-entity-drag-end-external/);
     });
 
-    it('both helpers carry sourceWebviewLabel + sourceClientX/Y so the shell forwarder can route by cursor position', () => {
-      // The forwarder calls routeCrossViewDragPoint with these fields
-      // — without them the destination resolution returns null and
-      // no external-dnd-hover/drop is emitted.
+    it('both helpers carry sourceWebviewLabel + screen coords so native routing can hit-test by cursor position', () => {
       const moveIdx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragMove\s*\(/);
       const moveTail = dragDropHandlersSrc.slice(moveIdx, moveIdx + 2500);
       expect(moveTail).toMatch(/sourceWebviewLabel/);
-      expect(moveTail).toMatch(/sourceClientX/);
-      expect(moveTail).toMatch(/sourceClientY/);
+      expect(moveTail).toMatch(/screenX/);
+      expect(moveTail).toMatch(/screenY/);
 
       const endIdx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragEnd\s*\(/);
       const endTail = dragDropHandlersSrc.slice(endIdx, endIdx + 2500);
       expect(endTail).toMatch(/sourceWebviewLabel/);
-      expect(endTail).toMatch(/sourceClientX/);
-      expect(endTail).toMatch(/sourceClientY/);
+      expect(endTail).toMatch(/screenX/);
+      expect(endTail).toMatch(/screenY/);
     });
 
     it('dndListeners card mousemove + ptr mousemove BOTH call _deps.broadcastCrossViewDragMove', () => {
-      // Without the broadcast, the destination workspace's
+      // Without the route, the destination workspace's
       // external-dnd-hover handler never fires for kanban→workspace.
       const moveCalls = dndListenersSrc.match(/_deps\.broadcastCrossViewDragMove/g);
       expect(moveCalls, 'must call _deps.broadcastCrossViewDragMove from mousemove').not.toBeNull();
@@ -195,7 +210,7 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
     it('dndListeners card mouseup + ptr mouseup BOTH call _deps.broadcastCrossViewDragEnd BEFORE local cleanup', () => {
       // Order matters: cleanupCardDrag/cleanupPtrDrag null out
       // cardDrag/ptrDrag, after which _buildCrossViewSource returns
-      // null and the drag-end-external broadcast bails silently.
+      // null and the drag-end-external route bails silently.
       const cardIdx = dndListenersSrc.indexOf("_deps.broadcastCrossViewDragEnd");
       expect(cardIdx).toBeGreaterThan(-1);
       const endCalls = dndListenersSrc.match(/_deps\.broadcastCrossViewDragEnd/g);

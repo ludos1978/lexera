@@ -141,6 +141,7 @@
                   'data-col-local-index': ci.toString(),
                   'data-col-index': colIdx >= 0 ? colIdx.toString() : null,
                   'data-card-id': card && card.id != null ? String(card.id) : null,
+                  'data-card-kid': card && card.kid != null ? String(card.kid) : null,
                   'data-card-index': visibleCardIdx.toString(),
                   'data-tree-drag': 'tree-card'
                 }

@@ -51,20 +51,20 @@ describe('cross-view DnD diagnostic-log contract', () => {
   });
 
   it.each(['views/workspaces/workspaces.js', 'views/hierarchy/hierarchy.js'])(
-    '%s logs source.broadcast + source.drag-end-external + source.local-drop (and their failure variants)',
+    '%s logs source.route + source.drag-end-external + source.local-drop (and their failure variants)',
     (relPath) => {
-      // Stage 1 of the chain — source emits broadcasts. Without a
+      // Stage 1 of the chain: source routes hover/drop. Without a
       // source-side log, a misconfigured panel webview where
-      // LexeraSubApp.broadcast silently fails (e.g., __TAURI__ not
+      // LexeraSubApp.invoke silently fails (e.g., __TAURI__ not
       // ready, IPC error) leaves no trace. The log line lets the user
       // verify the source IS firing before tracing the rest of the
       // chain. Same-prefix `[xview-dnd]` so a single Log-panel filter
       // pulls every stage. Both views (workspaces panel + hierarchy
-      // panel) emit the same broadcasts and need parallel coverage.
+      // panel) use the same route and need parallel coverage.
       const src = read(relPath);
       expect(src).toMatch(/\[xview-dnd\]/);
-      expect(src).toMatch(/source\.broadcast\b/);
-      expect(src).toMatch(/source\.broadcast\.failed/);
+      expect(src).toMatch(/source\.route\b/);
+      expect(src).toMatch(/source\.route\.failed/);
       expect(src).toMatch(/source\.drag-end-external\b/);
       expect(src).toMatch(/source\.drag-end-external\.failed/);
       // Local within-panel drop path — separate from the cross-view

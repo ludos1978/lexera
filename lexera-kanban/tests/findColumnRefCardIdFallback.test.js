@@ -2,8 +2,8 @@
 //
 // User-reported "drag from workspace to board doesn't work":
 // - Stage 1-5 of the cross-view DnD chain delivered the drop correctly
-//   (verified by `[xview-dnd]` log output: source.broadcast → forward.emit
-//   → receive at the target board webview).
+//   (verified by `[xview-dnd]` log output: source route/forward → receive
+//   at the target board webview).
 // - But the visible drop result didn't happen because moveCard's
 //   resolveColumnRefForCardMutation -> findColumnRefByStablePath was
 //   given a tree-style source descriptor `{ boardId, kind: 'card',

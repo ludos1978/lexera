@@ -1019,7 +1019,7 @@ describe('LexeraHierarchyDragBridge.install', () => {
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
 
-    const broadcasts = invoke.mock.calls.filter((c) => c[0] === 'multiview_broadcast');
+    const broadcasts = invoke.mock.calls.filter((c) => c[0] === 'multiview_broadcast_global_subscribers');
     const hierarchyBroadcasts = broadcasts.filter((c) =>
       c[1] && c[1].event === 'hierarchy-board-changed');
     expect(hierarchyBroadcasts.length).toBe(1);
@@ -1057,7 +1057,7 @@ describe('LexeraHierarchyDragBridge.install', () => {
     await new Promise((r) => setTimeout(r, 0));
 
     const hierarchyBroadcasts = invoke.mock.calls
-      .filter((c) => c[0] === 'multiview_broadcast' && c[1] && c[1].event === 'hierarchy-board-changed')
+      .filter((c) => c[0] === 'multiview_broadcast_global_subscribers' && c[1] && c[1].event === 'hierarchy-board-changed')
       .map((c) => c[1].payload.boardId)
       .sort();
     expect(hierarchyBroadcasts).toEqual(['A', 'B']);
@@ -1092,7 +1092,7 @@ describe('LexeraHierarchyDragBridge.install', () => {
     expect(onApplied).toHaveBeenCalledWith('b1');
     // Bridge fires hierarchy-board-changed so sub-apps invalidate cache.
     const broadcasts = invoke.mock.calls.filter((c) =>
-      c[0] === 'multiview_broadcast' && c[1] && c[1].event === 'hierarchy-board-changed');
+      c[0] === 'multiview_broadcast_global_subscribers' && c[1] && c[1].event === 'hierarchy-board-changed');
     expect(broadcasts.length).toBe(1);
     expect(broadcasts[0][1].payload.boardId).toBe('b1');
   });

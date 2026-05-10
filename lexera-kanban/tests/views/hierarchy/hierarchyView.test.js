@@ -977,21 +977,21 @@ describe('hierarchy view sub-app', () => {
     });
 
     // Phase 5 sender side: when the cursor leaves every local drop
-    // target during a drag, the sub-app broadcasts
-    // `hierarchy-entity-drag-move` so the shell-side router can
-    // forward to whichever other webview the cursor is over. mouseup
-    // outside any local target broadcasts
-    // `hierarchy-entity-drag-end-external` instead of the local
-    // `hierarchy-entity-drop`.
-    it('cross-view drag-move/drag-end-external broadcasts fire when no local target is hit', async () => {
+    // target during a drag, the sub-app routes `external-dnd-hover`
+    // by screen coordinate to whichever other webview the cursor is
+    // over. mouseup outside any local target routes
+    // `external-dnd-drop` instead of the local `hierarchy-entity-drop`.
+    it('cross-view drag-move/drag-end-external routes fire when no local target is hit', async () => {
       const dom = createDom();
       const { window } = dom;
       let capturedOpts = null;
       const broadcastCalls = [];
+      const invokeCalls = [];
       window.LexeraSubApp = {
         init: vi.fn((opts) => { capturedOpts = opts; }),
         navigate: vi.fn(),
         broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); }),
+        invoke: vi.fn((command, args) => { invokeCalls.push({ command, args }); }),
         getCurrentWebview: vi.fn(() => ({ label: 'workspaces-sub-app' }))
       };
       window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({
@@ -1038,18 +1038,25 @@ describe('hierarchy view sub-app', () => {
       const dragStart = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drag-start');
       expect(dragStart).toBeTruthy();
 
-      const dragMove = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drag-move');
+      const dragMove = invokeCalls.find((c) =>
+        c.command === 'multiview_route_external_dnd' &&
+        c.args && c.args.request && c.args.request.event === 'external-dnd-hover'
+      );
       expect(dragMove).toBeTruthy();
-      expect(dragMove.payload.sourceWebviewLabel).toBe('workspaces-sub-app');
-      expect(typeof dragMove.payload.sourceClientX).toBe('number');
-      expect(typeof dragMove.payload.sourceClientY).toBe('number');
-      expect(dragMove.payload.source).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
+      expect(dragMove.args.request.sourceWebviewLabel).toBe('workspaces-sub-app');
+      expect(typeof dragMove.args.request.screenX).toBe('number');
+      expect(typeof dragMove.args.request.screenY).toBe('number');
+      expect(dragMove.args.request.source).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
+      expect(dragMove.args.request.dndType).toBe('tree-card');
 
-      const dragEnd = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drag-end-external');
+      const dragEnd = invokeCalls.find((c) =>
+        c.command === 'multiview_route_external_dnd' &&
+        c.args && c.args.request && c.args.request.event === 'external-dnd-drop'
+      );
       expect(dragEnd).toBeTruthy();
-      expect(dragEnd.payload.sourceWebviewLabel).toBe('workspaces-sub-app');
-      expect(dragEnd.payload.sourceClientX).toBe(200);
-      expect(dragEnd.payload.sourceClientY).toBe(300);
+      expect(dragEnd.args.request.sourceWebviewLabel).toBe('workspaces-sub-app');
+      expect(typeof dragEnd.args.request.screenX).toBe('number');
+      expect(typeof dragEnd.args.request.screenY).toBe('number');
 
       // Local drop NOT fired (no local target matched).
       expect(broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop')).toBeFalsy();

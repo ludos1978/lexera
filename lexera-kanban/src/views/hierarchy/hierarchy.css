@@ -128,6 +128,19 @@ html, body {
   user-select: none;
 }
 
+/* Suppress the inner scrollbar that the global `.board-list` rule in
+ * app.css (`flex: 1 1 auto; overflow-y: auto`) gives the legacy
+ * sidebar. In the hierarchy sub-app, `.hierarchy-body` is already the
+ * scroll container, so keeping the inner `overflow-y: auto` yields
+ * TWO nested scrollbars (user report 2026-05-10). Mirror of the
+ * `.body > section > .board-list { overflow: visible }` override in
+ * workspaces.css. */
+.hierarchy-body > .hierarchy-section > .board-list {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
 .board-list.nested {
   margin-left: 10px;
   border-left: 1px solid var(--border, #333);
