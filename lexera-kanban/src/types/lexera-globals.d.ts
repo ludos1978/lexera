@@ -511,15 +511,13 @@ interface LexeraLayoutTreeApi {
    *  wasn't found. Updates the affected leaf's activeTabId to
    *  follow the "first remaining tab" rule.
    *
-   *  `removed` is typed as `any` (not `LexeraDockTreeTab`) because
-   *  many consumers in workspaceShell.js access `.boardId` /
-   *  `.viewKind` directly without narrowing on `kind` first;
-   *  tightening the return surfaces 10+ latent type errors that
-   *  need a separate narrowing pass. */
+   *  `removed` is the discriminated `LexeraDockTreeTab` union; the
+   *  sole call site in workspaceShell.js (pruneMissingBoards)
+   *  ignores the field, so no narrowing pass was required. */
   removeTabById(
     tree: LexeraDockTreeNode | null,
     tabId: string
-  ): { removed: any; leaf: LexeraDockTreeLeaf; index: number } | null;
+  ): { removed: LexeraDockTreeTab; leaf: LexeraDockTreeLeaf; index: number } | null;
   /** Remove every tab matching tabId from a SINGLE leaf. Returns
    *  the count removed (companion to removeTabById which is
    *  single-match tree-wide). */
@@ -532,14 +530,16 @@ interface LexeraLayoutTreeApi {
    *  inserted index (or -1 on validation failure). */
   insertTabIntoLeaf(leaf: LexeraDockTreeLeaf, tab: LexeraDockTreeTab, index?: number): number;
   /** Move a tab between leaves. Returns `{ tab, insertedAt }` on
-   *  success, `null` on bounds / type failure. `tab` typed as `any`
-   *  for the same narrow-by-kind reason called out on `removeTabById`. */
+   *  success, `null` on bounds / type failure. `tab` is the
+   *  discriminated `LexeraDockTreeTab` union; the sole call site
+   *  (workspaceShell.js, same-leaf reorder helper) only checks the
+   *  result for truthiness, so no narrowing pass was required. */
   moveTab(
     sourceLeaf: LexeraDockTreeLeaf,
     sourceIndex: number,
     destLeaf: LexeraDockTreeLeaf,
     destIndex?: number
-  ): { tab: any; insertedAt: number } | null;
+  ): { tab: LexeraDockTreeTab; insertedAt: number } | null;
   /** Wholesale replace `holder[key]` with `nextTree`. Returns the
    *  symmetric `{ removed, added }` tab-id diff so the caller can
    *  clean up frame caches / multiview state for removed ids. */
