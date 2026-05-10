@@ -292,6 +292,7 @@
       var p = (event && event.payload) || {};
       var inner = p.payload || null;
       var src = inner && inner.source;
+      var broadcastFired = false;
       if (src && typeof p.x === 'number' && typeof p.y === 'number') {
         var target = resolveCrossViewTreeTarget(p.x, p.y, src);
         xviewLog('receive.drop.tree-target', {
@@ -308,10 +309,22 @@
               event: 'hierarchy-entity-drop',
               payload: { source: src, target: target }
             });
+            broadcastFired = true;
           } catch (_) { /* non-fatal */ }
         }
       }
-      relayExternalDnd('drop', event);
+      // The legacy `relayExternalDnd('drop')` path calls
+      // `__lexeraExternalDnd.drop` which mutates THIS webview's
+      // local board data — fine for kanban-internal-only drag, but
+      // double-counts when a tree-target was resolved + broadcast:
+      // the kanban applies one mutation locally, the shell's
+      // hierarchyDragBridge applies the authoritative mutation +
+      // saveBoard, then `hierarchy-board-changed` rebroadcasts and
+      // the kanban refetches a state that disagrees with its local
+      // mutation → "External Changes Need Resolution" warning + lag.
+      // Skip the legacy path when the broadcast handles it.
+      // Reported 2026-05-10.
+      if (!broadcastFired) relayExternalDnd('drop', event);
     });
 
     // ─── Per-webview cross-view drag tracking ──────────────────────

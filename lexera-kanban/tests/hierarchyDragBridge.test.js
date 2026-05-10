@@ -761,6 +761,16 @@ describe('LexeraHierarchyDragBridge.install', () => {
       }
     };
   }
+  // Mock the shell-detection deps. As of 2026-05-10 (Stage 13) the
+  // bridge's apply listeners are gated on these — only the shell
+  // (which has LexeraMultiviewWebview) wires hierarchy-entity-drop
+  // / hierarchy-entity-rename, so sub-app + embedded-kanban webviews
+  // don't double-apply. Tests that exercise the apply path must
+  // pass these to put the bridge in shell mode.
+  const shellGeomDeps = {
+    getWebviewLabelAtTopPoint: () => null,
+    getWebviewRect: () => null
+  };
 
   it('subscribes to hierarchy-entity-drop and persists same-board sibling reorders', async () => {
     const wv = makeWebview();
@@ -774,14 +784,22 @@ describe('LexeraHierarchyDragBridge.install', () => {
       invoke: invoke,
       loadBoard: loadBoard,
       saveBoard: saveBoard,
-      onApplied: onApplied
+      onApplied: onApplied,
+      ...shellGeomDeps
     });
     expect(ok).toBe(true);
 
-    // multiview_subscribe was called for both drop and rename events.
+    // multiview_subscribe was called for ALL the apply + cross-view
+    // events in a single subscribe (Stage 13 consolidation — shell-only
+    // gate now wraps both sets).
     expect(invoke).toHaveBeenCalledWith('multiview_subscribe', {
       label: 'main',
-      events: ['hierarchy-entity-drop', 'hierarchy-entity-rename']
+      events: [
+        'hierarchy-entity-drop',
+        'hierarchy-entity-rename',
+        'hierarchy-entity-drag-move',
+        'hierarchy-entity-drag-end-external'
+      ]
     });
     expect(wv.listen).toHaveBeenCalledWith('hierarchy-entity-drop', expect.any(Function));
     expect(wv.listen).toHaveBeenCalledWith('hierarchy-entity-rename', expect.any(Function));
@@ -818,7 +836,8 @@ describe('LexeraHierarchyDragBridge.install', () => {
       getCurrentWebview: () => wv,
       invoke: vi.fn(() => Promise.resolve()),
       loadBoard: () => Promise.resolve(board),
-      saveBoard: saveBoard
+      saveBoard: saveBoard,
+      ...shellGeomDeps
     });
     wv._fire('hierarchy-entity-drop', {
       source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
@@ -856,7 +875,8 @@ describe('LexeraHierarchyDragBridge.install', () => {
       invoke: vi.fn(() => Promise.resolve()),
       loadBoard: () => Promise.resolve(board),
       saveBoard: saveBoard,
-      onApplied: onApplied
+      onApplied: onApplied,
+      ...shellGeomDeps
     });
 
     // card-1 → column c2 absorb.
@@ -902,7 +922,8 @@ describe('LexeraHierarchyDragBridge.install', () => {
       invoke: invoke,
       loadBoard: loadBoard,
       saveBoard: saveBoard,
-      onApplied: onApplied
+      onApplied: onApplied,
+      ...shellGeomDeps
     });
 
     wv._fire('hierarchy-entity-drop', {
@@ -953,7 +974,8 @@ describe('LexeraHierarchyDragBridge.install', () => {
       invoke: vi.fn(() => Promise.resolve()),
       loadBoard: loadBoard,
       saveBoard: saveBoard,
-      onApplied: onApplied
+      onApplied: onApplied,
+      ...shellGeomDeps
     });
 
     // a-card-1 → b-c2 absorb (cross-board, cross-kind).
@@ -985,7 +1007,8 @@ describe('LexeraHierarchyDragBridge.install', () => {
       getCurrentWebview: () => wv,
       invoke: invoke,
       loadBoard: () => Promise.resolve(board),
-      saveBoard: () => Promise.resolve()
+      saveBoard: () => Promise.resolve(),
+      ...shellGeomDeps
     });
 
     // Same-board drop → one broadcast for the affected board.
@@ -1022,7 +1045,8 @@ describe('LexeraHierarchyDragBridge.install', () => {
       getCurrentWebview: () => wv,
       invoke: invoke,
       loadBoard: (id) => Promise.resolve(id === 'A' ? a : b),
-      saveBoard: () => Promise.resolve()
+      saveBoard: () => Promise.resolve(),
+      ...shellGeomDeps
     });
     wv._fire('hierarchy-entity-drop', {
       source: { boardId: 'A', kind: 'card', entityId: 'a-card' },
@@ -1050,7 +1074,8 @@ describe('LexeraHierarchyDragBridge.install', () => {
       invoke: invoke,
       loadBoard: () => Promise.resolve(board),
       saveBoard: saveBoard,
-      onApplied: onApplied
+      onApplied: onApplied,
+      ...shellGeomDeps
     });
 
     wv._fire('hierarchy-entity-rename', {
@@ -1080,7 +1105,8 @@ describe('LexeraHierarchyDragBridge.install', () => {
       getCurrentWebview: () => wv,
       invoke: vi.fn(() => Promise.resolve()),
       loadBoard: () => Promise.resolve(board),
-      saveBoard: saveBoard
+      saveBoard: saveBoard,
+      ...shellGeomDeps
     });
     wv._fire('hierarchy-entity-rename', {
       source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
@@ -1184,21 +1210,27 @@ describe('LexeraHierarchyDragBridge.install', () => {
     expect(invoke.mock.calls.find((c) => c[0] === 'multiview_emit_to')).toBeFalsy();
   });
 
-  it('skips cross-view subscribe when geometry deps are missing', async () => {
+  it('install bails (returns false, no subscribes, no listeners) when geometry deps are missing — apply path is shell-only', async () => {
+    // Stage 13 (2026-05-10): the bridge is now shell-only. Without
+    // `getWebviewRect` + `getWebviewLabelAtTopPoint`, install runs
+    // in a non-shell webview (sub-app or embedded kanban) and must
+    // bail BEFORE subscribing or wiring listeners. Previously every
+    // webview with LexeraApi subscribed and applied, causing 3+
+    // duplicate loadBoard+applyDrop+saveBoard runs per drop — the
+    // observed lag + "External Changes Need Resolution" warning.
     const wv = makeWebview();
     const invoke = vi.fn(() => Promise.resolve());
-    bridge.install({
+    const ok = bridge.install({
       getCurrentWebview: () => wv,
       invoke: invoke,
       loadBoard: () => Promise.resolve(makeBoard()),
       saveBoard: () => Promise.resolve()
-      // No getWebviewRect / getWebviewLabelAtTopPoint — bridge stays
-      // backward-compatible: drop / rename listeners install, cross-
-      // view forwarding does not.
+      // No getWebviewRect / getWebviewLabelAtTopPoint — non-shell webview.
     });
+    expect(ok).toBe(false);
     const subscribes = invoke.mock.calls.filter((c) => c[0] === 'multiview_subscribe');
-    expect(subscribes.length).toBe(1);
-    expect(subscribes[0][1].events).toEqual(['hierarchy-entity-drop', 'hierarchy-entity-rename']);
+    expect(subscribes.length).toBe(0);
+    expect(wv.listen).not.toHaveBeenCalled();
   });
 
   it('routes errors through onError', async () => {
@@ -1209,7 +1241,8 @@ describe('LexeraHierarchyDragBridge.install', () => {
       invoke: vi.fn(() => Promise.resolve()),
       loadBoard: () => Promise.reject(new Error('load failed')),
       saveBoard: vi.fn(),
-      onError: onError
+      onError: onError,
+      ...shellGeomDeps
     });
     wv._fire('hierarchy-entity-drop', {
       source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },

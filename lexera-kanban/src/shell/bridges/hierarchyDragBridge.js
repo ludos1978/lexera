@@ -417,10 +417,18 @@
     var wv = getCurrentWebview();
     if (!wv || typeof wv.listen !== 'function') return false;
 
-    invoke('multiview_subscribe', {
-      label: wv.label,
-      events: ['hierarchy-entity-drop', 'hierarchy-entity-rename']
-    }).catch(function () { /* non-fatal */ });
+    // NOTE: subscription to `hierarchy-entity-drop` and
+    // `hierarchy-entity-rename` is now gated on shell-detection
+    // below (the cross-view forwarder block) — `install` runs in
+    // EVERY webview that has LexeraApi (workspace tree sub-apps,
+    // every embedded kanban webview, AND the shell), and unconditional
+    // subscription meant 3+ subscribers all ran loadBoard +
+    // applyDrop + saveBoard for each broadcast. The redundant saves
+    // raced against the destination kanban's own legacy local-apply
+    // path (`__lexeraExternalDnd.drop` via embeddedBoardBridge's
+    // relayExternalDnd) and surfaced as the user-visible
+    // "External Changes Need Resolution" warning + visible apply lag.
+    // Reported 2026-05-10. Only the SHELL needs to subscribe.
 
     // Cross-view drag forwarding (Phase 5).
     //
@@ -510,13 +518,21 @@
         });
       });
     }
-    if (typeof getWebviewLabelAtTopPoint === 'function' && typeof getWebviewRect === 'function') {
-      // Subscribe to the broadcasts so the shell webview actually
-      // receives them. (The drop-/rename-side subscribe call already
-      // runs above; extend it lazily for the cross-view events.)
+    var isShellWebview = (typeof getWebviewLabelAtTopPoint === 'function' && typeof getWebviewRect === 'function');
+    if (isShellWebview) {
+      // Subscribe to ALL hierarchy-drop / rename / drag-move events
+      // and install their listeners. Only the shell does the apply
+      // work — sub-app webviews and embedded kanban webviews skip
+      // this block, so loadBoard + applyDrop + saveBoard fire
+      // exactly once per drop instead of once per subscriber.
       invoke('multiview_subscribe', {
         label: wv.label,
-        events: ['hierarchy-entity-drag-move', 'hierarchy-entity-drag-end-external']
+        events: [
+          'hierarchy-entity-drop',
+          'hierarchy-entity-rename',
+          'hierarchy-entity-drag-move',
+          'hierarchy-entity-drag-end-external'
+        ]
       }).catch(function () {});
       wv.listen('hierarchy-entity-drag-move', function (event) {
         forwardCrossViewDrag('external-dnd-hover', (event && event.payload) || null);
@@ -540,6 +556,12 @@
         hasGetLabelAtTopPoint: typeof getWebviewLabelAtTopPoint === 'function',
         hasGetWebviewRect: typeof getWebviewRect === 'function'
       });
+      // Sub-app / embedded-kanban webviews bail BEFORE installing
+      // the apply listeners. Only the shell holds the authoritative
+      // apply path. Returning here keeps the `install()` contract
+      // (return true means "apply path is wired") honest — true
+      // ONLY in the shell.
+      return false;
     }
 
     wv.listen('hierarchy-entity-rename', function (event) {
