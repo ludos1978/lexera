@@ -2227,6 +2227,10 @@ declare global {
      *  this to surface state transitions in failing-test diagnostics. */
     __lexeraDebugMutations?: boolean;
     __lexeraExternalDnd: LexeraExternalDndApi;
+    /** Single-install guard for `views/_shared/healthDot.js` so
+     *  multiple sub-apps loading the script don't double-attach the
+     *  observer. Set to `true` at module-load time. */
+    __lexeraHealthDotInstalled?: boolean;
     /** Capture per-mutation profiler entries (timestamps + durations).
      *  Used by the debug-window profiler trace. */
     __lexeraProfileMutations?: boolean;
