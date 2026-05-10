@@ -23,6 +23,35 @@
 (function () {
   'use strict';
 
+  // Diagnostic helper: collect a compact summary of every card's
+  // (id, kid) pair from a loaded KanbanBoard. Truncates to `limit`
+  // entries per board so a 100-card board doesn't flood the log.
+  // Used by `apply.local-drop.skip.diagnose` when locateEntity
+  // misses the source or target — surfaces whether the card simply
+  // isn't in the loaded data (data drift) vs an id-format issue.
+  function collectCardIdSummary(board, limit) {
+    var entries = [];
+    var rows = board && Array.isArray(board.rows) ? board.rows : [];
+    for (var r = 0; r < rows.length && entries.length < limit; r++) {
+      var stacks = (rows[r] && Array.isArray(rows[r].stacks)) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length && entries.length < limit; s++) {
+        var cols = (stacks[s] && Array.isArray(stacks[s].columns)) ? stacks[s].columns : [];
+        for (var c = 0; c < cols.length && entries.length < limit; c++) {
+          var cards = (cols[c] && Array.isArray(cols[c].cards)) ? cols[c].cards : [];
+          for (var k = 0; k < cards.length && entries.length < limit; k++) {
+            var card = cards[k];
+            if (!card) continue;
+            entries.push({
+              id: card.id || null,
+              kid: card.kid || null
+            });
+          }
+        }
+      }
+    }
+    return { count: entries.length, sample: entries };
+  }
+
   // Walk the hierarchy looking for an entity with `targetId`. Returns
   // `{ parent: Array, index: number }` so the caller can splice.
   // Returns null when not found.
@@ -587,6 +616,18 @@
             sameEntity: source.entityId === target.entityId,
             tgtPosition: target.position
           });
+          // When the lookup of source / target failed, dump every
+          // card id+kid from the loaded board so the next user paste
+          // surfaces the actual ids in play. Tells us if the source
+          // card simply isn't in the loaded board (data drift between
+          // getBoardHierarchy → tree DOM and getBoardColumns → applied
+          // load) vs an id-format issue we haven't covered yet.
+          if (source.kind === 'card' && (!srcLocated || !tgtLocated)) {
+            xviewLog('apply.local-drop.skip.diagnose', {
+              srcBoardCards: collectCardIdSummary(srcBoard, 12),
+              tgtBoardCards: sameBoard ? '(sameBoard — see srcBoardCards)' : collectCardIdSummary(tgtBoard, 12)
+            });
+          }
           return;
         }
         var saves = sameBoard
