@@ -477,7 +477,7 @@ var LexeraDashboard = (function () {
     stripInternalHiddenTags: function(content) { return stripInternalHiddenTags(content); },
     replaceNthMarkdownEmbed: function(c, i, r) { return replaceNthMarkdownEmbed(c, i, r); },
     preserveBoardScroll: function(label) { return preserveBoardScroll(label); },
-    lockBoardScrollHorizontal: function(durationMs) { return lockBoardScrollHorizontal(durationMs); },
+    lockBoardScrollHorizontal: function(durationMs, targetLeft) { return lockBoardScrollHorizontal(durationMs, targetLeft); },
     lexeraLog: function(level, msg) { lexeraLog(level, msg); },
     logFrontendIssue: function(level, tag, msg, err) { logFrontendIssue(level, tag, msg, err); },
     getInlineCardEditor: function() { return InlineCardEditorModule ? InlineCardEditorModule.getCurrentInlineCardEditor() : null; },
@@ -5494,13 +5494,27 @@ var LexeraDashboard = (function () {
    * on the container — so a user who immediately scrolls right
    * after exiting an edit isn't fought by the latch.
    *
+   * `targetLeft` — optional pre-edit scrollLeft to restore to,
+   * instead of capturing whatever scrollLeft happens to be at
+   * install time. Use this when the calling site has a known-good
+   * "before any side effects" scroll value (e.g. the editor stashes
+   * scrollLeft when opening so the latch can restore it on close
+   * even though the textarea-focus might have shifted scroll
+   * meanwhile).
+   *
    * @param {number} [durationMs] Default 400ms.
+   * @param {number} [targetLeft] If provided, the latch holds this
+   *   value instead of `cc.scrollLeft` at install time.
    * @returns {() => void}
    */
-  function lockBoardScrollHorizontal(durationMs) {
+  function lockBoardScrollHorizontal(durationMs, targetLeft) {
     var cc = getElColumnsContainer();
     if (!cc) return function () {};
-    var lockedLeft = cc.scrollLeft;
+    var lockedLeft = typeof targetLeft === 'number' && isFinite(targetLeft)
+      ? targetLeft : cc.scrollLeft;
+    // Apply once immediately so any drift that has already happened
+    // before install is corrected up-front.
+    if (cc.scrollLeft !== lockedLeft) cc.scrollLeft = lockedLeft;
     var totalMs = typeof durationMs === 'number' && durationMs > 0 ? durationMs : 400;
     var deadline = Date.now() + totalMs;
     var detached = false;

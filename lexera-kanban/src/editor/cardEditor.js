@@ -1147,7 +1147,13 @@ var CardEditor = (function () {
   // overlay, WYSIWYG, …). Every editor routes here on save. Scroll/layout
   // preservation lives downstream in refreshTargetedElements (app.js) so it
   // also covers non-editor card mutations (checkbox toggles, drag-drop).
-  async function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) {
+  //
+  // `options.preEditScrollLeft` — when supplied (the inline editor stashes
+  // it at edit-open time), the latch restores to this value. Without it,
+  // the latch falls back to capturing the current scrollLeft at save time
+  // — which is wrong if the textarea-focus shifted scroll mid-edit.
+  async function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent, options) {
+    options = options || {};
     // DIAGNOSTIC: confirm this common function fires. Remove once solved.
     try {
       if (_deps && typeof _deps.logFrontendIssue === 'function') {
@@ -1163,8 +1169,15 @@ var CardEditor = (function () {
     // the rAF window has already closed. The latch resets any drift
     // back to the saved value until the deadline. See app.js
     // lockBoardScrollHorizontal for the full triage.
+    //
+    // When the caller has stashed a pre-edit scrollLeft (the inline
+    // editor does), pass it through so the latch restores the user's
+    // actual position from BEFORE they entered the editor — not the
+    // textarea-focus-shifted position that's in cc.scrollLeft now.
     if (_deps && typeof _deps.lockBoardScrollHorizontal === 'function') {
-      _deps.lockBoardScrollHorizontal(400);
+      var targetLeft = typeof options.preEditScrollLeft === 'number'
+        ? options.preEditScrollLeft : undefined;
+      _deps.lockBoardScrollHorizontal(400, targetLeft);
     }
     _deps.setIsEditing(false);
     var fullBoardData = _deps.getFullBoardData();

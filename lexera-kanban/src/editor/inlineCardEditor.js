@@ -63,6 +63,24 @@ var InlineCardEditor = (function () {
     var contentEl = cardEl ? cardEl.querySelector('.card-content') : null;
     if (!contentEl) return;
 
+    // Capture pre-edit scroll position BEFORE creating the textarea.
+    // The textarea.focus() at the bottom of this function will trigger
+    // browser auto-scroll-into-view; we need to know what scrollLeft
+    // was before that side-effect so the close path's latch can
+    // restore the user's actual position, not the textarea-shifted
+    // one. The user's bug report ("view moves even when card is
+    // already in viewport") was caused by capturing scrollLeft at
+    // CLOSE time — by then the focus shift had already happened.
+    var preEditScrollLeft = 0;
+    var preEditScrollTop = 0;
+    if (typeof _deps.getElColumnsContainer === 'function') {
+      var preCc = _deps.getElColumnsContainer();
+      if (preCc) {
+        preEditScrollLeft = preCc.scrollLeft;
+        preEditScrollTop = preCc.scrollTop;
+      }
+    }
+
     _deps.setIsEditing(true);
     cardEl.classList.add('editing');
     cardEl.classList.add('editing-inline');
@@ -84,7 +102,9 @@ var InlineCardEditor = (function () {
       fullCardIdx: fullIdx,
       contentEl: contentEl,
       textarea: textarea,
-      originalContent: card.content || ''
+      originalContent: card.content || '',
+      preEditScrollLeft: preEditScrollLeft,
+      preEditScrollTop: preEditScrollTop
     };
 
     function maybeSaveOnBlur() {
@@ -164,7 +184,18 @@ var InlineCardEditor = (function () {
 
     requestAnimationFrame(function () {
       if (!currentInlineCardEditor || currentInlineCardEditor.textarea !== textarea) return;
-      textarea.focus();
+      // preventScroll: true keeps the browser from auto-scroll-into-
+      // viewing the textarea on focus. Without this, focusing a
+      // textarea that's even slightly clipped by the viewport
+      // shifts scrollLeft, and that shift survives the edit even
+      // when the card is fully visible (user-reported 2026-05-10
+      // "view moves even when card is already in viewport").
+      // Supported in WebKit since Safari 14.
+      try {
+        textarea.focus({ preventScroll: true });
+      } catch (_) {
+        textarea.focus();
+      }
       textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     });
   }
@@ -188,14 +219,25 @@ var InlineCardEditor = (function () {
     }
     if (options.save) {
       _deps.clearPendingCardDraftSync();
-      return _deps.saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
+      // Pass pre-edit scrollLeft to saveCardEdit so its internal
+      // latch restores to that value instead of capturing whatever
+      // shifted state we're at after the textarea's focus.
+      return _deps.saveCardEdit(
+        editor.cardEl,
+        editor.colIndex,
+        editor.fullCardIdx,
+        editor.textarea.value,
+        { preEditScrollLeft: editor.preEditScrollLeft }
+      );
     }
     // Cancel path also rebuilds the card via renderCardDisplayState,
     // which has the same horizontal-scroll-jump risk as the save
     // path. Mirror the latch from saveCardEdit so cancel doesn't
-    // leak through.
+    // leak through. Use the captured pre-edit scroll so the latch
+    // restores the user's actual position, not the textarea-shifted
+    // one.
     if (_deps && typeof _deps.lockBoardScrollHorizontal === 'function') {
-      _deps.lockBoardScrollHorizontal(400);
+      _deps.lockBoardScrollHorizontal(400, editor.preEditScrollLeft);
     }
     _deps.renderCardDisplayState(editor.cardEl, editor.originalContent);
     return _deps.revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent)

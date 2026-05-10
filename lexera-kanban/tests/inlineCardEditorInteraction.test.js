@@ -81,7 +81,13 @@ describe('InlineCardEditor user interactions', () => {
     }));
 
     expect(deps.clearPendingCardDraftSync).toHaveBeenCalled();
-    expect(deps.saveCardEdit).toHaveBeenCalledWith(cardEl, 0, 0, 'Updated task');
+    // 5th arg `options.preEditScrollLeft` added 2026-05-10 so the
+    // save-side latch can restore the user's pre-edit scroll
+    // position instead of capturing whatever scrollLeft is at save
+    // time. Harness has no columns-container, so the value is 0.
+    expect(deps.saveCardEdit).toHaveBeenCalledWith(
+      cardEl, 0, 0, 'Updated task', { preEditScrollLeft: 0 }
+    );
     expect(deps.setIsEditing).toHaveBeenLastCalledWith(false);
   });
 

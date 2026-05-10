@@ -40,16 +40,23 @@ describe('card-edit horizontal scroll-latch contract', () => {
   const inlineCardEditorSrc = read('editor/inlineCardEditor.js');
 
   it('app.js declares lockBoardScrollHorizontal', () => {
-    expect(appSrc).toMatch(/function\s+lockBoardScrollHorizontal\s*\(\s*durationMs\s*\)/);
+    // Second param (targetLeft) added 2026-05-10 — see the
+    // pre-edit-scrollLeft contract test below for rationale.
+    expect(appSrc).toMatch(
+      /function\s+lockBoardScrollHorizontal\s*\(\s*durationMs\s*,\s*targetLeft\s*\)/
+    );
   });
 
-  it('the latch reads scrollLeft from .columns-container at install time', () => {
+  it('the latch falls back to capturing scrollLeft when targetLeft isnt supplied', () => {
     const fnBlock = appSrc.match(
-      /function\s+lockBoardScrollHorizontal[\s\S]{0,2500}?^\s{2}\}/m
+      /function\s+lockBoardScrollHorizontal[\s\S]{0,3500}?^\s{2}\}/m
     );
     expect(fnBlock).toBeTruthy();
     expect(fnBlock[0]).toMatch(/getElColumnsContainer\(\)/);
-    expect(fnBlock[0]).toMatch(/lockedLeft\s*=\s*cc\.scrollLeft/);
+    expect(fnBlock[0]).toMatch(/cc\.scrollLeft/);
+    // The fallback branch picks up cc.scrollLeft when targetLeft is
+    // not a finite number.
+    expect(fnBlock[0]).toMatch(/typeof\s+targetLeft\s*===\s*['"]number['"]/);
   });
 
   it('the latch installs a scroll listener that resets drift to lockedLeft', () => {
@@ -75,35 +82,93 @@ describe('card-edit horizontal scroll-latch contract', () => {
     expect(fnBlock[0]).toMatch(/\b400\b/);
   });
 
-  it('the runtime export wrapper forwards the durationMs arg', () => {
+  it('the runtime export wrapper forwards both durationMs and targetLeft', () => {
     expect(appSrc).toMatch(
-      /lockBoardScrollHorizontal:\s*function\s*\(\s*durationMs\s*\)\s*\{\s*return\s+lockBoardScrollHorizontal\(\s*durationMs\s*\)\s*;\s*\}/
+      /lockBoardScrollHorizontal:\s*function\s*\(\s*durationMs\s*,\s*targetLeft\s*\)\s*\{\s*return\s+lockBoardScrollHorizontal\(\s*durationMs\s*,\s*targetLeft\s*\)\s*;?\s*\}/
     );
   });
 
-  it('saveCardEdit calls lockBoardScrollHorizontal before persisting', () => {
-    // Match the call inside the saveCardEdit body — guarded by
-    // `typeof _deps.lockBoardScrollHorizontal === 'function'` so the
-    // test setup doesn't need to stub it.
+  it('saveCardEdit calls lockBoardScrollHorizontal with the resolved targetLeft', () => {
     const saveBlock = cardEditorSrc.match(
-      /async\s+function\s+saveCardEdit[\s\S]{0,3000}?^\s{2}\}/m
+      /async\s+function\s+saveCardEdit[\s\S]{0,3500}?^\s{2}\}/m
     );
     expect(saveBlock).toBeTruthy();
     expect(saveBlock[0]).toMatch(
       /_deps\.lockBoardScrollHorizontal\s*===\s*['"]function['"]/
     );
-    expect(saveBlock[0]).toMatch(/_deps\.lockBoardScrollHorizontal\(\s*400\s*\)/);
+    // Now passes targetLeft as the second arg (resolved from
+    // options.preEditScrollLeft when supplied).
+    expect(saveBlock[0]).toMatch(
+      /_deps\.lockBoardScrollHorizontal\(\s*400\s*,\s*targetLeft\s*\)/
+    );
   });
 
-  it('inlineCardEditor cancel path also calls lockBoardScrollHorizontal', () => {
-    // Cancel rebuilds the card via renderCardDisplayState — same
-    // scroll-jump risk as save, so the latch must be installed there
-    // too.
+  it('inlineCardEditor cancel path also calls lockBoardScrollHorizontal with editor.preEditScrollLeft', () => {
     expect(inlineCardEditorSrc).toMatch(
       /_deps\.lockBoardScrollHorizontal\s*===\s*['"]function['"]/
     );
+    // Cancel passes editor.preEditScrollLeft directly as the
+    // latch's targetLeft — restores the user's pre-edit position.
     expect(inlineCardEditorSrc).toMatch(
-      /_deps\.lockBoardScrollHorizontal\(\s*400\s*\)/
+      /lockBoardScrollHorizontal\(\s*400\s*,\s*editor\.preEditScrollLeft\s*\)/
+    );
+  });
+
+  it('the latch accepts an optional targetLeft to restore a pre-edit scrollLeft', () => {
+    // User-reported bug (2026-05-10): "view moves even when the
+    // card is already in viewport" — the textarea-focus inside the
+    // editor shifts scrollLeft mid-edit, so capturing scrollLeft at
+    // save time restores the wrong value. Inline editor now stashes
+    // pre-edit scrollLeft on the editor record and passes it through
+    // saveCardEdit's options as targetLeft.
+    expect(appSrc).toMatch(
+      /function\s+lockBoardScrollHorizontal\s*\(\s*durationMs\s*,\s*targetLeft\s*\)/
+    );
+    expect(appSrc).toMatch(
+      /lockedLeft\s*=\s*typeof\s+targetLeft\s*===\s*['"]number['"]/
+    );
+    // Runtime export must also forward the second arg.
+    expect(appSrc).toMatch(
+      /lockBoardScrollHorizontal:\s*function\s*\(\s*durationMs\s*,\s*targetLeft\s*\)\s*\{\s*return\s+lockBoardScrollHorizontal\(\s*durationMs\s*,\s*targetLeft\s*\)\s*;?\s*\}/
+    );
+  });
+
+  it('inlineCardEditor opens with preventScroll on textarea.focus + captures pre-edit scrollLeft', () => {
+    // preventScroll keeps the browser from shifting scrollLeft
+    // when the textarea grabs focus on edit-open.
+    expect(inlineCardEditorSrc).toMatch(
+      /textarea\.focus\(\s*\{\s*preventScroll:\s*true\s*\}\s*\)/
+    );
+    // The editor record stashes pre-edit scrollLeft so the close
+    // path can restore it via the latch.
+    expect(inlineCardEditorSrc).toMatch(/preEditScrollLeft\s*:\s*preEditScrollLeft/);
+    expect(inlineCardEditorSrc).toMatch(
+      /preCc\.scrollLeft|getElColumnsContainer\(\)/
+    );
+  });
+
+  it('inlineCardEditor close paths pass preEditScrollLeft through to the latch', () => {
+    // Save path: passes via options.preEditScrollLeft to saveCardEdit.
+    expect(inlineCardEditorSrc).toMatch(
+      /preEditScrollLeft:\s*editor\.preEditScrollLeft/
+    );
+    // Cancel path: passes directly as the latch's targetLeft arg.
+    expect(inlineCardEditorSrc).toMatch(
+      /lockBoardScrollHorizontal\(\s*400\s*,\s*editor\.preEditScrollLeft\s*\)/
+    );
+  });
+
+  it('saveCardEdit forwards options.preEditScrollLeft to the latch as targetLeft', () => {
+    expect(cardEditorSrc).toMatch(
+      /async\s+function\s+saveCardEdit\s*\([^)]*,\s*options\s*\)/
+    );
+    const saveBlock = cardEditorSrc.match(
+      /async\s+function\s+saveCardEdit[\s\S]{0,3500}?^\s{2}\}/m
+    );
+    expect(saveBlock).toBeTruthy();
+    expect(saveBlock[0]).toMatch(/options\.preEditScrollLeft/);
+    expect(saveBlock[0]).toMatch(
+      /_deps\.lockBoardScrollHorizontal\(\s*400\s*,\s*targetLeft\s*\)/
     );
   });
 
