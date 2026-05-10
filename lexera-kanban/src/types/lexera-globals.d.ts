@@ -498,12 +498,31 @@ interface LexeraLayoutTreeApi {
   ): void;
   getFirstLeaf(node: LexeraDockTreeNode | null): LexeraDockTreeLeaf | null;
   findLeafById(node: LexeraDockTreeNode | null, leafId: string): LexeraDockTreeLeaf | null;
-  findNodeAndParent(node: any, nodeId: string): any;
+  /** Walk the tree for `nodeId`. Returns the matched node, its
+   *  parent (always a split when non-null — the visitor only fires
+   *  on children with a parent — but typed loosely as DockTreeNode
+   *  to match `visitTree`'s callback signature), and which slot
+   *  the node occupies in that split. */
+  findNodeAndParent(
+    node: LexeraDockTreeNode | null,
+    nodeId: string
+  ): {
+    node: LexeraDockTreeNode;
+    parent: LexeraDockTreeNode | null;
+    side: 'first' | 'second' | '';
+  } | null;
   findTab(
     node: LexeraDockTreeNode | null,
     tabId: string
   ): { tab: any; leaf: LexeraDockTreeLeaf; index: number } | null;
-  findClosestSplitParent(node: any, targetLeafId: string, parentSplit?: any): any;
+  /** Walk to the split that DIRECTLY contains the leaf with id
+   *  `targetLeafId`. Returns null when the leaf isn't reachable
+   *  from `node`, or when the leaf IS the root (no parent split). */
+  findClosestSplitParent(
+    node: LexeraDockTreeNode | null,
+    targetLeafId: string,
+    parentSplit?: LexeraDockTreeSplit | null
+  ): LexeraDockTreeSplit | null;
   countTreeTabs(tree: LexeraDockTreeNode | null): number;
   collectAllTabIds(tree: LexeraDockTreeNode | null): string[];
   /** Remove a tab from anywhere in the tree by tab.id. Returns the
@@ -571,8 +590,22 @@ interface LexeraLayoutTreeApi {
     idFactory?: (prefix: string) => string
   ): LexeraDockTreePanelTab;
   migratePanelDocksToSideDocks(panelDocks: any, panelGroupActives: any, idFactory?: (prefix: string) => string): any;
-  findLeafContainingBoard(node: any, boardId: string, viewKind?: string): any;
-  findAnyLeafContainingBoard(node: any, boardId: string): any;
+  /** Find the leaf containing a board tab with the matching
+   *  `boardId` AND `viewKind` (defaults via `normalizeViewKind`).
+   *  Returns the hit record `{ tab, leaf }` or null. */
+  findLeafContainingBoard(
+    node: LexeraDockTreeNode | null,
+    boardId: string,
+    viewKind?: string
+  ): { tab: LexeraDockTreeBoardTab; leaf: LexeraDockTreeLeaf } | null;
+  /** Same as findLeafContainingBoard but matches the FIRST leaf
+   *  containing any tab with the given boardId regardless of
+   *  viewKind. Used by mutation-delegation paths that don't care
+   *  which view variant is currently active. */
+  findAnyLeafContainingBoard(
+    node: LexeraDockTreeNode | null,
+    boardId: string
+  ): { tab: LexeraDockTreeBoardTab; leaf: LexeraDockTreeLeaf } | null;
   findLeafContainingPanel(node: any, panelId: string, resolvePanelTarget?: (id: string) => string): { tab: any; leaf: any } | null;
 }
 
