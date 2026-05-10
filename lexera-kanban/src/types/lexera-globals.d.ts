@@ -605,7 +605,16 @@ interface LexeraLayoutTreeApi {
     panelId: string,
     idFactory?: (prefix: string) => string
   ): LexeraDockTreePanelTab;
-  migratePanelDocksToSideDocks(panelDocks: any, panelGroupActives: any, idFactory?: (prefix: string) => string): any;
+  /** Migrate the legacy `{left, right, bottom: Array<Array<string>>}`
+   *  panel-docks shape (versions 1-3 of the persisted layout) to the
+   *  current `sideDocks` tree shape (version 4). Returns a three-axis
+   *  map of `DockTreeNode | null`. Used by layoutPersistence's
+   *  `hydrate` when it encounters an older payload. */
+  migratePanelDocksToSideDocks(
+    panelDocks: { left?: Array<Array<string>>; right?: Array<Array<string>>; bottom?: Array<Array<string>> } | null | undefined,
+    panelGroupActives: { [groupId: string]: string } | null | undefined,
+    idFactory?: (prefix: string) => string
+  ): { left: LexeraDockTreeNode | null; right: LexeraDockTreeNode | null; bottom: LexeraDockTreeNode | null };
   /** Find the leaf containing a board tab with the matching
    *  `boardId` AND `viewKind` (defaults via `normalizeViewKind`).
    *  Returns the hit record `{ tab, leaf }` or null. */
