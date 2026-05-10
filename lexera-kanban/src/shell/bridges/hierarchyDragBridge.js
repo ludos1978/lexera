@@ -531,7 +531,10 @@
       // single Log-panel filter shows local + cross-view together.
       xviewLog('apply.local-drop.received', {
         srcKind: source && source.kind,
+        srcId: source && source.entityId,
         tgtKind: target && target.kind,
+        tgtId: target && target.entityId,
+        tgtPosition: target && target.position,
         srcBoard: source && source.boardId,
         tgtBoard: target && target.boardId,
         sameBoard: source && target && source.boardId === target.boardId
@@ -564,8 +567,25 @@
         }
         var applied = applyDrop(srcBoard, tgtBoard, source, target);
         if (!applied) {
+          // Diagnose WHY applyDrop bailed. Re-runs locateEntity with
+          // the same id to surface whether the source / target /
+          // both were not findable. Tells the user-pasted log
+          // exactly what id format is in play and which side of the
+          // pair is missing — without this, "applyDrop-returned-false"
+          // is opaque and we can't tell self-drop / id-mismatch /
+          // missing-card / etc apart.
+          var srcLocated = locateEntity(srcBoard, source.kind, source.entityId);
+          var tgtLocated = locateEntity(tgtBoard, target.kind, target.entityId);
           xviewLog('apply.local-drop.skip(applyDrop-returned-false)', {
-            srcKind: source.kind, tgtKind: target.kind
+            srcKind: source.kind,
+            srcId: source.entityId,
+            srcLocated: !!srcLocated,
+            tgtKind: target.kind,
+            tgtId: target.entityId,
+            tgtLocated: !!tgtLocated,
+            sameKind: source.kind === target.kind,
+            sameEntity: source.entityId === target.entityId,
+            tgtPosition: target.position
           });
           return;
         }
