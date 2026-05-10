@@ -64,7 +64,15 @@
     };
   }
   function buildCardNode(card, ctx) {
-    return { id: card.id || null,
+    // Prefer the persistent `card.kid` (8-char hex) over `card.id`
+    // (Loro CRDT container id) so the data-tree-id surfaced in the
+    // tree DOM survives a `getBoardColumns` reload that re-instantiates
+    // Loro with different container ids. The shell-side
+    // hierarchyDragBridge.locateEntity matches against EITHER form
+    // (Stage 7 — commit 9ec8cb82), so the kid path stays stable even
+    // when a sibling kanban view's DOM still uses card.id-form
+    // attributes. Reported 2026-05-10.
+    return { id: (card.kid || card.id) || null,
              label: window.LexeraTitleHelpers.resolveCardLabel(card),
              type: 'card',
              children: null, expanded: false, hasToggle: false, grip: true,

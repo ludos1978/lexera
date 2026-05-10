@@ -396,10 +396,25 @@
       // the kanban's own hover preview, which highlights an insert
       // line at the same position. If the column has no cards (or
       // the cursor missed all of them), fall through to absorb.
+      // Prefer `data-card-kid` (persistent 8-char hex stored on
+      // card.kid) over `data-card-id` (Loro CRDT container id). The
+      // shell's hierarchyDragBridge.locateEntity matches against
+      // either form, but Loro container ids regenerate when a
+      // board's CRDT state is re-instantiated by a separate
+      // `getBoardColumns` call — so the kid is the stable id across
+      // cross-board loads. (Reported 2026-05-10: `srcLocated: false`
+      // for cross-board drops because the workspace tree captured a
+      // Loro id that didn't match the freshly-loaded srcBoard.)
+      function readCardId(el) {
+        if (!el) return '';
+        var kid = String(el.getAttribute('data-card-kid') || '').trim();
+        if (kid) return kid;
+        return String(el.getAttribute('data-card-id') || '').trim();
+      }
       if (sourceKind === 'card') {
         var card = hit.closest('.card[data-card-id]');
         if (card) {
-          var cid = String(card.getAttribute('data-card-id') || '').trim();
+          var cid = readCardId(card);
           if (cid) {
             var crect = card.getBoundingClientRect();
             var cposition = (crect.height > 0 && y >= crect.top + crect.height / 2)
@@ -423,7 +438,7 @@
               var nrect = nearest.getBoundingClientRect();
               var npos = (nrect.height > 0 && y >= nrect.top + nrect.height / 2)
                 ? 'after' : 'before';
-              var nid = String(nearest.getAttribute('data-card-id') || '').trim();
+              var nid = readCardId(nearest);
               if (nid) return { boardId: boardId, kind: 'card', entityId: nid, position: npos };
             }
           }

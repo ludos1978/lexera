@@ -93,7 +93,19 @@
     };
   }
   function buildCardNode(card, ctx) {
-    return { id: card.id || null,
+    // Prefer the persistent `card.kid` (8-char hex, surfaces in the
+    // backend's `state_kids` log) over `card.id` (a Loro CRDT
+    // container id like `crdt-N-…`). Loro container ids regenerate
+    // when a board's CRDT state is re-instantiated by a separate
+    // `getBoardColumns` call (the path `loadBoard` in the shell-side
+    // hierarchyDragBridge follows), so the workspace tree's captured
+    // id can drift from the loaded snapshot's id even though they
+    // describe the same card. The kid is stable across those calls.
+    // Falls back to `card.id` when `card.kid` isn't set (older
+    // boards / non-CRDT sources). Reported 2026-05-10:
+    // `srcLocated: false` for cross-board drops where the source
+    // came from the workspace tree.
+    return { id: (card.kid || card.id) || null,
              label: window.LexeraTitleHelpers.resolveCardLabel(card),
              type: 'card',
              children: null, expanded: false, hasToggle: false, grip: true,
