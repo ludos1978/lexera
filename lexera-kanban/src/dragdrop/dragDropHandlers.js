@@ -819,7 +819,15 @@ var LexeraDragDropHandlers = (function () {
       return { x: topX - rect.left, y: topY - rect.top };
     }
     if (target.kind === 'native-webview') {
-      var rect2 = getWebviewRectSafe(target.label);
+      // `getWebviewRectSafe` was an undefined identifier (latent
+      // ReferenceError) — only reached when `LexeraMultiviewWebview`
+      // is loaded AND a cross-webview hover routes through this
+      // function. The public API is `getWebviewRect(label)` on
+      // `LexeraMultiviewWebview`. Defensive guard for embedded
+      // kanban contexts where the global is undefined.
+      var mv = (typeof window !== 'undefined') ? window.LexeraMultiviewWebview : null;
+      var rect2 = (mv && typeof mv.getWebviewRect === 'function')
+        ? mv.getWebviewRect(target.label) : null;
       if (!rect2) return null;
       return { x: topX - rect2.left, y: topY - rect2.top };
     }
