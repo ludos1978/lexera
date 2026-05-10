@@ -112,6 +112,9 @@
       }
     }
 
+    // First-fire flags so 60Hz pointermove doesn't spam the log; one
+    // diagnostic line per drag session per outcome.
+    var _xviewLogFlags = { hoverNoMatch: false, hoverMatch: false };
     function onExternalDnd(eventKind, payload) {
       if (eventKind === 'clear') { clearXviewDestTargetEl(); return; }
       var source = mapXviewSourceFromPayload(payload);
@@ -119,6 +122,29 @@
       var y = (payload && typeof payload.y === 'number') ? payload.y : 0;
       var match = source ? readDropTargetFromPoint(x, y, source) : null;
       if (eventKind === 'hover') {
+        // Diagnose: log once per drag whether the local DOM hit-test
+        // returns null (no tree-node under cursor / self-drop filter
+        // tripped / cross-kind ABSORB rejected) versus a real match.
+        // Without this the user only sees `tree.tracker.armed` and
+        // can't tell whether the cursor is actually entering the
+        // workspace's bounds or whether the target lookup is failing.
+        if (match && !_xviewLogFlags.hoverMatch) {
+          _xviewLog('tree.tracker.hover.match', {
+            x: x, y: y,
+            kind: match.info && match.info.kind,
+            entityId: match.info && match.info.entityId,
+            position: match.info && match.info.position
+          });
+          _xviewLogFlags.hoverMatch = true;
+          _xviewLogFlags.hoverNoMatch = false;
+        } else if (!match && !_xviewLogFlags.hoverNoMatch) {
+          _xviewLog('tree.tracker.hover.no-match', {
+            x: x, y: y,
+            sourceKind: source && source.kind,
+            sourceEntityId: source && source.entityId
+          });
+          _xviewLogFlags.hoverNoMatch = true;
+        }
         if (xviewDestTargetEl !== (match && match.node)) {
           clearXviewDestTargetEl();
           if (match) {
@@ -198,8 +224,24 @@
       // must not leak stale handlers).
       teardownCrossDragTracker();
       crossDragPayload = { source: src, type: type };
+      // Reset diagnostic flags so the next drag's first hover line
+      // emits regardless of what the previous drag logged.
+      _xviewLogFlags.hoverNoMatch = false;
+      _xviewLogFlags.hoverMatch = false;
+      var _firstMoveLogged = false;
       crossDragMoveHandler = function (e) {
         if (!crossDragPayload) return;
+        // Log the FIRST pointermove per drag session so the user
+        // knows the workspace's document is actually receiving the
+        // cursor (rules out the "OS routes pointer events to the
+        // pointerdown owner" hypothesis where the workspace never
+        // sees the move at all).
+        if (!_firstMoveLogged) {
+          _firstMoveLogged = true;
+          _xviewLog('tree.tracker.pointermove(first)', {
+            x: e.clientX, y: e.clientY
+          });
+        }
         onExternalDnd('hover', { payload: crossDragPayload, x: e.clientX, y: e.clientY });
       };
       crossDragUpHandler = function (e) {
