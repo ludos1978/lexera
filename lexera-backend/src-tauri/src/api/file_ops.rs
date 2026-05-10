@@ -622,9 +622,18 @@ pub async fn convert_path(
                 serde_json::json!({ "path": body.path, "changed": false }),
             ));
         }
-        let abs = tokio::fs::canonicalize(board_dir.join(&body.path))
-            .await
-            .map_err(|_| err_not_found("Cannot resolve path"))?;
+        // Try canonical (resolves symlinks + `..`); when the target
+        // doesn't exist on disk fall back to the joined absolute
+        // path. Frontend test fixtures intentionally include missing
+        // files (`includes/does-not-exist.md` etc.); without this
+        // fallback every render of those fixtures spams a 404 in the
+        // in-app log panel even though the include-badge enhancer
+        // already detects missing files via /file-info.
+        let joined = board_dir.join(&body.path);
+        let abs = match tokio::fs::canonicalize(&joined).await {
+            Ok(p) => p,
+            Err(_) => joined,
+        };
         abs.to_string_lossy().to_string()
     } else {
         // to relative
@@ -746,6 +755,131 @@ mod tests {
         assert_eq!(json["results"]["image.png"]["exists"], true);
         assert_eq!(json["results"]["image.png"]["mediaCategory"], "image");
         assert_eq!(json["results"]["missing.file"]["exists"], false);
+    }
+
+    #[tokio::test]
+    async fn convert_path_to_absolute_canonicalizes_existing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("includes")).unwrap();
+        std::fs::write(tmp.path().join("includes").join("real.md"), "x").unwrap();
+        let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(format!("/boards/{}/convert-path", board_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::json!({
+                            "cardId": "",
+                            "path": "includes/real.md",
+                            "to": "absolute"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let returned = json["path"].as_str().unwrap();
+        assert!(
+            returned.ends_with("includes/real.md") || returned.ends_with("includes\\real.md"),
+            "expected absolute path ending in includes/real.md, got: {}",
+            returned
+        );
+        assert_eq!(json["changed"], true);
+    }
+
+    #[tokio::test]
+    async fn convert_path_to_absolute_falls_back_to_joined_when_target_missing() {
+        // Test fixtures (kanban-feature-suite/board-01/02/03) intentionally
+        // include missing files like `includes/does-not-exist.md`. Before
+        // the 2026-05-10 fix this returned 404 and the frontend logged a
+        // warning per render — `convert-path` now falls back to the
+        // joined absolute path so the badge enhancer's existence check
+        // (via /file-info) is the single source of truth for "is this
+        // file missing?".
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(format!("/boards/{}/convert-path", board_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::json!({
+                            "cardId": "",
+                            "path": "includes/does-not-exist.md",
+                            "to": "absolute"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "missing file must NOT 404 — would spam the in-app log on every fixture render"
+        );
+        let json = body_json(resp.into_body()).await;
+        let returned = json["path"].as_str().unwrap();
+        // Joined absolute path under the board's directory.
+        assert!(
+            returned.contains("includes") && returned.ends_with("does-not-exist.md"),
+            "expected joined absolute path containing includes/does-not-exist.md, got: {}",
+            returned
+        );
+        // Joined-but-not-on-disk path is still a CHANGE from the relative input.
+        assert_eq!(json["changed"], true);
+    }
+
+    #[tokio::test]
+    async fn convert_path_already_absolute_returns_unchanged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
+
+        let app = test_router(state);
+        let abs_path = "/Users/anyone/already-absolute.md";
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(format!("/boards/{}/convert-path", board_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::json!({
+                            "cardId": "",
+                            "path": abs_path,
+                            "to": "absolute"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["path"].as_str().unwrap(), abs_path);
+        assert_eq!(json["changed"], false);
     }
 
     #[tokio::test]
