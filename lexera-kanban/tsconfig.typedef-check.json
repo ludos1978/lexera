@@ -43,6 +43,7 @@
     "src/workspace/treeRegistry.js",
     "src/workspace/workspaceShell.js",
     "src/workspace/multiviewWebview.js",
-    "src/views/_shared/treeCrossViewDrop.js"
+    "src/views/_shared/treeCrossViewDrop.js",
+    "src/shell/bridges/hierarchyDragBridge.js"
   ]
 }
