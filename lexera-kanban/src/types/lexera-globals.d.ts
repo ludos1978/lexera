@@ -2056,6 +2056,90 @@ interface LexeraPanelDefinitionsApi {
   createDefaultSideDocks(profile: LexeraPanelDefinitionsProfile): LexeraPanelDefinitionsSideDocksMap;
 }
 
+/**
+ * Public surface of `src/views/_shared/subAppRuntime.js` (set via
+ * `window.LexeraSubApp = { … }`). Only the methods that consumers
+ * actually call are typed — the rest land as `any` until a future
+ * slice tightens them. Keep this in sync with the object literal
+ * at subAppRuntime.js:758.
+ */
+interface LexeraSubAppApi {
+  init(opts: any): void;
+  navigate(payload: any): Promise<unknown>;
+  /** Wraps `invoke('multiview_broadcast', { event, payload })`. */
+  broadcast(event: string, payload?: any): Promise<unknown>;
+  invoke(cmd: string, args?: any): Promise<unknown>;
+  getQueryParam(name: string): string;
+  getContext(): {
+    panelKind: string;
+    panelInstanceId: string;
+    paneId: string;
+    windowLabel: string;
+    hostWindowLabel: string;
+  };
+  getPanelKind(): string;
+  getPanelInstanceId(): string;
+  getPaneId(): string;
+  getWindowLabel(): string;
+  getHostWindowLabel(): string;
+  /** Returns the Tauri webview record (label + listen) for the current
+   *  webview. Returns null when the Tauri runtime isn't available. */
+  getCurrentWebview(): { label: string; listen: Function } | null;
+  applyThemeSnapshot(snap: any): void;
+  confirmModal(opts: any): Promise<boolean>;
+  promptModal(opts: any): Promise<string | null>;
+  showNotification(message: string, opts?: any): void;
+}
+
+/**
+ * Public surface of `src/views/_shared/treeCrossViewDrop.js` — the
+ * shared destination-side cross-view drop receiver wired by
+ * hierarchy.js and workspaces.js. Stage 17d extracted the duplicated
+ * code from both sub-apps; Stage 17j brings the module into the
+ * typedef gate.
+ */
+interface LexeraTreeCrossViewDropApi {
+  install(deps: {
+    /** Hit-test for the local tree DOM. Returns the resolved tree-node
+     *  + a `{ boardId, kind, entityId, position? }` info record, or
+     *  null when no valid target is under the cursor. */
+    readDropTargetFromPoint(
+      clientX: number,
+      clientY: number,
+      source: { boardId: string; kind: string; entityId: string } | null
+    ): {
+      node: Element;
+      info: {
+        boardId: string;
+        kind: string;
+        entityId: string;
+        position?: 'before' | 'after';
+      };
+    } | null;
+    /** Returns the current webview's label string for the self-skip
+     *  guard. May return '' when the runtime isn't ready. */
+    getOwnWebviewLabel?(): string;
+  }): {
+    onExternalDnd(
+      eventKind: 'hover' | 'drop' | 'clear',
+      payload: any
+    ): void;
+    armCrossDragTracker(src: {
+      boardId?: string;
+      kind?: string;
+      entityId?: string;
+      sourceWebviewLabel?: string;
+    } | null): void;
+    teardownCrossDragTracker(reason?: string): void;
+  };
+  mapXviewSourceFromPayload(payload: any): {
+    boardId: string;
+    kind: string;
+    entityId: string;
+  } | null;
+  KIND_TO_TYPE: Record<string, string>;
+}
+
 declare global {
   interface Window {
     // Lexera shell + workspace modules (window.LexeraXxx = (() => ...)()).
@@ -2077,6 +2161,8 @@ declare global {
     LexeraTreeRegistry: LexeraTreeRegistryApi;
     LexeraTitleHelpers: LexeraTitleHelpersApi;
     LexeraSharedPanels: LexeraSharedPanelsApi;
+    LexeraSubApp: LexeraSubAppApi;
+    LexeraTreeCrossViewDrop: LexeraTreeCrossViewDropApi;
     LexeraWorkspaceShell: any;
     LexeraDashboard: any;
     LexeraDebug: LexeraDebugApi;

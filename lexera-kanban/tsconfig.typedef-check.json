@@ -42,6 +42,7 @@
     "src/workspace/tabDragController.js",
     "src/workspace/treeRegistry.js",
     "src/workspace/workspaceShell.js",
-    "src/workspace/multiviewWebview.js"
+    "src/workspace/multiviewWebview.js",
+    "src/views/_shared/treeCrossViewDrop.js"
   ]
 }
