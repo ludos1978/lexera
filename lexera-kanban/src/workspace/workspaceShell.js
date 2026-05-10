@@ -2291,6 +2291,10 @@
     return '';
   }
 
+  /**
+   * @param {DockTreeTab|null|undefined} tab
+   * @param {{shouldLoad?: boolean}=} options
+   */
   function shouldLoadBoardFrame(tab, options) {
     if (!tab || isPanelTab(tab)) return false;
     if (options && options.shouldLoad === true) return true;
@@ -2300,6 +2304,11 @@
   // Reconcile an existing placeholder view with the current tab state.
   // The webview itself is owned by multiview.ensure() — the placeholder
   // only carries data-* attributes for diagnostics + tab activation.
+  /**
+   * @param {HTMLElement|null|undefined} view
+   * @param {DockTreeTab|null|undefined} tab
+   * @param {{shouldLoad?: boolean}=} options
+   */
   function syncBoardFrame(view, tab, options) {
     if (!view || !tab || isPanelTab(tab)) return;
     var desiredSrc = getEmbeddedUrlForTab(tab);
@@ -2376,6 +2385,10 @@
     getEmbeddedUrlForTab: getEmbeddedUrlForTab
   });
 
+  /**
+   * @param {DockTreeTab} tab
+   * @param {{shouldLoad?: boolean}=} options
+   */
   function getOrCreateFrame(tab, options) {
     var view = state.frameCache[tab.id];
     if (isPanelTab(tab)) {
