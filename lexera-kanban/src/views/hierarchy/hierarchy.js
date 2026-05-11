@@ -823,22 +823,25 @@
       if (!dragKind) return;
       var focusBoardId = node.getAttribute('data-drag-board-id') || '';
       if (!focusBoardId) return;
-      var focusTarget = {
-        boardId: focusBoardId,
-        rowId: node.getAttribute('data-row-id') || null,
-        stackId: node.getAttribute('data-stack-id') || null,
-        columnId: node.getAttribute('data-column-id') || null,
-        cardId: node.getAttribute('data-card-kid') ||
-                node.getAttribute('data-card-id') || null
-      };
-      var rowIdx = parseInt(node.getAttribute('data-row-index') || '', 10);
-      if (!isNaN(rowIdx)) focusTarget.rowIndex = rowIdx;
-      var stackIdx = parseInt(node.getAttribute('data-stack-index') || '', 10);
-      if (!isNaN(stackIdx)) focusTarget.stackIndex = stackIdx;
-      var colLocalIdx = parseInt(node.getAttribute('data-col-local-index') || '', 10);
-      if (!isNaN(colLocalIdx)) focusTarget.colLocalIndex = colLocalIdx;
-      var cardIdx = parseInt(node.getAttribute('data-card-index') || '', 10);
-      if (!isNaN(cardIdx)) focusTarget.cardIndex = cardIdx;
+      // The workspace tree only carries TWO ids per node:
+      //   data-tree-id      — entity id (card.kid || card.id || row.id / etc)
+      //   data-drag-board-id
+      // (Verified by the drag-source `readSourceFromNode` which reads
+      // exactly these two attributes — hierarchy.js:339-346.) The
+      // per-kind `data-row-id` / `data-stack-id` / `data-column-id` /
+      // `data-card-id` attributes the previous version of this handler
+      // tried to read don't exist on workspace tree nodes — so every
+      // id field landed as null and findBoardEntityElement had nothing
+      // to query. User log 2026-05-11 confirmed all-null payload.
+      // Route `data-tree-id` into the right field by `data-drag-kind`.
+      var entityId = node.getAttribute('data-tree-id') || '';
+      if (!entityId) return;
+      var focusTarget = { boardId: focusBoardId };
+      if (dragKind === 'card') focusTarget.cardId = entityId;
+      else if (dragKind === 'column') focusTarget.columnId = entityId;
+      else if (dragKind === 'stack') focusTarget.stackId = entityId;
+      else if (dragKind === 'row') focusTarget.rowId = entityId;
+      else return;
       // Diagnostic — user-reported "click doesn't focus" is impossible
       // to debug without runtime evidence that the click actually
       // produced a focus-target navigate call. Pair with the

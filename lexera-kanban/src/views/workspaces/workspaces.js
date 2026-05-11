@@ -756,22 +756,17 @@
       if (!dragKind) return;
       var focusBoardId = node.getAttribute('data-drag-board-id') || '';
       if (!focusBoardId) return;
-      var focusTarget = {
-        boardId: focusBoardId,
-        rowId: node.getAttribute('data-row-id') || null,
-        stackId: node.getAttribute('data-stack-id') || null,
-        columnId: node.getAttribute('data-column-id') || null,
-        cardId: node.getAttribute('data-card-kid') ||
-                node.getAttribute('data-card-id') || null
-      };
-      var rowIdx = parseInt(node.getAttribute('data-row-index') || '', 10);
-      if (!isNaN(rowIdx)) focusTarget.rowIndex = rowIdx;
-      var stackIdx = parseInt(node.getAttribute('data-stack-index') || '', 10);
-      if (!isNaN(stackIdx)) focusTarget.stackIndex = stackIdx;
-      var colLocalIdx = parseInt(node.getAttribute('data-col-local-index') || '', 10);
-      if (!isNaN(colLocalIdx)) focusTarget.colLocalIndex = colLocalIdx;
-      var cardIdx = parseInt(node.getAttribute('data-card-index') || '', 10);
-      if (!isNaN(cardIdx)) focusTarget.cardIndex = cardIdx;
+      // Workspace tree nodes carry only `data-tree-id` (the entity id,
+      // kid-preferred) and `data-drag-kind` — see the matching note
+      // in hierarchy.js. Route the single id into the right field.
+      var entityId = node.getAttribute('data-tree-id') || '';
+      if (!entityId) return;
+      var focusTarget = { boardId: focusBoardId };
+      if (dragKind === 'card') focusTarget.cardId = entityId;
+      else if (dragKind === 'column') focusTarget.columnId = entityId;
+      else if (dragKind === 'stack') focusTarget.stackId = entityId;
+      else if (dragKind === 'row') focusTarget.rowId = entityId;
+      else return;
       // Diagnostic — see hierarchy.js for the rationale; mirror log
       // so workspace clicks emit the same trace.
       if (typeof window.lexeraLog === 'function') {

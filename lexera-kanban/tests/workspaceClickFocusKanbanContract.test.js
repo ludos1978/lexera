@@ -52,23 +52,25 @@ function pinSubAppClickWiring(label, src) {
       expect(src).toMatch(/if\s*\(\s*!dragKind\s*\)\s*return\s*;/);
     });
 
-    it('builds the focusTarget shape from data-* attributes (boardId, rowId, stackId, columnId, cardId + indices)', () => {
-      // Mirror of the shape `boardSearch.navigateToSearchResult` uses
-      // so shell.focusHierarchyTarget routes through the same kanban-
-      // frame entity finder.
-      expect(src).toMatch(/boardId\s*:\s*focusBoardId/);
-      expect(src).toMatch(/rowId\s*:\s*node\.getAttribute\(\s*['"]data-row-id['"]/);
-      expect(src).toMatch(/stackId\s*:\s*node\.getAttribute\(\s*['"]data-stack-id['"]/);
-      expect(src).toMatch(/columnId\s*:\s*node\.getAttribute\(\s*['"]data-column-id['"]/);
-      // cardId prefers the kid form (8-char hex), falls back to the
-      // Loro container id — mirror of the drag-source convention.
-      expect(src).toMatch(/cardId\s*:\s*node\.getAttribute\(\s*['"]data-card-kid['"]\s*\)\s*\|\|\s*[\s\S]{0,200}data-card-id/);
-      // Indices: parseInt + isNaN guard so absent attributes don't
-      // poison the payload.
-      expect(src).toMatch(/parseInt\(\s*node\.getAttribute\(\s*['"]data-row-index['"]/);
-      expect(src).toMatch(/parseInt\(\s*node\.getAttribute\(\s*['"]data-stack-index['"]/);
-      expect(src).toMatch(/parseInt\(\s*node\.getAttribute\(\s*['"]data-col-local-index['"]/);
-      expect(src).toMatch(/parseInt\(\s*node\.getAttribute\(\s*['"]data-card-index['"]/);
+    it('reads the single data-tree-id and routes it into the right field by data-drag-kind', () => {
+      // Workspace tree nodes carry only TWO ids: `data-tree-id` (the
+      // entity id, populated kid-first via `card.kid || card.id` etc.
+      // per the buildXxxNode functions) and `data-drag-board-id`.
+      // The previous version of this handler queried per-kind attrs
+      // (`data-card-kid`, `data-row-id`, ...) that never existed,
+      // leaving the focus payload all-null (user log 2026-05-11
+      // confirmed). Pin the single-id read + the four-way routing
+      // table so it can't drift back.
+      expect(src).toMatch(/var\s+entityId\s*=\s*node\.getAttribute\(\s*['"]data-tree-id['"]/);
+      expect(src).toMatch(/if\s*\(\s*!entityId\s*\)\s*return\s*;/);
+      expect(src).toMatch(/dragKind\s*===\s*['"]card['"][\s\S]{0,80}cardId\s*=\s*entityId/);
+      expect(src).toMatch(/dragKind\s*===\s*['"]column['"][\s\S]{0,80}columnId\s*=\s*entityId/);
+      expect(src).toMatch(/dragKind\s*===\s*['"]stack['"][\s\S]{0,80}stackId\s*=\s*entityId/);
+      expect(src).toMatch(/dragKind\s*===\s*['"]row['"][\s\S]{0,80}rowId\s*=\s*entityId/);
+      // Defensive — unknown drag kinds early-return so a future
+      // kind addition doesn't silently navigate with a half-baked
+      // payload.
+      expect(src).toMatch(/else\s+return\s*;/);
     });
 
     it('the existing open-board branch returns early so non-board navigation is mutually exclusive', () => {
