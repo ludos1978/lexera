@@ -8525,6 +8525,15 @@ var LexeraDashboard = (function () {
     var displayTitle = stripLayoutTags(col.title);
     var colFoldKey = getColumnFoldKey(col, rowIdx, stackIdx, colLocalIdx, colFullIdx);
     var columnId = col && col.id != null ? String(col.id) : '';
+    var rowForColumn = (typeof rowIdx === 'number' && isFinite(rowIdx) && activeBoardData && Array.isArray(activeBoardData.rows))
+      ? activeBoardData.rows[rowIdx]
+      : null;
+    var stackForColumn = rowForColumn && Array.isArray(rowForColumn.stacks) &&
+      typeof stackIdx === 'number' && isFinite(stackIdx)
+      ? rowForColumn.stacks[stackIdx]
+      : null;
+    var rowIdForColumn = rowForColumn && rowForColumn.id != null ? String(rowForColumn.id) : '';
+    var stackIdForColumn = stackForColumn && stackForColumn.id != null ? String(stackForColumn.id) : '';
 
     var colEl = document.createElement('div');
     // The "+ Add card" footer visibility is driven by a pure CSS
@@ -8534,6 +8543,8 @@ var LexeraDashboard = (function () {
     colEl.setAttribute('data-col-title', col.title);
     colEl.setAttribute('data-fold-key', colFoldKey);
     if (columnId) colEl.setAttribute('data-column-id', columnId);
+    if (rowIdForColumn) colEl.setAttribute('data-row-id', rowIdForColumn);
+    if (stackIdForColumn) colEl.setAttribute('data-stack-id', stackIdForColumn);
     if (typeof rowIdx === 'number') colEl.setAttribute('data-row-index', rowIdx.toString());
     if (typeof stackIdx === 'number') colEl.setAttribute('data-stack-index', stackIdx.toString());
     if (typeof colLocalIdx === 'number') colEl.setAttribute('data-col-local-index', colLocalIdx.toString());
@@ -8626,6 +8637,8 @@ var LexeraDashboard = (function () {
     cardsEl.className = 'column-cards';
     cardsEl.setAttribute('data-col-index', col.index.toString());
     if (columnId) cardsEl.setAttribute('data-column-id', columnId);
+    if (rowIdForColumn) cardsEl.setAttribute('data-row-id', rowIdForColumn);
+    if (stackIdForColumn) cardsEl.setAttribute('data-stack-id', stackIdForColumn);
     var _colCardsStart = _colBuildAccum ? _nowHP() : 0;
     for (var j = 0; j < col.cards.length; j++) {
       cardsEl.appendChild(buildCardElement(col.cards[j], col.index, j, collapsedCards));
@@ -8988,11 +9001,16 @@ var LexeraDashboard = (function () {
     var isCanvasLayout = isCanvasBoardLayout();
     var stackFoldKey = getStackFoldKey(stack, rowIdx, stackIdx);
     var stackId = stack && stack.id != null ? String(stack.id) : '';
+    var rowForStack = (typeof rowIdx === 'number' && isFinite(rowIdx) && activeBoardData && Array.isArray(activeBoardData.rows))
+      ? activeBoardData.rows[rowIdx]
+      : null;
+    var rowIdForStack = rowForStack && rowForStack.id != null ? String(rowForStack.id) : '';
     var stackEl = document.createElement('div');
     stackEl.className = 'board-stack';
     stackEl.setAttribute('data-stack-title', stack.title);
     stackEl.setAttribute('data-fold-key', stackFoldKey);
     if (stackId) stackEl.setAttribute('data-stack-id', stackId);
+    if (rowIdForStack) stackEl.setAttribute('data-row-id', rowIdForStack);
     stackEl.setAttribute('data-row-index', rowIdx.toString());
     stackEl.setAttribute('data-stack-index', stackIdx.toString());
     var stackColumnEntries = getDisplayOrderedColumnEntries(stack.columns || []);

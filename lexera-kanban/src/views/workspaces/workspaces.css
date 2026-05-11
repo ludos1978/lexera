@@ -67,8 +67,10 @@ h3 {
  * board-level parent-continuation guide — it would render a phantom
  * vertical line in a column nothing else lives in. The first
  * `.indent-guide` inside any descendant is exactly that board-level
- * slot; hide it. */
-#local-boards .tree-node[data-tree-target="board"] > .tree-children .tree-indent > .indent-guide:first-child {
+ * slot; hide it. NOTE: `.tree-children` is a SIBLING of `.tree-node`
+ * (both inside `.tree-entry`), so we use `+` not `>` — using `>` here
+ * silently matches nothing and the phantom column reappears. */
+#local-boards .tree-node[data-tree-target="board"] + .tree-children .tree-indent > .indent-guide:first-child {
   display: none;
 }
 

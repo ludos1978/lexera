@@ -311,6 +311,18 @@ var LexeraDndListeners = (function () {
     });
   }
 
+  function columnHasVisibleCardsForDrag(columnEl) {
+    if (!columnEl || typeof columnEl.querySelectorAll !== 'function') return false;
+    return columnEl.querySelectorAll('.column-cards > .card:not(.hidden-card), .column-cards > .vs-placeholder').length > 0;
+  }
+
+  function isEmptyColumnTitleDragTarget(target) {
+    if (!target || typeof target.closest !== 'function') return false;
+    var titleEl = target.closest('.column-title');
+    var columnEl = titleEl && typeof titleEl.closest === 'function' ? titleEl.closest('.column') : null;
+    return !!(columnEl && !columnHasVisibleCardsForDrag(columnEl));
+  }
+
   function _bindColumnsContainerMousedown() {
     _on(getElColumnsContainer(), 'mousedown', function (e) {
       try {
@@ -318,7 +330,8 @@ var LexeraDndListeners = (function () {
       var ptrDrag = DDH ? DDH.getPtrDrag() : null;
       var cardDrag = DDH ? DDH.getCardDrag() : null;
       if (ptrDrag || cardDrag) return;
-      if (e.target.closest('.board-row-title, .board-stack-title, .column-title')) return;
+      var titleDragTarget = e.target.closest('.board-row-title, .board-stack-title, .column-title');
+      if (titleDragTarget && !isEmptyColumnTitleDragTarget(e.target)) return;
       if (e.target.closest('button, input, textarea, select, a, .column-rename-input, .card-menu-btn, .card-collapse-toggle, .card-checkbox')) {
         return;
       }

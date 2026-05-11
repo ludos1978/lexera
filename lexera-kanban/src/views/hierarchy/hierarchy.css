@@ -264,8 +264,11 @@ html, body {
  * `.indent-guide` inside any descendant's `.tree-indent` is exactly that
  * board-level slot; hide it. Each level's local corner / branch
  * connector and every deeper-ancestor guide are kept so the
- * row → stack → column → card hierarchy still reads visually. */
-#local-boards .tree-node[data-tree-target="board"] > .tree-children .tree-indent > .indent-guide:first-child {
+ * row → stack → column → card hierarchy still reads visually.
+ * NOTE: `.tree-children` is a SIBLING of `.tree-node` (both inside
+ * `.tree-entry`), so we use `+` not `>` — using `>` here silently
+ * matches nothing and the phantom column reappears. */
+#local-boards .tree-node[data-tree-target="board"] + .tree-children .tree-indent > .indent-guide:first-child {
   display: none;
 }
 
