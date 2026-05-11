@@ -96,7 +96,9 @@
     });
   }
   webviewTbody.addEventListener('click', function (e) {
-    var btn = /** @type {Element} */ (e.target).closest('button.destroy-btn');
+    var btn = /** @type {HTMLElement | null} */ (
+      /** @type {Element} */ (e.target).closest('button.destroy-btn')
+    );
     if (!btn) return;
     var label = btn.dataset.label;
     var isReload = btn.dataset.reload === '1';
