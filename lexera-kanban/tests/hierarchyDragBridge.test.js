@@ -750,11 +750,12 @@ describe('LexeraHierarchyDragBridge.routeCrossViewDragPoint', () => {
 
 describe('LexeraHierarchyDragBridge.install', () => {
   const bridge = loadBridge();
+  let nextWebviewId = 0;
 
-  function makeWebview() {
+  function makeWebview(label) {
     const listeners = {};
     return {
-      label: 'main',
+      label: label || ('main-' + (++nextWebviewId)),
       listen: vi.fn((eventName, handler) => { listeners[eventName] = handler; }),
       _fire: (eventName, payload) => {
         if (listeners[eventName]) listeners[eventName]({ payload });
@@ -793,7 +794,7 @@ describe('LexeraHierarchyDragBridge.install', () => {
     // events in a single subscribe (Stage 13 consolidation — shell-only
     // gate now wraps both sets).
     expect(invoke).toHaveBeenCalledWith('multiview_subscribe', {
-      label: 'main',
+      label: wv.label,
       events: [
         'hierarchy-entity-drop',
         'hierarchy-entity-rename',
@@ -1340,12 +1341,39 @@ describe('LexeraHierarchyDragBridge.install', () => {
     expect(saveBoard).toHaveBeenCalledTimes(1);
   });
 
+  it('is idempotent when getCurrentWebview returns a fresh wrapper with the same label', async () => {
+    const firstWebview = makeWebview('same-shell-label');
+    const secondWebview = makeWebview('same-shell-label');
+    const invoke = vi.fn(() => Promise.resolve());
+    const saveBoard = vi.fn(() => Promise.resolve());
+    const board = makeBoard();
+
+    const firstOk = bridge.install({
+      getCurrentWebview: () => firstWebview,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(board),
+      saveBoard: saveBoard,
+      ...shellGeomDeps
+    });
+    const secondOk = bridge.install({
+      getCurrentWebview: () => secondWebview,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(board),
+      saveBoard: saveBoard,
+      ...shellGeomDeps
+    });
+
+    expect(firstOk).toBe(true);
+    expect(secondOk).toBe(false);
+    expect(secondWebview.listen).not.toHaveBeenCalled();
+  });
+
   it('idempotency is keyed per-webview — install() in a SECOND webview still wires its own listeners', async () => {
     // Different shell webviews (e.g., a popped-out window) must each
     // be able to install — the guard is a "don't wire the same
     // webview twice", not a "only one webview ever".
-    const wvA = makeWebview();
-    const wvB = makeWebview();
+    const wvA = makeWebview('main-window');
+    const wvB = makeWebview('popped-window');
     const invokeA = vi.fn(() => Promise.resolve());
     const invokeB = vi.fn(() => Promise.resolve());
 
@@ -1365,7 +1393,7 @@ describe('LexeraHierarchyDragBridge.install', () => {
     });
     expect(okB).toBe(true);
     expect(invokeB).toHaveBeenCalledWith('multiview_subscribe', expect.objectContaining({
-      label: 'main'
+      label: wvB.label
     }));
     expect(wvB.listen).toHaveBeenCalledWith('hierarchy-entity-drop', expect.any(Function));
   });

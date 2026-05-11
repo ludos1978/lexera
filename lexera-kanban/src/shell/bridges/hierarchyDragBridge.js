@@ -37,10 +37,12 @@
   // tracked at TODOs line 147 / fb907e38). The guard below is the
   // belt-and-braces protection: even if bootMultiview re-runs, the
   // second install() is a no-op so the listeners stay single-fire.
-  // Keyed by the `wv` object itself (WeakSet) so different shell
-  // webviews — main window + popped-out window — each install
-  // independently; only "same wv twice" is rejected.
+  // Keyed by both the `wv` object itself (WeakSet) and the stable
+  // webview label. Some Tauri APIs can hand back a fresh JS wrapper
+  // for the same native webview during a second boot, so object
+  // identity alone is not enough to prevent duplicate listeners.
   var _installedWebviews = (typeof WeakSet === 'function') ? new WeakSet() : null;
+  var _installedWebviewLabels = {};
 
   // Diagnostic helper: collect a summary of every card's (id, kid)
   // pair from a loaded KanbanBoard plus an explicit presence check
@@ -441,7 +443,9 @@
     // "didn't wire anything this time"; the listeners attached by
     // the first call are still active. See the WeakSet comment at
     // module top for the user-reported lag this protects against.
-    if (_installedWebviews && _installedWebviews.has(wv)) {
+    var webviewLabel = (typeof wv.label === 'string' && wv.label) ? wv.label : '';
+    if ((_installedWebviews && _installedWebviews.has(wv)) ||
+        (webviewLabel && _installedWebviewLabels[webviewLabel])) {
       if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
         try {
           window.lexeraLog('debug',
@@ -451,6 +455,7 @@
       return false;
     }
     if (_installedWebviews) _installedWebviews.add(wv);
+    if (webviewLabel) _installedWebviewLabels[webviewLabel] = true;
 
     // NOTE: subscription to `hierarchy-entity-drop` and
     // `hierarchy-entity-rename` is now gated on shell-detection
