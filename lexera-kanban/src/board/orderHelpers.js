@@ -688,6 +688,15 @@ var LexeraOrderHelpers = (function () {
   }
 
   function setupEmbeddedPaneActivation() {
+    // Diagnostic — chain trace 2026-05-11. Surfaces whether this
+    // function (a) is called at boot, (b) bails at the embeddedMode
+    // gate, or (c) registers the message listener.
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      try {
+        window.lexeraLog('debug', '[focus-trace] orderHelpers.setupEmbeddedPaneActivation ' +
+          JSON.stringify({ embeddedMode: !!_dep('embeddedMode') }));
+      } catch (_) { /* non-fatal */ }
+    }
     if (!_dep('embeddedMode')) return;
     var lastSentAt = 0;
     function sendActivation() {
@@ -700,6 +709,12 @@ var LexeraOrderHelpers = (function () {
     document.addEventListener('focusin', sendActivation, true);
     window.addEventListener('keydown', sendActivation, true);
     window.addEventListener('message', handleEmbeddedHierarchyFocusMessage);
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      try {
+        window.lexeraLog('debug', '[focus-trace] orderHelpers.messageListener.registered ' +
+          JSON.stringify({ at: Date.now() }));
+      } catch (_) { /* non-fatal */ }
+    }
     setTimeout(sendActivation, 0);
   }
 
@@ -789,21 +804,27 @@ var LexeraOrderHelpers = (function () {
   function handleEmbeddedHierarchyFocusMessage(event) {
     var data = event && event.data;
     // Diagnostic — chain trace 2026-05-11 stopped here without
-    // any orderHelpers.navigateInIframe line. Logs every entry so
-    // we can see whether (a) the handler fires for our message
-    // type at all, (b) the embeddedMode gate trips, (c) target is
-    // empty. Only logs when data.type matches one we care about
-    // OR when it's the focus type but a gate bailed — keeps the
-    // log signal-to-noise high (workspace catalogs / other dom
-    // messages aren't relevant here).
-    if (data && data.type === 'lexera-focus-hierarchy-target' &&
-        typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+    // any orderHelpers.navigateInIframe line. Logs EVERY entry that
+    // has a `type` field so we can see whether the handler fires
+    // at all + what types arrive. Filtered to a small allow-list
+    // of types we know flow through this handler (focus / catalog
+    // / board-action) plus an "(other)" bucket so noise stays low
+    // while still catching any unexpected shape.
+    if (data && data.type && typeof window !== 'undefined' &&
+        typeof window.lexeraLog === 'function') {
+      var t = data.type;
+      var isOurs = t === 'lexera-focus-hierarchy-target' ||
+                   t === 'lexera-workspace-catalog' ||
+                   t === 'lexera-board-action';
+      // Always log the focus type (it's the one we're chasing) and
+      // log other ours-types once per type — enough to confirm the
+      // handler is alive without flooding from noisy senders.
       try {
         window.lexeraLog('debug', '[focus-trace] orderHelpers.handlerEnter ' +
           JSON.stringify({
             embeddedMode: !!_dep('embeddedMode'),
-            hasData: !!data,
-            type: data && data.type,
+            type: t,
+            ours: isOurs,
             hasTarget: !!(data && data.target),
             boardId: data && data.target && data.target.boardId,
             cardId: data && data.target && data.target.cardId

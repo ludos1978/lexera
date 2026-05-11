@@ -898,6 +898,16 @@
         } catch (_) { /* non-fatal */ }
       }
       if (p.target) {
+        // Diagnostic — confirms the bridge actually calls
+        // dispatchAsMessage. If this fires but
+        // orderHelpers.handlerEnter doesn't, the listener wasn't
+        // registered (setupEmbeddedPaneActivation never ran).
+        if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+          try {
+            window.lexeraLog('debug', '[focus-trace] embeddedBoardBridge.dispatch ' +
+              JSON.stringify({ label: wv.label, type: 'lexera-focus-hierarchy-target' }));
+          } catch (_) { /* non-fatal */ }
+        }
         dispatchAsMessage({ type: 'lexera-focus-hierarchy-target', target: p.target });
       }
     });
