@@ -701,24 +701,29 @@
       if (!node || !localBoardsEl.contains(node)) return;
       var target = node.getAttribute('data-tree-target') || '';
       if (toggle) {
-        // Alt+click on a row / stack / column toggle → fold/unfold all
-        // descendants while leaving the clicked node's own expand state
-        // unchanged. Mirrors the kanban sidebar pattern in boardList.js.
-        // Skipped for boards: their children are rebuilt on every
-        // toggleBoardExpand with expanded=true by default, so any
-        // descendant fold state wouldn't survive a re-render.
-        if (e.altKey && target !== 'board' && window.TreeView &&
+        // Alt+click on a toggle → fold/unfold all descendants while
+        // leaving the clicked node's own expand state unchanged.
+        // Mirrors the kanban sidebar pattern in boardList.js. For
+        // boards we only take this branch when the board's children
+        // container is currently `.expanded` AND has at least one
+        // descendant `.tree-children` — otherwise (collapsed board, or
+        // expanded board whose children haven't fetched yet) we fall
+        // through to the regular toggleBoardExpand path so alt+click
+        // on a collapsed board still expands it.
+        if (e.altKey && window.TreeView &&
             typeof window.TreeView.getNodeChildrenContainer === 'function' &&
             typeof window.TreeView.setDescendantsExpanded === 'function') {
           var altChildren = window.TreeView.getNodeChildrenContainer(node);
           if (altChildren) {
             var altDescendants = altChildren.querySelectorAll('.tree-children');
-            var altAllCollapsed = true;
-            for (var ai = 0; ai < altDescendants.length; ai++) {
-              if (altDescendants[ai].classList.contains('expanded')) { altAllCollapsed = false; break; }
+            if (altDescendants.length > 0 && altChildren.classList.contains('expanded')) {
+              var altAllCollapsed = true;
+              for (var ai = 0; ai < altDescendants.length; ai++) {
+                if (altDescendants[ai].classList.contains('expanded')) { altAllCollapsed = false; break; }
+              }
+              window.TreeView.setDescendantsExpanded(altChildren, altAllCollapsed);
+              return;
             }
-            window.TreeView.setDescendantsExpanded(altChildren, altAllCollapsed);
-            return;
           }
         }
         if (target === 'board') {

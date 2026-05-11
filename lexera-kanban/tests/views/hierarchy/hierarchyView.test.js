@@ -1398,5 +1398,72 @@ describe('hierarchy view sub-app', () => {
       expect(stackChildren.classList.contains('expanded')).toBe(true);
       expect(columnChildren.classList.contains('expanded')).toBe(true);
     });
+
+    // Alt+click on an EXPANDED board's toggle folds every descendant
+    // `.tree-children` without collapsing the board itself. Alt+click
+    // on a COLLAPSED board falls through to the normal expand path.
+    it('alt+click on an expanded board toggle folds descendants without collapsing the board', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn()
+      };
+      const fakeRows = [{
+        id: 'r1', title: 'Backlog',
+        stacks: [{
+          id: 's1', title: 'Frontend',
+          columns: [{ id: 'c1', title: 'To do', cards: [{ id: 'card-1', title: 'Wire caret' }] }]
+        }]
+      }];
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: fakeRows })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+
+      function findBoardToggle() {
+        return window.document.querySelector(
+          '#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle'
+        );
+      }
+      function findBoardChildren() {
+        return window.document
+          .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]')
+          .parentElement.querySelector('.tree-children');
+      }
+
+      // Alt+click on collapsed board → falls through to normal toggle, board expands.
+      findBoardToggle().dispatchEvent(
+        new window.MouseEvent('click', { bubbles: true, cancelable: true, altKey: true })
+      );
+      await new Promise((r) => setTimeout(r, 0));
+      const boardChildren = findBoardChildren();
+      expect(boardChildren.classList.contains('expanded')).toBe(true);
+      const rowChildren = boardChildren.querySelector('.tree-row + .tree-children');
+      const stackChildren = rowChildren.querySelector('.tree-stack + .tree-children');
+      expect(rowChildren.classList.contains('expanded')).toBe(true);
+      expect(stackChildren.classList.contains('expanded')).toBe(true);
+
+      // Alt+click on expanded board → descendants collapse, board stays open.
+      findBoardToggle().dispatchEvent(
+        new window.MouseEvent('click', { bubbles: true, cancelable: true, altKey: true })
+      );
+      expect(boardChildren.classList.contains('expanded')).toBe(true);
+      expect(rowChildren.classList.contains('expanded')).toBe(false);
+      expect(stackChildren.classList.contains('expanded')).toBe(false);
+
+      // Alt+click again → everything expands back.
+      findBoardToggle().dispatchEvent(
+        new window.MouseEvent('click', { bubbles: true, cancelable: true, altKey: true })
+      );
+      expect(boardChildren.classList.contains('expanded')).toBe(true);
+      expect(rowChildren.classList.contains('expanded')).toBe(true);
+      expect(stackChildren.classList.contains('expanded')).toBe(true);
+    });
   });
 });
