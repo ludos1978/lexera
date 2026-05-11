@@ -45,9 +45,12 @@ describe('cross-window drag/drop routing', () => {
     expect(mainRs).toMatch(/webview_mgr::multiview_webview_at_screen_point/);
     expect(mainRs).toMatch(/webview_mgr::multiview_route_external_dnd/);
     expect(webviewMgr).toMatch(/fn\s+webview_at_screen_point[\s\S]*outer_position\(\)[\s\S]*scale_factor\(\)/);
+    expect(webviewMgr).toMatch(/fn\s+webview_at_window_point/);
     expect(webviewMgr).toMatch(/source_webview_label/);
     expect(webviewMgr).toMatch(/local_x:\s*screen_x\s*-\s*left/);
     expect(webviewMgr).toMatch(/local_y:\s*screen_y\s*-\s*top/);
+    expect(webviewMgr).toMatch(/source_client_x/);
+    expect(webviewMgr).toMatch(/same_window_hit/);
     expect(webviewMgr).toMatch(/pub fn multiview_route_external_dnd/);
     expect(webviewMgr).toMatch(/external-dnd-hover/);
     expect(webviewMgr).toMatch(/external-dnd-drop/);
@@ -66,12 +69,14 @@ describe('cross-window drag/drop routing', () => {
     expect(subAppRuntime).toMatch(/GLOBAL_SUBSCRIBER_EVENTS\[event\][\s\S]{0,160}multiview_broadcast_global_subscribers/);
   });
 
-  it('source views route hover/drop directly by screen coordinates', () => {
+  it('source views route hover/drop directly by source-client coordinates with screen fallback', () => {
     for (const src of [dragDropHandlers, hierarchyView, workspacesView]) {
       expect(src).toMatch(/multiview_route_external_dnd/);
       expect(src).toMatch(/external-dnd-hover/);
       expect(src).toMatch(/external-dnd-drop/);
       expect(src).toMatch(/sourceWebviewLabel/);
+      expect(src).toMatch(/sourceClientX/);
+      expect(src).toMatch(/sourceClientY/);
       expect(src).toMatch(/screenX/);
       expect(src).toMatch(/screenY/);
       expect(src).not.toMatch(/broadcast\(\s*['"]hierarchy-entity-drag-move['"]/);

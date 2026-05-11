@@ -1065,6 +1065,43 @@ fn webview_at_screen_point(
     None
 }
 
+fn webview_at_window_point(
+    app: &AppHandle,
+    registry: &WebviewRegistry,
+    parent_window_label: &str,
+    window_x: f64,
+    window_y: f64,
+    source_webview_label: Option<&str>,
+    screen_x: Option<f64>,
+    screen_y: Option<f64>,
+) -> Option<WebviewScreenHit> {
+    let metas: Vec<WebviewMeta> = registry.inner.read().values().cloned().collect();
+    let webviews = app.webviews();
+    for meta in metas {
+        if source_webview_label == Some(meta.label.as_str()) {
+            continue;
+        }
+        let Some(wv) = webviews.get(meta.label.as_str()) else {
+            continue;
+        };
+        if wv.window().label() != parent_window_label {
+            continue;
+        }
+        let right = meta.x + meta.width;
+        let bottom = meta.y + meta.height;
+        if window_x >= meta.x && window_x <= right && window_y >= meta.y && window_y <= bottom {
+            return Some(WebviewScreenHit {
+                label: meta.label,
+                local_x: window_x - meta.x,
+                local_y: window_y - meta.y,
+                screen_x: screen_x.unwrap_or(window_x),
+                screen_y: screen_y.unwrap_or(window_y),
+            });
+        }
+    }
+    None
+}
+
 /// Hit-test a screen-space point against every registered child
 /// webview, across every top-level window.
 ///
@@ -1095,19 +1132,24 @@ pub fn multiview_webview_at_screen_point(
 pub struct ExternalDndRouteRequest {
     pub event: String,
     pub source_webview_label: Option<String>,
-    pub screen_x: f64,
-    pub screen_y: f64,
+    pub source_client_x: Option<f64>,
+    pub source_client_y: Option<f64>,
+    pub screen_x: Option<f64>,
+    pub screen_y: Option<f64>,
     pub source: serde_json::Value,
     pub dnd_type: String,
 }
 
 /// Route a semantic external-DnD hover/drop to the single webview
-/// under the screen-space cursor. This is the hot drag path, so it
-/// avoids process-wide drag-move broadcasts and emits directly to
-/// the resolved destination.
+/// under the cursor. For sibling child webviews in the same top-level
+/// window, prefer source-client coordinates plus registry geometry;
+/// `screenX/screenY` stay as the cross-window fallback. This is the
+/// hot drag path, so it avoids process-wide drag-move broadcasts and
+/// emits directly to the resolved destination.
 #[tauri::command]
 pub fn multiview_route_external_dnd(
     app: AppHandle,
+    caller: tauri::Webview,
     registry: State<WebviewRegistry>,
     request: ExternalDndRouteRequest,
 ) -> Result<Option<WebviewScreenHit>, String> {
@@ -1118,13 +1160,44 @@ pub fn multiview_route_external_dnd(
             request.event
         ));
     }
-    let Some(hit) = webview_at_screen_point(
-        &app,
-        &registry,
-        request.screen_x,
-        request.screen_y,
-        request.source_webview_label.as_deref(),
-    ) else {
+    let caller_label = caller.label().to_string();
+    let caller_window_label = caller.window().label().to_string();
+    let source_webview_label = request
+        .source_webview_label
+        .as_deref()
+        .filter(|label| !label.trim().is_empty())
+        .unwrap_or(caller_label.as_str());
+    let same_window_hit =
+        if let (Some(source_client_x), Some(source_client_y)) =
+            (request.source_client_x, request.source_client_y)
+        {
+            let source_meta = registry.inner.read().get(source_webview_label).cloned();
+            source_meta.and_then(|meta| {
+                webview_at_window_point(
+                    &app,
+                    &registry,
+                    caller_window_label.as_str(),
+                    meta.x + source_client_x,
+                    meta.y + source_client_y,
+                    Some(source_webview_label),
+                    request.screen_x,
+                    request.screen_y,
+                )
+            })
+        } else {
+            None
+        };
+    let screen_hit = || match (request.screen_x, request.screen_y) {
+        (Some(screen_x), Some(screen_y)) => webview_at_screen_point(
+            &app,
+            &registry,
+            screen_x,
+            screen_y,
+            Some(source_webview_label),
+        ),
+        _ => None,
+    };
+    let Some(hit) = same_window_hit.or_else(screen_hit) else {
         return Ok(None);
     };
     let payload = serde_json::json!({

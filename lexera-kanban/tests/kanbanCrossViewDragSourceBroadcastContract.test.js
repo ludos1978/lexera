@@ -162,12 +162,14 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
       expect(tail).toMatch(/_xviewMoveRaf/);
     });
 
-    it('drag-move and drag-end helpers route directly to the webview under the screen cursor', () => {
-      const helperIdx = dragDropHandlersSrc.search(/function\s+_routeExternalDndAtScreenPoint\s*\(/);
+    it('drag-move and drag-end helpers route directly to the webview under the cursor', () => {
+      const helperIdx = dragDropHandlersSrc.search(/function\s+_routeExternalDndAtPointer\s*\(/);
       const helperTail = dragDropHandlersSrc.slice(helperIdx, helperIdx + 1200);
       expect(helperTail).toMatch(/multiview_route_external_dnd/);
       expect(helperTail).toMatch(/event\s*:\s*eventName/);
       expect(helperTail).toMatch(/sourceWebviewLabel/);
+      expect(helperTail).toMatch(/sourceClientX/);
+      expect(helperTail).toMatch(/sourceClientY/);
       expect(helperTail).toMatch(/screenX/);
       expect(helperTail).toMatch(/screenY/);
       expect(helperTail).toMatch(/dndType/);
@@ -175,25 +177,29 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
       const moveIdx = dragDropHandlersSrc.search(/function\s+_flushCrossViewMove\s*\(/);
       const moveTail = dragDropHandlersSrc.slice(moveIdx, moveIdx + 2500);
       expect(moveTail).toMatch(/external-dnd-hover/);
-      expect(moveTail).toMatch(/_routeExternalDndAtScreenPoint/);
+      expect(moveTail).toMatch(/_routeExternalDndAtPointer/);
 
       const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragEnd\s*\(/);
       const tail = dragDropHandlersSrc.slice(idx, idx + 2500);
-      expect(tail).toMatch(/_routeExternalDndAtScreenPoint/);
+      expect(tail).toMatch(/_routeExternalDndAtPointer/);
       expect(tail).toMatch(/['"]external-dnd-drop['"]/);
       expect(tail).not.toMatch(/hierarchy-entity-drag-end-external/);
     });
 
-    it('both helpers carry sourceWebviewLabel + screen coords so native routing can hit-test by cursor position', () => {
+    it('both helpers carry sourceWebviewLabel + source-client coords with screen fallback', () => {
       const moveIdx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragMove\s*\(/);
       const moveTail = dragDropHandlersSrc.slice(moveIdx, moveIdx + 2500);
       expect(moveTail).toMatch(/sourceWebviewLabel/);
+      expect(moveTail).toMatch(/clientX/);
+      expect(moveTail).toMatch(/clientY/);
       expect(moveTail).toMatch(/screenX/);
       expect(moveTail).toMatch(/screenY/);
 
       const endIdx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragEnd\s*\(/);
       const endTail = dragDropHandlersSrc.slice(endIdx, endIdx + 2500);
       expect(endTail).toMatch(/sourceWebviewLabel/);
+      expect(endTail).toMatch(/clientX/);
+      expect(endTail).toMatch(/clientY/);
       expect(endTail).toMatch(/screenX/);
       expect(endTail).toMatch(/screenY/);
     });

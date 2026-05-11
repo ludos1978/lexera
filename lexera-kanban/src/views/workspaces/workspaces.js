@@ -352,21 +352,27 @@
     // kanban"). Per-pointermove routing would be an IPC roundtrip to
     // the destination hover handler at ~60Hz; rAF coalesces to 1/frame.
     var _xviewMoveRaf = 0;
+    var _xviewLastClientX = null;
+    var _xviewLastClientY = null;
     var _xviewLastScreenX = null;
     var _xviewLastScreenY = null;
     var getExternalDndType = function (source) {
       var kindToType = { row: 'tree-row', stack: 'tree-stack', column: 'tree-column', card: 'tree-card' };
       return kindToType[source && source.kind] || ('tree-' + (source && source.kind));
     };
-    var routeExternalDndAtScreenPoint = function (eventName, source, sourceWebviewLabel, screenX, screenY) {
-      if (!source || typeof screenX !== 'number' || typeof screenY !== 'number') return null;
+    var routeExternalDndAtPointer = function (eventName, source, sourceWebviewLabel, clientX, clientY, screenX, screenY) {
+      var hasSourcePoint = typeof clientX === 'number' && typeof clientY === 'number';
+      var hasScreenPoint = typeof screenX === 'number' && typeof screenY === 'number';
+      if (!source || (!hasSourcePoint && !hasScreenPoint)) return null;
       if (!window.LexeraSubApp || typeof window.LexeraSubApp.invoke !== 'function') return null;
       return window.LexeraSubApp.invoke('multiview_route_external_dnd', {
         request: {
           event: eventName,
           sourceWebviewLabel: sourceWebviewLabel || null,
-          screenX: screenX,
-          screenY: screenY,
+          sourceClientX: hasSourcePoint ? clientX : null,
+          sourceClientY: hasSourcePoint ? clientY : null,
+          screenX: hasScreenPoint ? screenX : null,
+          screenY: hasScreenPoint ? screenY : null,
           source: source,
           dndType: getExternalDndType(source)
         }
@@ -384,10 +390,12 @@
         } catch (_) {}
         _xviewSourceLogged = true;
       }
-      var promise = routeExternalDndAtScreenPoint(
+      var promise = routeExternalDndAtPointer(
         'external-dnd-hover',
         activeDrag.source,
         label,
+        _xviewLastClientX,
+        _xviewLastClientY,
         _xviewLastScreenX,
         _xviewLastScreenY
       );
@@ -405,8 +413,8 @@
       }
     };
     var broadcastCrossViewMove = function (clientX, clientY, screenX, screenY) {
-      void clientX;
-      void clientY;
+      _xviewLastClientX = typeof clientX === 'number' ? clientX : null;
+      _xviewLastClientY = typeof clientY === 'number' ? clientY : null;
       _xviewLastScreenX = typeof screenX === 'number' ? screenX : null;
       _xviewLastScreenY = typeof screenY === 'number' ? screenY : null;
       if (_xviewMoveRaf) return; // already scheduled — coalesce
@@ -462,10 +470,10 @@
         }
       }
       // No local target: cursor may be over a different webview.
-      // Route drag-move directly to the webview under the screen
-      // cursor. Pointer capture (set on pointerdown) keeps these
-      // events flowing even after the cursor crosses into a sibling
-      // Tauri webview.
+      // Route drag-move by source-client coords for sibling webviews,
+      // with screen coords as the cross-window fallback. Pointer
+      // capture (set on pointerdown) keeps these events flowing even
+      // after the cursor crosses into a sibling Tauri webview.
       if (!match) broadcastCrossViewMove(e.clientX, e.clientY, e.screenX, e.screenY);
     };
     var onUp = function (e) {
@@ -516,7 +524,7 @@
         } else {
           // Cursor was outside this webview at release. Dispatch this
           // as `external-dnd-drop` to the single webview under the
-          // screen-space cursor. The native route ignores it if no
+          // pointer. The native route ignores it if no
           // other webview matches.
           var endLabel = getOwnWebviewLabel();
           if (typeof window.lexeraLog === 'function') {
@@ -525,10 +533,12 @@
                 String(endLabel) + '", x: ' + clientX + ', y: ' + clientY + ' }');
             } catch (_) {}
           }
-          var endPromise = routeExternalDndAtScreenPoint(
+          var endPromise = routeExternalDndAtPointer(
             'external-dnd-drop',
             src,
             endLabel,
+            clientX,
+            clientY,
             typeof e.screenX === 'number' ? e.screenX : null,
             typeof e.screenY === 'number' ? e.screenY : null
           );

@@ -2234,19 +2234,24 @@ var LexeraDragDropHandlers = (function () {
   // user has to click TWICE for the drop to register. Fix: kanban
   // routes drag-move + drag-end-external during ITS OWN mouse events
   // (which DO fire reliably for the entire gesture). The native route
-  // hit-tests the screen cursor and emits external-dnd-hover/-drop
-  // only to the webview under it. Symmetric with workspace→kanban.
+  // hit-tests sibling views from source-client coords, then falls back
+  // to screen coords for separate windows. Symmetric with
+  // workspace→kanban.
   //
   // rAF throttle on move (60Hz mousemove to 1 IPC roundtrip per frame).
   var _xviewMoveRaf = 0;
+  var _xviewMoveLastClientX = null;
+  var _xviewMoveLastClientY = null;
   var _xviewMoveLastScreenX = null;
   var _xviewMoveLastScreenY = null;
   function _externalDndTypeForSource(source) {
     var kindToType = { row: 'tree-row', stack: 'tree-stack', column: 'tree-column', card: 'tree-card' };
     return kindToType[source && source.kind] || ('tree-' + (source && source.kind));
   }
-  function _routeExternalDndAtScreenPoint(eventName, source, sourceWebviewLabel, screenX, screenY) {
-    if (!source || typeof screenX !== 'number' || typeof screenY !== 'number') return;
+  function _routeExternalDndAtPointer(eventName, source, sourceWebviewLabel, clientX, clientY, screenX, screenY) {
+    var hasSourcePoint = typeof clientX === 'number' && typeof clientY === 'number';
+    var hasScreenPoint = typeof screenX === 'number' && typeof screenY === 'number';
+    if (!source || (!hasSourcePoint && !hasScreenPoint)) return;
     if (typeof window === 'undefined' ||
         !window.LexeraMultiview ||
         typeof window.LexeraMultiview.invoke !== 'function') return;
@@ -2254,8 +2259,10 @@ var LexeraDragDropHandlers = (function () {
       request: {
         event: eventName,
         sourceWebviewLabel: sourceWebviewLabel || null,
-        screenX: screenX,
-        screenY: screenY,
+        sourceClientX: hasSourcePoint ? clientX : null,
+        sourceClientY: hasSourcePoint ? clientY : null,
+        screenX: hasScreenPoint ? screenX : null,
+        screenY: hasScreenPoint ? screenY : null,
         source: source,
         dndType: _externalDndTypeForSource(source)
       }
@@ -2282,7 +2289,7 @@ var LexeraDragDropHandlers = (function () {
     var source = _buildCrossViewSource();
     if (!source) return;
     // Log the FIRST route attempt per drag so the user can confirm
-    // the kanban is actually invoking the Rust router with screen
+    // the kanban is actually invoking the Rust router with pointer
     // coords. If this fires but the workspace never logs
     // `[xview-dnd] receive.hover` for the corresponding kanban→workspace
     // direction, the bug is in delivery (Tauri emit_to during a
@@ -2292,6 +2299,8 @@ var LexeraDragDropHandlers = (function () {
         window.lexeraLog('debug', '[xview-dnd] kanban.source.route.hover ' +
           JSON.stringify({
             kind: source.kind,
+            sourceClientX: _xviewMoveLastClientX,
+            sourceClientY: _xviewMoveLastClientY,
             screenX: _xviewMoveLastScreenX,
             screenY: _xviewMoveLastScreenY,
             sourceWebviewLabel: label
@@ -2299,17 +2308,19 @@ var LexeraDragDropHandlers = (function () {
       } catch (_) { /* non-fatal */ }
       _xviewKanbanRouteLogged = true;
     }
-    _routeExternalDndAtScreenPoint(
+    _routeExternalDndAtPointer(
       'external-dnd-hover',
       source,
       label,
+      _xviewMoveLastClientX,
+      _xviewMoveLastClientY,
       _xviewMoveLastScreenX,
       _xviewMoveLastScreenY
     );
   }
   function broadcastCrossViewDragMove(clientX, clientY, screenX, screenY) {
-    void clientX;
-    void clientY;
+    _xviewMoveLastClientX = typeof clientX === 'number' ? clientX : null;
+    _xviewMoveLastClientY = typeof clientY === 'number' ? clientY : null;
     _xviewMoveLastScreenX = typeof screenX === 'number' ? screenX : null;
     _xviewMoveLastScreenY = typeof screenY === 'number' ? screenY : null;
     if (_xviewMoveRaf) return;
@@ -2337,10 +2348,12 @@ var LexeraDragDropHandlers = (function () {
           JSON.stringify({ kind: source.kind, x: clientX, y: clientY, sourceWebviewLabel: label }));
       } catch (_) { /* non-fatal */ }
     }
-    _routeExternalDndAtScreenPoint(
+    _routeExternalDndAtPointer(
       'external-dnd-drop',
       source,
       label,
+      typeof clientX === 'number' ? clientX : null,
+      typeof clientY === 'number' ? clientY : null,
       typeof screenX === 'number' ? screenX : null,
       typeof screenY === 'number' ? screenY : null
     );

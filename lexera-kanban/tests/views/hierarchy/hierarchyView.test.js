@@ -1044,6 +1044,8 @@ describe('hierarchy view sub-app', () => {
       );
       expect(dragMove).toBeTruthy();
       expect(dragMove.args.request.sourceWebviewLabel).toBe('workspaces-sub-app');
+      expect(typeof dragMove.args.request.sourceClientX).toBe('number');
+      expect(typeof dragMove.args.request.sourceClientY).toBe('number');
       expect(typeof dragMove.args.request.screenX).toBe('number');
       expect(typeof dragMove.args.request.screenY).toBe('number');
       expect(dragMove.args.request.source).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
@@ -1055,6 +1057,8 @@ describe('hierarchy view sub-app', () => {
       );
       expect(dragEnd).toBeTruthy();
       expect(dragEnd.args.request.sourceWebviewLabel).toBe('workspaces-sub-app');
+      expect(dragEnd.args.request.sourceClientX).toBe(200);
+      expect(dragEnd.args.request.sourceClientY).toBe(300);
       expect(typeof dragEnd.args.request.screenX).toBe('number');
       expect(typeof dragEnd.args.request.screenY).toBe('number');
 
