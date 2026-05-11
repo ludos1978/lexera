@@ -837,7 +837,7 @@ var CardEditor = (function () {
     applyCardEditorFontScale(currentCardEditor.fontScale, false);
 
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) closeCardEditorOverlay({ save: false });
+      if (e.target === overlay) closeCardEditorOverlay({ save: true });
     });
     dialog.addEventListener('click', function (e) {
       var modeBtn = e.target.closest('[data-card-editor-mode]');

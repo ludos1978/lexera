@@ -210,11 +210,17 @@
       if (loadingEl.parentNode) loadingEl.parentNode.removeChild(loadingEl);
       return renderPages(pdf, host, currentMode, cancelToken);
     }).catch(function (err) {
+      // Surface broken PDFs through the unified `.embed-broken` state on
+      // the surrounding `.embed-container` so they read the same as a
+      // missing image/video/audio: a single CSS pseudo-element message
+      // ("Embedded file not found: {path}"). The raw error stays in the
+      // log for diagnosis.
       host.innerHTML = '';
-      var errEl = document.createElement('div');
-      errEl.className = 'pdf-viewer-error';
-      errEl.textContent = 'Failed to load PDF: ' + (err && err.message ? err.message : String(err));
-      host.appendChild(errEl);
+      var container = host.parentElement;
+      while (container && !(container.classList && container.classList.contains('embed-container'))) {
+        container = container.parentElement;
+      }
+      if (container) container.classList.add('embed-broken');
       if (typeof window.logFrontendIssue === 'function') {
         window.logFrontendIssue('warn', 'pdf.viewer', 'getDocument failed: ' + url, { error: String(err) });
       }

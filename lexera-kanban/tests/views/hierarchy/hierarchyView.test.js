@@ -196,6 +196,37 @@ describe('hierarchy view sub-app', () => {
     expect(labels).not.toContain('Stale');
   });
 
+  it('same-workspace catalog refresh patches board roots without rebuilding the hierarchy tree', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadHierarchyView(window);
+    const snap = {
+      boards: [
+        { id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' },
+        { id: 'b2', title: 'Sprint', workspace_id: 'ws-1' }
+      ],
+      remoteBoards: [],
+      workspaces: [{ id: 'ws-1', name: 'Default' }],
+      activeWorkspaceId: 'ws-1',
+      activeWorkspace: { id: 'ws-1', name: 'Default' },
+      viewWorkspaceId: 'ws-1',
+      viewWorkspace: { id: 'ws-1', name: 'Default' }
+    };
+    capturedOpts.onCatalog(snap);
+    const b1Before = window.document.querySelector('#local-boards .tree-node[data-board-id="b1"]');
+    const b2Before = window.document.querySelector('#local-boards .tree-node[data-board-id="b2"]');
+
+    capturedOpts.onCatalog(snap);
+
+    expect(window.document.querySelector('#local-boards .tree-node[data-board-id="b1"]')).toBe(b1Before);
+    expect(window.document.querySelector('#local-boards .tree-node[data-board-id="b2"]')).toBe(b2Before);
+  });
+
   // ── User-interaction API exercise ────────────────────────────────
   // Drives the hierarchy view ONLY through LexeraHierarchyTestApi.
   // A regression that breaks rendering (board list invisible,

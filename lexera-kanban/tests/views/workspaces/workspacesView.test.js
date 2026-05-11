@@ -146,6 +146,33 @@ describe('workspaces view sub-app', () => {
     expect(window.document.getElementById('local-boards').textContent).not.toContain('(untitled)');
   });
 
+  it('catalog refresh patches board rows without rebuilding the whole workspace tree', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadWorkspacesView(window);
+    capturedOpts.onCatalog({
+      boards: [{ id: 'b1', title: 'Roadmap' }, { id: 'b2', title: 'Sprint' }],
+      remoteBoards: [],
+      workspaces: []
+    });
+    const b1Before = window.document.querySelector('#local-boards .tree-node[data-board-id="b1"]');
+    const b2Before = window.document.querySelector('#local-boards .tree-node[data-board-id="b2"]');
+
+    capturedOpts.onCatalog({
+      boards: [{ id: 'b1', title: 'Roadmap' }, { id: 'b2', title: 'Sprint' }],
+      remoteBoards: [],
+      workspaces: []
+    });
+
+    expect(window.document.querySelector('#local-boards .tree-node[data-board-id="b1"]')).toBe(b1Before);
+    expect(window.document.querySelector('#local-boards .tree-node[data-board-id="b2"]')).toBe(b2Before);
+  });
+
   // Regression 2026-05-03: a markdown board file without an H1
   // heading produces `BoardInfo.title === ""`. The frontend's
   // fallback chain `b.title || b.name || '(untitled)'` then

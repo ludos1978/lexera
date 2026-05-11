@@ -104,7 +104,8 @@ var InlineCardEditor = (function () {
       textarea: textarea,
       originalContent: card.content || '',
       preEditScrollLeft: preEditScrollLeft,
-      preEditScrollTop: preEditScrollTop
+      preEditScrollTop: preEditScrollTop,
+      outsideMousedownHandler: null
     };
 
     function maybeSaveOnBlur() {
@@ -116,6 +117,28 @@ var InlineCardEditor = (function () {
         closeInlineCardEditor({ save: true });
       }, 0);
     }
+
+    // Clicks on non-focusable elements (empty column space, column headers,
+    // other cards' display content) don't fire textarea.blur, so the
+    // blur-based save above misses them. Catch those clicks directly:
+    // mousedown anywhere inside the columns container but outside the
+    // editing card → save & close. Dialogs/menus live outside the columns
+    // container (appended to body), so they naturally don't trigger this.
+    // Window-blur / cross-webview clicks don't reach this listener at all,
+    // matching the requirement that focusing another view keeps the edit open.
+    function maybeCloseOnOutsideMousedown(e) {
+      if (e.button !== 0) return;
+      var editor = currentInlineCardEditor;
+      if (!editor || editor.textarea !== textarea) return;
+      var target = e.target;
+      if (!target || !target.nodeType) return;
+      if (editor.cardEl && editor.cardEl.contains(target)) return;
+      var cc = typeof _deps.getElColumnsContainer === 'function' ? _deps.getElColumnsContainer() : null;
+      if (!cc || !cc.contains(target)) return;
+      closeInlineCardEditor({ save: true });
+    }
+    document.addEventListener('mousedown', maybeCloseOnOutsideMousedown, true);
+    currentInlineCardEditor.outsideMousedownHandler = maybeCloseOnOutsideMousedown;
 
     // Broadcast editing presence when opening inline editor
     var LexeraApi = _deps.LexeraApi;
@@ -205,6 +228,10 @@ var InlineCardEditor = (function () {
     if (!currentInlineCardEditor) return Promise.resolve();
     var editor = currentInlineCardEditor;
     currentInlineCardEditor = null;
+    if (editor.outsideMousedownHandler) {
+      document.removeEventListener('mousedown', editor.outsideMousedownHandler, true);
+      editor.outsideMousedownHandler = null;
+    }
     clearScheduledInlineCardTextareaResize();
     _deps.setIsEditing(false);
     _deps.clearEditingPresenceQueue();

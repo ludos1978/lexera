@@ -31,8 +31,10 @@ var LexeraPollingService = (function () {
 
   // --- Change-detection fingerprints ---
   var _lastWorkspacesFingerprint = '';
-  var _lastBoardsFingerprint = '';
-  var _lastRemoteBoardsFingerprint = '';
+  var _lastBoardsCatalogFingerprint = '';
+  var _lastBoardsContentFingerprint = '';
+  var _lastRemoteBoardsCatalogFingerprint = '';
+  var _lastRemoteBoardsContentFingerprint = '';
 
   function fingerprint(list, titleKey) {
     if (!Array.isArray(list) || list.length === 0) return '0';
@@ -40,6 +42,47 @@ var LexeraPollingService = (function () {
     for (var i = 0; i < list.length; i++) {
       var item = list[i];
       parts.push((item.id || '') + ':' + (item[titleKey || 'title'] || '') + ':' + (item.generation !== undefined ? item.generation : ''));
+    }
+    return list.length + '|' + parts.join(',');
+  }
+
+  function workspaceIdsFingerprint(item) {
+    if (!item) return '';
+    var raw = item.workspace_ids || item.workspaceIds || (item.workspace_id || item.workspaceId ? [item.workspace_id || item.workspaceId] : []);
+    if (!Array.isArray(raw)) raw = [raw];
+    var ids = [];
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] == null || raw[i] === '') continue;
+      ids.push(String(raw[i]));
+    }
+    ids.sort();
+    return ids.join(';');
+  }
+
+  function boardCatalogFingerprint(list, titleKey) {
+    if (!Array.isArray(list) || list.length === 0) return '0';
+    var parts = [];
+    var key = titleKey || 'title';
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i] || {};
+      parts.push([
+        item.id || '',
+        item[key] || '',
+        item.filePath || item.file_path || item.name || '',
+        workspaceIdsFingerprint(item)
+      ].join(':'));
+    }
+    return list.length + '|' + parts.join(',');
+  }
+
+  function boardContentFingerprint(list) {
+    if (!Array.isArray(list) || list.length === 0) return '0';
+    var parts = [];
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i] || {};
+      parts.push((item.id || '') + ':' +
+        (item.generation !== undefined ? item.generation : '') + ':' +
+        (item.revision || ''));
     }
     return list.length + '|' + parts.join(',');
   }
@@ -183,41 +226,54 @@ var LexeraPollingService = (function () {
 
       // Process boards
       var boardsList = data.boards || [];
-      var boardsFp = fingerprint(boardsList, 'title');
-      var boardsChanged = boardsFp !== _lastBoardsFingerprint;
-      if (boardsChanged) {
-        _lastBoardsFingerprint = boardsFp;
+      var boardsCatalogFp = boardCatalogFingerprint(boardsList, 'title');
+      var boardsContentFp = boardContentFingerprint(boardsList);
+      var boardsCatalogChanged = boardsCatalogFp !== _lastBoardsCatalogFingerprint;
+      var boardsContentChanged = boardsContentFp !== _lastBoardsContentFingerprint;
+      if (boardsCatalogChanged) {
+        _lastBoardsCatalogFingerprint = boardsCatalogFp;
+        _lastBoardsContentFingerprint = boardsContentFp;
         _callDep('setBoards', boardsList);
+      } else if (boardsContentChanged) {
+        _lastBoardsContentFingerprint = boardsContentFp;
       }
 
       // Process remote boards
-      var remoteBoardsChanged = false;
+      var remoteBoardsCatalogChanged = false;
+      var remoteBoardsContentChanged = false;
       if (rb) {
         var remoteBoardsList = (rb.boards || []).map(function (board) {
           if (board) board.isRemote = true;
           return board;
         });
-        var remoteFp = fingerprint(remoteBoardsList, 'title');
-        remoteBoardsChanged = remoteFp !== _lastRemoteBoardsFingerprint;
-        if (remoteBoardsChanged) {
-          _lastRemoteBoardsFingerprint = remoteFp;
+        var remoteCatalogFp = boardCatalogFingerprint(remoteBoardsList, 'title');
+        var remoteContentFp = boardContentFingerprint(remoteBoardsList);
+        remoteBoardsCatalogChanged = remoteCatalogFp !== _lastRemoteBoardsCatalogFingerprint;
+        remoteBoardsContentChanged = remoteContentFp !== _lastRemoteBoardsContentFingerprint;
+        if (remoteBoardsCatalogChanged) {
+          _lastRemoteBoardsCatalogFingerprint = remoteCatalogFp;
+          _lastRemoteBoardsContentFingerprint = remoteContentFp;
           _callDep('setRemoteBoards', remoteBoardsList);
+        } else if (remoteBoardsContentChanged) {
+          _lastRemoteBoardsContentFingerprint = remoteContentFp;
         }
       } else {
         _callDep('setRemoteBoards', []);
-        _lastRemoteBoardsFingerprint = '';
-        remoteBoardsChanged = true;
+        _lastRemoteBoardsCatalogFingerprint = '';
+        _lastRemoteBoardsContentFingerprint = '';
+        remoteBoardsCatalogChanged = true;
+        remoteBoardsContentChanged = true;
       }
-      if (workspacesChanged || boardsChanged || remoteBoardsChanged) {
+      if (workspacesChanged || boardsCatalogChanged || remoteBoardsCatalogChanged) {
         _callDep('renderBoardList');
       }
-      var hierarchyRefresh = boardsChanged ? _callDep('refreshBoardHierarchyCache', _dep('boards')) : null;
+      var hierarchyRefresh = (boardsCatalogChanged || boardsContentChanged) ? _callDep('refreshBoardHierarchyCache', _dep('boards')) : null;
       if (hierarchyRefresh && typeof hierarchyRefresh.catch === 'function') {
         hierarchyRefresh.catch(function (err) {
           _callDep('logFrontendIssue', 'warn', 'hierarchy.cache', 'Failed to refresh board hierarchy cache', err);
         });
       }
-      if ((boardsChanged || remoteBoardsChanged) && _dep('workspaceShellEnabled') && _dep('WorkspaceShell') && typeof _dep('WorkspaceShell').onBoardsUpdated === 'function') {
+      if ((boardsCatalogChanged || remoteBoardsCatalogChanged) && _dep('workspaceShellEnabled') && _dep('WorkspaceShell') && typeof _dep('WorkspaceShell').onBoardsUpdated === 'function') {
         _dep('WorkspaceShell').onBoardsUpdated(_dep('boards').concat(_dep('remoteBoards')));
       }
       if (_dep('workspaceShellEnabled')) {
@@ -429,8 +485,10 @@ var LexeraPollingService = (function () {
   /** Force the next poll to treat all data as changed (e.g. after user-triggered refresh). */
   function resetFingerprints() {
     _lastWorkspacesFingerprint = '';
-    _lastBoardsFingerprint = '';
-    _lastRemoteBoardsFingerprint = '';
+    _lastBoardsCatalogFingerprint = '';
+    _lastBoardsContentFingerprint = '';
+    _lastRemoteBoardsCatalogFingerprint = '';
+    _lastRemoteBoardsContentFingerprint = '';
   }
 
   return {

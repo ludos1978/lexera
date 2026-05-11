@@ -4378,7 +4378,8 @@ img[data-lazy-src] {
 /* Broken embed state */
 .embed-container.embed-broken img,
 .embed-container.embed-broken video,
-.embed-container.embed-broken audio {
+.embed-container.embed-broken audio,
+.embed-container.embed-broken .embed-preview {
   display: none;
 }
 
@@ -4393,7 +4394,7 @@ img[data-lazy-src] {
 }
 
 .embed-container.embed-broken::before {
-  content: '(broken embed)';
+  content: 'Embedded file not found: ' attr(data-file-path);
 }
 
 .embed-container.embed-broken .embed-menu-btn {

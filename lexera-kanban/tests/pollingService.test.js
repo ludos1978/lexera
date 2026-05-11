@@ -141,6 +141,61 @@ describe('LexeraPollingService', () => {
     expect(deps.refreshWorkspaceMirrors).toHaveBeenCalled();
   });
 
+  it('does not treat board generation-only changes as workspace catalog changes', async () => {
+    const service = buildService();
+    const workspaceShell = { onBoardsUpdated: vi.fn() };
+    const deps = buildDeps({
+      workspaceShellEnabled: true,
+      WorkspaceShell: workspaceShell,
+      LexeraApi: {
+        checkStatus: vi.fn().mockResolvedValue(true),
+        discover: vi.fn().mockResolvedValue('http://127.0.0.1:3456'),
+        request: vi.fn().mockResolvedValue({ workspaces: [], default_workspace: null }),
+        getBoards: vi.fn()
+          .mockResolvedValueOnce({ boards: [{ id: 'board-1', title: 'Board 1', generation: 1 }] })
+          .mockResolvedValueOnce({ boards: [{ id: 'board-1', title: 'Board 1', generation: 2 }] }),
+        getRemoteBoards: vi.fn().mockResolvedValue({ boards: [] }),
+        getBoardChanges: vi.fn(),
+      },
+    });
+
+    service.init(deps);
+    await service.poll();
+    await service.poll();
+
+    expect(deps.setBoards).toHaveBeenCalledTimes(1);
+    expect(deps.renderBoardList).toHaveBeenCalledTimes(1);
+    expect(workspaceShell.onBoardsUpdated).toHaveBeenCalledTimes(1);
+    expect(deps.refreshBoardHierarchyCache).toHaveBeenCalledTimes(2);
+  });
+
+  it('still refreshes the workspace catalog when board list metadata changes', async () => {
+    const service = buildService();
+    const workspaceShell = { onBoardsUpdated: vi.fn() };
+    const deps = buildDeps({
+      workspaceShellEnabled: true,
+      WorkspaceShell: workspaceShell,
+      LexeraApi: {
+        checkStatus: vi.fn().mockResolvedValue(true),
+        discover: vi.fn().mockResolvedValue('http://127.0.0.1:3456'),
+        request: vi.fn().mockResolvedValue({ workspaces: [], default_workspace: null }),
+        getBoards: vi.fn()
+          .mockResolvedValueOnce({ boards: [{ id: 'board-1', title: 'Board 1', generation: 1 }] })
+          .mockResolvedValueOnce({ boards: [{ id: 'board-1', title: 'Renamed Board', generation: 1 }] }),
+        getRemoteBoards: vi.fn().mockResolvedValue({ boards: [] }),
+        getBoardChanges: vi.fn(),
+      },
+    });
+
+    service.init(deps);
+    await service.poll();
+    await service.poll();
+
+    expect(deps.setBoards).toHaveBeenCalledTimes(2);
+    expect(deps.renderBoardList).toHaveBeenCalledTimes(2);
+    expect(workspaceShell.onBoardsUpdated).toHaveBeenCalledTimes(2);
+  });
+
   it('skips global workspace and sidebar refreshes in embedded mode', async () => {
     const service = buildService();
     const deps = buildDeps({
