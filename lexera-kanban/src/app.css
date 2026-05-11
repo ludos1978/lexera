@@ -5041,23 +5041,23 @@ img[data-lazy-src] {
   background: var(--surface-footer-bg);
 }
 
-/* Two-layer hide rule for the "+ Add card" footer:
+/* Hide the "+ Add card" footer the moment a card lands in
+ * `.column-cards`. PURE CSS — no JS class toggle, no `:has()`
+ * descendant selector. The adjacent-sibling combinator only fires
+ * style recalc on direct neighbours when the .column-cards element's
+ * own state flips between empty and non-empty, which is cheap on
+ * WebKit (the historical perf trap was a `:has()` descendant
+ * selector that cost ~700ms / 820ms full-board render).
  *
- *   1. JS-driven `.has-cards` class on the column (added in
- *      buildColumnElement) — canonical, survives DOM mutations the
- *      sibling selector below can't see (e.g. virtualised placeholders).
- *      Replaces an earlier `:has()` selector that cost ~700ms out of
- *      820ms in full-board renders on WKWebView.
+ * `:not(.add-mode)` carves out the inline composer state — while
+ * the user is typing a new card, the footer transforms into the
+ * editor and must stay visible regardless of how many siblings
+ * already exist.
  *
- *   2. Adjacent-sibling selector — fires the moment a card node lands
- *      in `.column-cards`, even before the next render swaps the
- *      column element and re-applies `.has-cards`. This is the
- *      "hide instantly when a card is added" path the user asked for
- *      (column-cards is :empty when no cards exist; gains a child as
- *      soon as a new card DOM appears). Sibling selectors are cheap on
- *      WebKit — the perf trap was the descendant `:has()`.
+ * User contract 2026-05-11: "+ Add card MUST ONLY SHOW WHEN THERE
+ * ARE NO CARDS. SOLVE THIS WITH CSS SELECTORS. REMOVE ALL OTHER
+ * CODE THAT SHOWS OR HIDES THESE BUTTONS."
  */
-.column.has-cards > .column-footer:not(.add-mode),
 .column-cards:not(:empty) + .column-footer:not(.add-mode) {
   display: none;
 }

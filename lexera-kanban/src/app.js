@@ -8436,10 +8436,13 @@ var LexeraDashboard = (function () {
     if (columnEl && wipLimit > 0) {
       columnEl.classList.toggle('wip-exceeded', cardCount > wipLimit);
     }
-    // Keep `.has-cards` in sync with actual card count — this class drives
-    // the column-footer visibility rule that replaced the expensive CSS
-    // `:has()` selector.
-    columnEl.classList.toggle('has-cards', cardCount > 0);
+    // The "+ Add card" footer visibility is now driven ENTIRELY by the
+    // CSS adjacent-sibling selector
+    //   `.column-cards:not(:empty) + .column-footer:not(.add-mode)`
+    // No JS class toggle is needed — `:not(:empty)` flips the moment
+    // the first card lands in `.column-cards` (and back the moment it
+    // leaves). User contract 2026-05-11: "SOLVE THIS WITH CSS SELECTORS,
+    // REMOVE ALL OTHER CODE THAT SHOWS OR HIDES THESE BUTTONS".
   }
 
   /**
@@ -8516,9 +8519,10 @@ var LexeraDashboard = (function () {
     var columnId = col && col.id != null ? String(col.id) : '';
 
     var colEl = document.createElement('div');
-    // `has-cards` is JS-driven instead of CSS `:has()` — dramatically
-    // cheaper for style recalc on large boards.
-    colEl.className = 'column' + ((col.cards && col.cards.length > 0) ? ' has-cards' : '');
+    // The "+ Add card" footer visibility is driven by a pure CSS
+    // adjacent-sibling selector (`.column-cards:not(:empty) +
+    // .column-footer:not(.add-mode)`). No JS class is required.
+    colEl.className = 'column';
     colEl.setAttribute('data-col-title', col.title);
     colEl.setAttribute('data-fold-key', colFoldKey);
     if (columnId) colEl.setAttribute('data-column-id', columnId);

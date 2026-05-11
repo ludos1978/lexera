@@ -24,11 +24,13 @@ describe('empty-child add affordances', () => {
     expect(appJs).toContain('if (stackColumnEntries.length === 0)');
     expect(appJs).toContain('if (rowStacks.length === 0)');
 
-    // Column level: the `has-cards` class is JS-driven instead of a
-    // CSS :has() selector. Empty columns don't get the class; the
-    // footer still renders (Add card button is always available), but
-    // stylesheets key off `has-cards` for visual differentiation.
-    expect(appJs).toContain("'column' + ((col.cards && col.cards.length > 0) ? ' has-cards' : '')");
+    // Column level: the "+ Add card" footer visibility is PURE CSS
+    // (adjacent-sibling on `.column-cards:not(:empty)`). No JS class
+    // toggle remains — the build path just sets a plain `'column'`
+    // className. User contract 2026-05-11: "REMOVE ALL OTHER CODE
+    // THAT SHOWS OR HIDES THESE BUTTONS".
+    expect(appJs).toMatch(/colEl\.className\s*=\s*['"]column['"]\s*;/);
+    expect(appJs).not.toContain("has-cards");
 
     // Column footer still goes through the shared builder.
     expect(appJs).toContain('function buildColumnFooterContent(colIndex) {');
@@ -48,29 +50,26 @@ describe('empty-child add affordances', () => {
     expect(appJs).toContain('board-level-empty-rows');
   });
 
-  it('hides "+ Add card" footer on columns that already have card siblings', () => {
-    // The user-visible rule: add affordances must only appear when the
-    // parent has no children at the same level. Stack ("+ Add column"),
-    // row ("+ Add stack"), and board ("+ Add row") are JS-emptiness-
-    // gated; card ("+ Add card") relies on a CSS rule keyed on the
-    // `has-cards` class set by buildColumnElement. This test pins the
-    // CSS rule that completes the contract for the card level.
-    expect(appCss).toMatch(/\.column\.has-cards\s*>\s*\.column-footer[^{]*\{\s*display\s*:\s*none/);
-  });
+  it('hides "+ Add card" via a single CSS adjacent-sibling selector — no other show/hide code exists', () => {
+    // User contract 2026-05-11: "+ Add card MUST ONLY SHOW WHEN
+    // THERE ARE NO CARDS. SOLVE THIS WITH CSS SELECTORS. REMOVE
+    // ALL OTHER CODE THAT SHOWS OR HIDES THESE BUTTONS."
+    //
+    // The sole hide rule is `.column-cards:not(:empty) +
+    // .column-footer:not(.add-mode) { display: none }`:
+    //   - `:not(:empty)` flips the moment the first card lands.
+    //   - `:not(.add-mode)` keeps the inline composer visible.
+    //   - Adjacent-sibling combinator is cheap on WebKit (the
+    //     historical perf trap was `:has()` descendant selector).
+    expect(appCss).toMatch(/\.column-cards:not\(:empty\)\s*\+\s*\.column-footer:not\(\.add-mode\)\s*\{\s*display\s*:\s*none/);
 
-  it('hides "+ Add card" instantly via an adjacent-sibling rule the moment a card lands in column-cards', () => {
-    // The JS-driven `.has-cards` class only flips on the next render
-    // tick — the user wants the button gone the instant the first card
-    // appears. An adjacent-sibling selector keyed on `:not(:empty)`
-    // fires on DOM insertion without waiting for re-render. The rule
-    // must also exclude `.add-mode` so the inline-edit footer (which
-    // expands to a card editor in place of the button) stays visible
-    // while typing. Sibling selectors are cheap — the perf trap was
-    // the deleted `:has()` descendant selector.
-    expect(appCss).toMatch(/\.column-cards:not\(:empty\)\s*\+\s*\.column-footer[^{]*\{\s*display\s*:\s*none/);
-    // The :not(.add-mode) carve-out applies to BOTH branches of the
-    // hide rule so add-mode stays interactive in either path.
-    expect(appCss).toMatch(/\.column-cards:not\(:empty\)\s*\+\s*\.column-footer:not\(\.add-mode\)/);
+    // The legacy `.column.has-cards > .column-footer { display: none }`
+    // selector AND its JS-driven class toggle have been removed. The
+    // CSS file must NOT contain the .has-cards rule anymore.
+    expect(appCss).not.toMatch(/\.column\.has-cards/);
+    // The JS must NOT toggle a .has-cards class anywhere.
+    expect(appJs).not.toContain("'has-cards'");
+    expect(appJs).not.toContain('"has-cards"');
   });
 
   it('"+ Add Row / Stack / Column / Card" buttons share visual treatment via the unified add-entity-btn class', () => {
