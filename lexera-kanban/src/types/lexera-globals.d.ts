@@ -2154,7 +2154,7 @@ interface LexeraTreeCrossViewDropApi {
   }): {
     onExternalDnd(
       eventKind: 'hover' | 'drop' | 'clear',
-      payload: any
+      payload: LexeraExternalDndPayload | null | undefined
     ): void;
     armCrossDragTracker(src: {
       boardId?: string;
@@ -2164,7 +2164,10 @@ interface LexeraTreeCrossViewDropApi {
     } | null): void;
     teardownCrossDragTracker(reason?: string): void;
   };
-  mapXviewSourceFromPayload(payload: any): {
+  /** Best-effort destructure of a cross-view DnD payload into the
+   *  receiver's `{ boardId, kind, entityId }` shape. Returns null
+   *  when the payload doesn't carry a recognizable source. */
+  mapXviewSourceFromPayload(payload: LexeraExternalDndPayload | null | undefined): {
     boardId: string;
     kind: string;
     entityId: string;
