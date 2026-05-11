@@ -23,7 +23,7 @@
   var clearBtn = document.getElementById('log-clear-btn');
   var refreshBtn = document.getElementById('log-refresh-btn');
   var copyBtn = document.getElementById('log-copy-btn');
-  var searchInput = document.getElementById('log-search-input');
+  var searchInput = /** @type {HTMLInputElement | null} */ (document.getElementById('log-search-input'));
   var searchClear = document.getElementById('log-search-clear');
   var sourceBtn = document.getElementById('log-source-btn');
   var sourceLabel = document.getElementById('log-source-label');
@@ -290,14 +290,15 @@
 
   // Close menus on outside click
   document.addEventListener('click', function (ev) {
+    var evTarget = /** @type {Node} */ (ev.target);
     if (sourceMenu && !sourceMenu.classList.contains('hidden')) {
-      if (!sourceMenu.contains(ev.target) && ev.target !== sourceBtn && !sourceBtn.contains(ev.target)) {
+      if (!sourceMenu.contains(evTarget) && ev.target !== sourceBtn && !sourceBtn.contains(evTarget)) {
         sourceMenu.classList.add('hidden');
         if (sourceBtn) sourceBtn.setAttribute('aria-expanded', 'false');
       }
     }
     if (levelMenu && !levelMenu.classList.contains('hidden')) {
-      if (!levelMenu.contains(ev.target) && ev.target !== levelBtn && !levelBtn.contains(ev.target)) {
+      if (!levelMenu.contains(evTarget) && ev.target !== levelBtn && !levelBtn.contains(evTarget)) {
         levelMenu.classList.add('hidden');
         if (levelBtn) levelBtn.setAttribute('aria-expanded', 'false');
       }
@@ -397,7 +398,7 @@
     var nodes = entriesEl.querySelectorAll(':scope > .entry');
     var out = [];
     for (var i = 0; i < nodes.length; i++) {
-      var levelEl = nodes[i];
+      var levelEl = /** @type {HTMLElement} */ (nodes[i]);
       var msgEl = nodes[i].querySelector('.message');
       var sourceEl = nodes[i].querySelector('.source');
       out.push({
@@ -444,7 +445,7 @@
       for (var i = 0; i < labels.length; i++) {
         var span = labels[i].querySelector('span');
         if (span && span.textContent === String(lvl || '')) {
-          var cb = labels[i].querySelector('input[type="checkbox"]');
+          var cb = /** @type {HTMLInputElement | null} */ (labels[i].querySelector('input[type="checkbox"]'));
           if (!cb) return false;
           cb.checked = !cb.checked;
           return dispatchChange(cb);
@@ -458,7 +459,7 @@
       for (var i = 0; i < labels.length; i++) {
         var span = labels[i].querySelector('span');
         if (span && span.textContent === String(src || '')) {
-          var cb = labels[i].querySelector('input[type="checkbox"]');
+          var cb = /** @type {HTMLInputElement | null} */ (labels[i].querySelector('input[type="checkbox"]'));
           if (!cb) return false;
           cb.checked = !cb.checked;
           return dispatchChange(cb);
