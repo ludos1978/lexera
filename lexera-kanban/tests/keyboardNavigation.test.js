@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadIIFE } from './load-iife.js';
 
@@ -5,6 +7,15 @@ function createKeyboardNavigation(documentOverrides = {}) {
   return loadIIFE('keyboard/keyboardNavigation.js', 'LexeraKeyboardNavigation', {
     window: {},
     document: Object.assign({ activeElement: null }, documentOverrides),
+    setTimeout,
+    clearTimeout
+  });
+}
+
+function createKeyboardNavigationJsdom() {
+  return loadIIFE('keyboard/keyboardNavigation.js', 'LexeraKeyboardNavigation', {
+    window,
+    document,
     setTimeout,
     clearTimeout
   });
@@ -198,5 +209,123 @@ describe('keyboard navigation stable board-entity targeting', () => {
 
     expect(preventDefault).toHaveBeenCalledTimes(1);
     expect(deps.reorderRows).toHaveBeenCalledWith(0, 1, false);
+  });
+});
+
+describe('navigateCards skips empty columns between cards', () => {
+  function buildColumnsContainerWithCards(layout) {
+    // layout: array of { colIndex, cardCount } — describes the flat sequence
+    // of columns in board-order. Empty columns get no .card children.
+    document.body.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'columns-container';
+    layout.forEach(({ colIndex, cardCount }) => {
+      const colEl = document.createElement('div');
+      colEl.className = 'column';
+      colEl.setAttribute('data-col-index', String(colIndex));
+      for (let j = 0; j < cardCount; j++) {
+        const cardEl = document.createElement('div');
+        cardEl.className = 'card';
+        cardEl.setAttribute('data-col-index', String(colIndex));
+        cardEl.setAttribute('data-card-index', String(j));
+        cardEl.setAttribute('data-card-id', 'c-' + colIndex + '-' + j);
+        colEl.appendChild(cardEl);
+      }
+      container.appendChild(colEl);
+    });
+    document.body.appendChild(container);
+    return container;
+  }
+
+  function initWithContainer(KeyboardNavigation, container, layout) {
+    return initKeyboardNavigation(KeyboardNavigation, {
+      getElColumnsContainer: () => container,
+      getActiveBoardColumns: () => layout.map(({ colIndex }) => ({ index: colIndex })),
+      getCurrentArrowKeyFocusScrollMode: () => 'disabled',
+      syncSidebarToView: () => {}
+    });
+  }
+
+  it('ArrowRight skips over multiple empty columns to reach the next card', () => {
+    const KeyboardNavigation = createKeyboardNavigationJsdom();
+    const layout = [
+      { colIndex: 5, cardCount: 2 },
+      { colIndex: 9, cardCount: 0 },   // empty column in between
+      { colIndex: 13, cardCount: 0 },  // another empty column in between
+      { colIndex: 17, cardCount: 3 }
+    ];
+    const container = buildColumnsContainerWithCards(layout);
+    initWithContainer(KeyboardNavigation, container, layout);
+
+    const start = container.querySelector('.card[data-col-index="5"][data-card-index="0"]');
+    KeyboardNavigation.focusCard(start);
+
+    KeyboardNavigation.navigateCards('ArrowRight');
+
+    const focused = KeyboardNavigation.getFocusedCardEl();
+    expect(focused).not.toBeNull();
+    expect(focused.getAttribute('data-col-index')).toBe('17');
+    // Same row index (cj=0) preferred when the destination has one.
+    expect(focused.getAttribute('data-card-index')).toBe('0');
+  });
+
+  it('ArrowLeft skips over multiple empty columns to reach the previous card', () => {
+    const KeyboardNavigation = createKeyboardNavigationJsdom();
+    const layout = [
+      { colIndex: 5, cardCount: 2 },
+      { colIndex: 9, cardCount: 0 },
+      { colIndex: 13, cardCount: 0 },
+      { colIndex: 17, cardCount: 3 }
+    ];
+    const container = buildColumnsContainerWithCards(layout);
+    initWithContainer(KeyboardNavigation, container, layout);
+
+    const start = container.querySelector('.card[data-col-index="17"][data-card-index="1"]');
+    KeyboardNavigation.focusCard(start);
+
+    KeyboardNavigation.navigateCards('ArrowLeft');
+
+    const focused = KeyboardNavigation.getFocusedCardEl();
+    expect(focused).not.toBeNull();
+    expect(focused.getAttribute('data-col-index')).toBe('5');
+    expect(focused.getAttribute('data-card-index')).toBe('1');
+  });
+
+  it('ArrowRight falls back to last card of skipped-to column when same row index is absent', () => {
+    const KeyboardNavigation = createKeyboardNavigationJsdom();
+    const layout = [
+      { colIndex: 5, cardCount: 4 },   // start here at cj=3
+      { colIndex: 9, cardCount: 0 },
+      { colIndex: 13, cardCount: 2 }   // only has indices 0,1 — no cj=3
+    ];
+    const container = buildColumnsContainerWithCards(layout);
+    initWithContainer(KeyboardNavigation, container, layout);
+
+    const start = container.querySelector('.card[data-col-index="5"][data-card-index="3"]');
+    KeyboardNavigation.focusCard(start);
+
+    KeyboardNavigation.navigateCards('ArrowRight');
+
+    const focused = KeyboardNavigation.getFocusedCardEl();
+    expect(focused.getAttribute('data-col-index')).toBe('13');
+    expect(focused.getAttribute('data-card-index')).toBe('1');
+  });
+
+  it('ArrowRight stays put when all columns to the right are empty', () => {
+    const KeyboardNavigation = createKeyboardNavigationJsdom();
+    const layout = [
+      { colIndex: 5, cardCount: 2 },
+      { colIndex: 9, cardCount: 0 },
+      { colIndex: 13, cardCount: 0 }
+    ];
+    const container = buildColumnsContainerWithCards(layout);
+    initWithContainer(KeyboardNavigation, container, layout);
+
+    const start = container.querySelector('.card[data-col-index="5"][data-card-index="0"]');
+    KeyboardNavigation.focusCard(start);
+
+    KeyboardNavigation.navigateCards('ArrowRight');
+
+    expect(KeyboardNavigation.getFocusedCardEl()).toBe(start);
   });
 });

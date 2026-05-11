@@ -451,16 +451,19 @@ var LexeraKeyboardNavigation = (function () {
       var columns = _deps.getActiveBoardColumns();
       var colIndices = columns.map(function (c) { return c.index; });
       var curPos = colIndices.indexOf(ci);
-      var targetPos = key === 'ArrowRight' ? curPos + 1 : curPos - 1;
-      if (targetPos >= 0 && targetPos < colIndices.length) {
+      var step = key === 'ArrowRight' ? 1 : -1;
+      var target = null;
+      for (var targetPos = curPos + step; targetPos >= 0 && targetPos < colIndices.length; targetPos += step) {
         var targetColIdx = colIndices[targetPos];
-        var target = columnsContainer.querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="' + cj + '"]');
-        if (!target) {
-          var colCards = columnsContainer.querySelectorAll('.card[data-col-index="' + targetColIdx + '"]');
-          if (colCards.length > 0) target = colCards[colCards.length - 1];
+        target = columnsContainer.querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="' + cj + '"]');
+        if (target) break;
+        var colCards = columnsContainer.querySelectorAll('.card[data-col-index="' + targetColIdx + '"]');
+        if (colCards.length > 0) {
+          target = colCards[colCards.length - 1];
+          break;
         }
-        if (target) focusCard(target);
       }
+      if (target) focusCard(target);
     }
   }
 
