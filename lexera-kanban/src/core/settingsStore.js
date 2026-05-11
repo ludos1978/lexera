@@ -25,7 +25,7 @@ var LexeraSettings = (function () {
 
   var DEFS = {
     // --- Appearance ---
-    visualTheme:          { key: 'lexera-visual-theme',           type: 'string',  default: 'classic' },
+    visualTheme:          { key: 'lexera-visual-theme',           type: 'string',  default: 'warm-paper' },
     theme:                { key: 'lexera-theme',                  type: 'string',  default: 'lexera' },
     uiScale:              { key: 'lexera-ui-scale',               type: 'number',  default: 1 },
     overlayEditorEnabled: { key: 'lexera-overlay-editor-enabled', type: 'boolean', default: true },

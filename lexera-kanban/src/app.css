@@ -26,30 +26,28 @@
  * ═══════════════════════════════════════════════════════════════════ */
 
 
-/* Lexera baseline — "warm paper" design tokens (Lexera v2).
- * Palette sourced from the design handoff bundle (LX.light):
- *   bg #f6f4ef, panel #fbfaf6, surface #fff, ink #1a1816 → #a9a298,
- *   line #e6e1d6 / #d4cdbd, accent #3d3a32 (near-black).
- * Typography: Inter UI + JetBrains Mono (fall back to Poppins + system).
- * Optional themes (data-visual-theme=...) can override these tokens. */
+/* Raw application baseline. This is intentionally plain: the "No style"
+ * visual theme leaves these values alone, while named visual themes opt in
+ * by setting data-visual-theme on :root. */
 :root {
-  --font-color-unified: var(--font-color-mode, #1a1816);
-  --bg-primary: #f6f4ef;
-  --bg-secondary: #fbfaf6;
-  --bg-tertiary: #ffffff;
-  --bg-hover: #efece2;
-  --bg-active: #ebe4cc;
-  --border: #d4cdbd;
-  --text-primary: var(--font-color-unified);
-  --text-muted: #7a746a;
-  --accent: #3d3a32;
-  --accent-hover: #1a1816;
-  --success: #3a5a3e;
-  --error: #7a2f2f;
+  --font-color-mode: #000000;
+  --font-color-unified: var(--font-color-mode, #000000);
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f3f3;
+  --bg-tertiary: #e8e8e8;
+  --bg-hover: #e0e0e0;
+  --bg-active: #cce5ff;
+  --border: #d4d4d4;
+  --text-primary: #333333;
+  --text-muted: #8a8a8a;
+  --accent: #007acc;
+  --accent-hover: #0066b8;
+  --success: #388a6c;
+  --error: #d32f2f;
   --card-bg: #ffffff;
-  --card-border: #e6e1d6;
-  --card-checked: #efece2;
-  --highlight: #fbe89b;  /* search-match highlight (matches LX.light.highlight) */
+  --card-border: #d4d4d4;
+  --card-checked: #f0f0f0;
+  --highlight: #fff4b8;
   --font-ui: 'Inter', 'Söhne', 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-board: 'Inter', 'Söhne', 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -57,12 +55,12 @@
   /* Ink scale (matches LX.light.ink → ink2 → ink3 → ink4 from the v2 bundle).
      Style templates can override any of these to retint every surface that
      references them (text, spines, badges, section labels, etc.). */
-  --ink:  #1a1816;
-  --ink2: #4a463f;
-  --ink3: #7a746a;
-  --ink4: #a9a298;
-  --line: #e6e1d6;
-  --line2: #d4cdbd;
+  --ink:  #333333;
+  --ink2: #555555;
+  --ink3: #8a8a8a;
+  --ink4: #b0b0b0;
+  --line: #d4d4d4;
+  --line2: #c4c4c4;
 
   /* Depth spines (ink-tone when untagged; tag-tint when the container
      carries a tag — handled by the tag-styled layer). Width + color both
@@ -78,7 +76,7 @@
 
   /* Shadows — single muted warm shadow on floating surfaces, nothing on
      fixed chrome. Templates override --shadow-ink to swing tone. */
-  --shadow-ink: #1a1816;
+  --shadow-ink: #000000;
   --shadow-floating:
     0 10px 30px color-mix(in srgb, var(--shadow-ink) 14%, transparent),
     0 2px 6px color-mix(in srgb, var(--shadow-ink) 8%, transparent);
@@ -104,8 +102,8 @@
      vertically as one unit — all stacks in the row scroll together. */
   --stack-width-default: 350px;
 
-  --scrollbar-thumb: #c4bda9;
-  --scrollbar-thumb-hover: #a9a298;
+  --scrollbar-thumb: #c1c1c1;
+  --scrollbar-thumb-hover: #a8a8a8;
   --scrollbar-track: transparent;
   --header-height: 28px;     /* matches v2 TopBar height */
   --app-bottom-inset: 18px;  /* matches v2 StatusBar height */
@@ -161,7 +159,7 @@
   --btn-bg: var(--bg-tertiary);
   --btn-bg-hover: var(--bg-hover);
   --btn-fg: var(--text-primary);
-  --warning: #c5892b;
+  --warning: #e8a317;
   --surface-row-bg: color-mix(in srgb, var(--shadow-ink) 12%, transparent);
   --surface-row-border: rgba(255, 255, 255, 0.04);
   --surface-row-radius: var(--radius-lg);
@@ -195,7 +193,7 @@
   --icon-btn-fg: var(--btn-fg);
   --icon-btn-fg-hover: var(--text-primary);
   --input-bg: #ffffff;
-  --input-border: var(--border);
+  --input-border: #c4c4c4;
   --select-bg: var(--input-bg);
   --select-bg-hover: var(--bg-hover);
   --select-border: var(--input-border);
@@ -244,6 +242,43 @@
   --hierarchy-row-pad-x: 8px;
   --hierarchy-row-gap: 2px;
   --hierarchy-row-radius: 2px;
+}
+
+/* Lexera default — "Warm Paper" design tokens (Lexera v2).
+ * Palette sourced from the design handoff bundle (LX.light):
+ *   bg #f6f4ef, panel #fbfaf6, surface #fff, ink #1a1816 -> #a9a298,
+ *   line #e6e1d6 / #d4cdbd, accent #3d3a32. */
+:root[data-visual-theme="warm-paper"] {
+  --font-color-mode: #1a1816;
+  --font-color-unified: var(--font-color-mode, #1a1816);
+  --bg-primary: #f6f4ef;
+  --bg-secondary: #fbfaf6;
+  --bg-tertiary: #ffffff;
+  --bg-hover: #efece2;
+  --bg-active: #ebe4cc;
+  --border: #d4cdbd;
+  --text-primary: var(--font-color-unified);
+  --text-muted: #7a746a;
+  --accent: #3d3a32;
+  --accent-hover: #1a1816;
+  --success: #3a5a3e;
+  --error: #7a2f2f;
+  --card-bg: #ffffff;
+  --card-border: #e6e1d6;
+  --card-checked: #efece2;
+  --highlight: #fbe89b;
+  --ink:  #1a1816;
+  --ink2: #4a463f;
+  --ink3: #7a746a;
+  --ink4: #a9a298;
+  --line: #e6e1d6;
+  --line2: #d4cdbd;
+  --shadow-ink: #1a1816;
+  --scrollbar-thumb: #c4bda9;
+  --scrollbar-thumb-hover: #a9a298;
+  --warning: #c5892b;
+  --input-bg: #ffffff;
+  --input-border: var(--border);
 }
 
 /* Application shell typography contract:
@@ -1806,7 +1841,7 @@ textarea {
   height: var(--hierarchy-btn-size);
   flex-shrink: 0;
   color: var(--hierarchy-meta-color);
-  opacity: 0;
+  opacity: 0.88;
   cursor: grab;
   transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, opacity 0.14s ease;
   text-align: center;
@@ -1834,11 +1869,9 @@ textarea {
 
 
 /* Spacers for absent grip/presence/action elements: `display: none` so they
- * don't waste horizontal space. The workspace sidebar's visibility toggle
- * settings (data-sidebar-tree-grips, data-sidebar-tree-menus, etc.) handle
- * the show/hide of REAL grip/menu elements; spacers are only rendered when
- * the node definition has grip=false or menu=false, meaning the feature is
- * structurally absent, not just toggled off by a user setting. */
+ * don't waste horizontal space. Spacers are only rendered when the node
+ * definition has grip=false or menu=false, meaning the feature is
+ * structurally absent. Real grip/menu elements stay available. */
 .tree-grip-spacer,
 .tree-meta-presence-spacer,
 .tree-meta-action-spacer {
@@ -1846,36 +1879,25 @@ textarea {
 }
 
 :root[data-sidebar-tree-counts="off"] .board-list .board-item-count,
-:root[data-sidebar-tree-counts="off"] .board-list .tree-count {
+:root[data-sidebar-tree-counts="off"] .board-list .tree-count,
+:root[data-sidebar-tree-counts="off"] .lexera-shared-board-list .board-item-count,
+:root[data-sidebar-tree-counts="off"] .lexera-shared-board-list .tree-count {
   display: none !important;
 }
 :root[data-sidebar-tree-counts="off"] {
   --sidebar-tree-count-col: 0px;
 }
 
-:root[data-sidebar-tree-presence="off"] .board-list .board-presence-badge {
+:root[data-sidebar-tree-presence="off"] .board-list .board-presence-badge,
+:root[data-sidebar-tree-presence="off"] .lexera-shared-board-list .board-presence-badge {
   display: none !important;
 }
 :root[data-sidebar-tree-presence="off"] {
   --sidebar-tree-presence-col: 0px;
 }
 
-:root[data-sidebar-tree-grips="off"] .board-list .tree-grip {
-  display: none !important;
-}
-:root[data-sidebar-tree-grips="off"] {
-  --sidebar-tree-grip-col: 0px;
-}
-
-/* Burger menus in hierarchy tree — hidden by default, shown via setting */
-:root:not([data-sidebar-tree-menus="on"]) .board-list .tree-menu-btn {
-  display: none !important;
-}
-:root:not([data-sidebar-tree-menus="on"]) {
-  --sidebar-tree-action-col: 0px;
-}
 .board-list .tree-menu-btn {
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .board-list .tree-node:hover .tree-menu-btn {
@@ -1883,9 +1905,7 @@ textarea {
 }
 
 /* Workspace-child board row: burger menu always available, replacing the
-   old × button. Override the data-sidebar-tree-menus gate that hides
-   .tree-menu-btn in the board-list — inherits opacity + hover from the
-   shared .tree-menu-btn rules above. */
+   old × button. */
 :root .board-list .board-item .board-item-ws-menu.tree-menu-btn {
   display: inline-flex !important;
   user-select: none;
@@ -1897,7 +1917,7 @@ textarea {
 }
 
 .board-list .tree-grip.entity-drag-icon {
-  opacity: 0;
+  opacity: 0.88;
   border-color: transparent;
   background: transparent;
 }
@@ -1920,13 +1940,6 @@ body.workspace-shell-mode .board-list .tree-grip.entity-drag-icon,
 body.workspace-shell-mode .lexera-shared-board-list .tree-grip.entity-drag-icon {
   display: inline-flex !important;
   opacity: 0.88;
-}
-
-:root:not([data-sidebar-tree-menus="on"]) body.workspace-shell-mode .board-list .tree-menu-btn,
-:root:not([data-sidebar-tree-menus="on"]) body.workspace-shell-mode .lexera-shared-board-list .tree-menu-btn,
-:root[data-sidebar-tree-grips="off"] body.workspace-shell-mode .board-list .tree-grip.entity-drag-icon,
-:root[data-sidebar-tree-grips="off"] body.workspace-shell-mode .lexera-shared-board-list .tree-grip.entity-drag-icon {
-  display: inline-flex !important;
 }
 
 @container sidebar-tree (max-width: 270px) {

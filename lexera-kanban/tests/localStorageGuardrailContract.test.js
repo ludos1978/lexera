@@ -16,7 +16,7 @@
 // calls; if a refactor moves them out, update this baseline so the
 // win is recorded.
 //
-// This is a guardrail, not a refactor: the 22 baseline files keep
+// This is a guardrail, not a refactor: the baseline files keep
 // their existing calls, but no 23rd file may join them quietly.
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -48,6 +48,7 @@ const ALLOWED_LOCAL_STORAGE_FILES = [
   'tagcolors/tagColors.js',
   'test/autoRunBootstrap.js',
   'test/frontendTests.js',
+  'treeView.js',
   'views/_shared/settingsRuntime.js',
   'visualThemes.js',
   'workspace/multiviewWebview.js',

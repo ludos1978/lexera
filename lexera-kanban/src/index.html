@@ -4,6 +4,44 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lexera Kanban</title>
+  <script>
+    (function () {
+      function clean(value) {
+        return String(value || '').trim().toLowerCase()
+          .replace(/[^a-z0-9_-]+/g, '-')
+          .replace(/[_\s]+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-+|-+$/g, '');
+      }
+      function resolve(value) {
+        var raw = String(value || '').trim().toLowerCase();
+        if (!raw || raw === 'default') return 'warm-paper';
+        if (raw === 'no-style' || raw === 'nostyle' || raw === 'none') return 'no-style';
+        if (raw === 'classic' || raw === 'paper' || raw === 'paper-v2' ||
+            raw === 'warm' || raw === 'warm-paper' || raw === 'lexera-v2') return 'warm-paper';
+        if (raw === 'sleek' || raw === 'minimal' || raw === 'modern' ||
+            raw === 'sleek-uniform' || raw === 'sleekuniform' || raw === 'uniform' ||
+            raw === 'gap' || raw === 'gap-highlight' || raw === 'gaphighlight' ||
+            raw === 'lines' || raw === 'line' || raw === 'line-separator') return 'sleek-uniform';
+        if (raw === 'bordered' || raw === 'boxed' || raw === 'outline') return 'no-style';
+        return clean(raw) || 'warm-paper';
+      }
+      function baseFor(id) {
+        if (id === 'warm-paper') return 'warm-paper';
+        if (id === 'sleek-uniform') return 'sleek';
+        return id;
+      }
+      var stored = '';
+      try { stored = localStorage.getItem('lexera-visual-theme') || ''; } catch (_) {}
+      var themeId = resolve(stored);
+      var root = document.documentElement;
+      if (themeId !== 'no-style') {
+        root.setAttribute('data-visual-theme', baseFor(themeId));
+        root.setAttribute('data-visual-theme-variant', themeId);
+        root.setAttribute('data-visual-theme-lineage', themeId);
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="fonts.css">
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="hierarchical.css">

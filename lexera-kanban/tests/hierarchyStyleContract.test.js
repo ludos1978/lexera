@@ -7,6 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const appCss = readFileSync(resolve(__dirname, '..', 'src', 'app.css'), 'utf8');
 const treeViewSource = readFileSync(resolve(__dirname, '..', 'src', 'treeView.js'), 'utf8');
 const indexHtml = readFileSync(resolve(__dirname, '..', 'src', 'index.html'), 'utf8');
+const frontendSettingsHtml = readFileSync(resolve(__dirname, '..', 'src', 'views', 'frontendSettings', 'index.html'), 'utf8');
 const sharedPanels = readFileSync(resolve(__dirname, '..', 'src', 'workspace', 'sharedPanels.js'), 'utf8');
 const orderHelpersSource = readFileSync(resolve(__dirname, '..', 'src', 'board', 'orderHelpers.js'), 'utf8');
 
@@ -89,16 +90,38 @@ describe('hierarchy style contract', () => {
     expect(appCss).toContain('.tree-node[data-tree-structural-role="item"] > .tree-label');
   });
 
-  it('keeps workspace-shell tree action icons visible without hover', () => {
+  it('keeps hierarchy tree action icons visible without settings gates', () => {
     expect(appCss).toContain('body.workspace-shell-mode .board-list,');
     expect(appCss).toContain('--sidebar-tree-action-col: var(--app-icon-button-size);');
     expect(appCss).toContain('--sidebar-tree-grip-col: var(--app-icon-button-size);');
+    expect(appCss).toContain('.board-list .tree-menu-btn {');
+    expect(appCss).toMatch(/\.board-list \.tree-menu-btn\s*\{[\s\S]{0,80}opacity:\s*1/);
+    expect(appCss).toMatch(/\.board-list \.tree-grip\.entity-drag-icon\s*\{[\s\S]{0,80}opacity:\s*0\.88/);
     expect(appCss).toContain('body.workspace-shell-mode .board-list .tree-menu-btn,');
     expect(appCss).toContain('body.workspace-shell-mode .lexera-shared-board-list .tree-menu-btn,');
     expect(appCss).toContain('body.workspace-shell-mode .board-list .tree-grip.entity-drag-icon,');
     expect(appCss).toContain('body.workspace-shell-mode .lexera-shared-board-list .tree-grip.entity-drag-icon {');
     expect(appCss).toContain('display: inline-flex !important;');
-    expect(appCss).toContain(':root:not([data-sidebar-tree-menus="on"]) body.workspace-shell-mode .board-list .tree-menu-btn,');
-    expect(appCss).toContain(':root[data-sidebar-tree-grips="off"] body.workspace-shell-mode .board-list .tree-grip.entity-drag-icon,');
+    expect(appCss).not.toContain('data-sidebar-tree-menus');
+    expect(appCss).not.toContain('data-sidebar-tree-grips');
+  });
+
+  it('applies count and presence visibility settings to workspace board lists too', () => {
+    expect(appCss).toContain(':root[data-sidebar-tree-counts="off"] .lexera-shared-board-list .board-item-count,');
+    expect(appCss).toContain(':root[data-sidebar-tree-counts="off"] .lexera-shared-board-list .tree-count');
+    expect(appCss).toContain(':root[data-sidebar-tree-presence="off"] .lexera-shared-board-list .board-presence-badge');
+    expect(treeViewSource).toContain("localStorage.getItem('lexera-sidebar-tree-display')");
+    expect(treeViewSource).toContain("listen('frontend-setting-changed'");
+  });
+
+  it('keeps frontend hierarchy settings limited to counts and presence', () => {
+    expect(frontendSettingsHtml).toContain('lexera-shared-frontend-settings-sidebar-counts');
+    expect(frontendSettingsHtml).toContain('lexera-shared-frontend-settings-sidebar-presence');
+    expect(frontendSettingsHtml).not.toContain('lexera-shared-frontend-settings-sidebar-grips');
+    expect(frontendSettingsHtml).not.toContain('lexera-shared-frontend-settings-sidebar-menus');
+    expect(sharedPanels).toContain('lexera-shared-frontend-settings-sidebar-counts');
+    expect(sharedPanels).toContain('lexera-shared-frontend-settings-sidebar-presence');
+    expect(sharedPanels).not.toContain('lexera-shared-frontend-settings-sidebar-grips');
+    expect(sharedPanels).not.toContain('lexera-shared-frontend-settings-sidebar-menus');
   });
 });

@@ -30,20 +30,22 @@ function createStyledDocumentElement() {
   return { style };
 }
 
-function createMatchMedia(isDark = false) {
+function createMatchMedia(isDark = false, listeners = []) {
   return function matchMedia() {
     return {
       matches: isDark,
-      addEventListener() {}
+      addEventListener(eventName, handler) {
+        if (eventName === 'change' && typeof handler === 'function') listeners.push(handler);
+      }
     };
   };
 }
 
-function loadThemeWindow({ storage = {}, isDark = false, iframes = [] } = {}) {
+function loadThemeWindow({ storage = {}, isDark = false, iframes = [], mediaListeners = [] } = {}) {
   const documentElement = createStyledDocumentElement();
   const localStorage = createStorage(storage);
   const window = {
-    matchMedia: createMatchMedia(isDark)
+    matchMedia: createMatchMedia(isDark, mediaListeners)
   };
   const document = {
     documentElement,
@@ -62,6 +64,15 @@ function loadThemeWindow({ storage = {}, isDark = false, iframes = [] } = {}) {
 }
 
 describe('themes', () => {
+  it('does not write the legacy palette on OS changes before explicit legacy use', () => {
+    const mediaListeners = [];
+    const { documentElement } = loadThemeWindow({ mediaListeners });
+
+    for (const listener of mediaListeners) listener();
+
+    expect(documentElement.style.getPropertyValue('--bg-primary')).toBe('');
+  });
+
   it('applies the integrated lexera palette to same-origin iframe roots and clears legacy selection', () => {
     const iframeRoot = createStyledDocumentElement();
     const iframes = [

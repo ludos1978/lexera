@@ -398,13 +398,13 @@
     });
     BoardSettingRegistry.register({
       id: 'visualTheme', label: 'Visual Theme', category: 'display',
-      settingsKey: null, actionPrefix: 'set-visual-theme', defaultValue: 'classic',
+      settingsKey: null, actionPrefix: 'set-visual-theme', defaultValue: 'warm-paper',
       getCurrentValue: function () {
-        return (typeof d.getLexeraCurrentVisualThemeId === 'function' && d.getLexeraCurrentVisualThemeId()) || 'classic';
+        return (typeof d.getLexeraCurrentVisualThemeId === 'function' && d.getLexeraCurrentVisualThemeId()) || 'warm-paper';
       },
       handler: function (raw) {
         var applied = d.applyVisualTheme(raw);
-        var label = (applied && applied.name) || d.VISUAL_THEME_LABELS[String(raw || '').trim()] || String(raw || 'classic');
+        var label = (applied && applied.name) || d.VISUAL_THEME_LABELS[String(raw || '').trim()] || String(raw || 'warm-paper');
         d.showNotification('Visual theme: ' + label);
       },
       options: function () {
@@ -490,14 +490,6 @@
     ActionRegistry.register('board', 'toggle-sidebar-presence', function () {
       var next = d.toggleSidebarTreeDisplayOption('presence');
       d.showNotification('Sidebar presence ' + (next.presence ? 'shown' : 'hidden'));
-    });
-    ActionRegistry.register('board', 'toggle-sidebar-grips', function () {
-      var next = d.toggleSidebarTreeDisplayOption('grips');
-      d.showNotification('Sidebar drag icons ' + (next.grips ? 'shown' : 'hidden'));
-    });
-    ActionRegistry.register('board', 'toggle-sidebar-menus', function () {
-      var next = d.toggleSidebarTreeDisplayOption('menus');
-      d.showNotification('Sidebar burger menus ' + (next.menus ? 'shown' : 'hidden'));
     });
     ActionRegistry.register('board', 'toggle-inspector', function () { d.toggleInspector(); });
     ActionRegistry.register('board', 'open-all-inspectors', function () { d.openAllInspectors(); });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { loadIIFE } from './load-iife.js';
 
 function createStorage(initialValues = {}) {
@@ -120,30 +120,71 @@ function loadVisualThemeWindow(options = {}) {
   loadIIFE('visualThemes.js', 'window', {
     window,
     document,
-    localStorage
+    localStorage,
+    ...(options.globals || {})
   });
 
   return { window, document, documentElement, headChildren, localStorage };
 }
 
 describe('visualThemes', () => {
-  it('falls back to classic when a legacy stored alias resolves to a theme not yet discovered', async () => {
-    // 'lines' is a legacy alias the resolver maps to 'sleek-uniform'. Sleek
-    // is no longer in BUILTIN_VISUAL_THEMES — it ships as a user-editable
-    // template seeded from src-tauri/templates/. With no discovery stub
-    // installed, only `classic` is registered, so the fallback wins.
+  it('uses warm-paper as the default and migrates the old classic alias', async () => {
     const { window, documentElement, localStorage } = loadVisualThemeWindow({
-      initialStorage: { 'lexera-visual-theme': 'lines' }
+      initialStorage: { 'lexera-visual-theme': 'classic' }
     });
 
     await flushPromises();
 
-    expect(window.getLexeraCurrentVisualThemeId()).toBe('classic');
-    expect(documentElement.getAttribute('data-visual-theme')).toBe('classic');
-    expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('classic');
-    expect(documentElement.getAttribute('data-visual-theme-lineage')).toBe('classic');
-    expect(localStorage.getItem('lexera-visual-theme')).toBe('classic');
-    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['classic']);
+    expect(window.getLexeraCurrentVisualThemeId()).toBe('warm-paper');
+    expect(documentElement.getAttribute('data-visual-theme')).toBe('warm-paper');
+    expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('warm-paper');
+    expect(documentElement.getAttribute('data-visual-theme-lineage')).toBe('warm-paper');
+    expect(localStorage.getItem('lexera-visual-theme')).toBe('warm-paper');
+    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['warm-paper', 'no-style']);
+  });
+
+  it('keeps no-style free of visual theme attributes and legacy palette writes', async () => {
+    const applyLexeraTheme = vi.fn();
+    const { window, documentElement, localStorage } = loadVisualThemeWindow({
+      initialStorage: { 'lexera-visual-theme': 'no-style' },
+      globals: { applyLexeraTheme }
+    });
+
+    await flushPromises();
+
+    expect(window.getLexeraCurrentVisualThemeId()).toBe('no-style');
+    expect(documentElement.getAttribute('data-visual-theme')).toBe(null);
+    expect(documentElement.getAttribute('data-visual-theme-variant')).toBe(null);
+    expect(documentElement.getAttribute('data-visual-theme-lineage')).toBe(null);
+    expect(localStorage.getItem('lexera-visual-theme')).toBe('no-style');
+    expect(applyLexeraTheme).not.toHaveBeenCalled();
+  });
+
+  it('does not apply the default theme while a requested user theme is still being discovered', async () => {
+    let resolveDiscovery;
+    const discoveryPromise = new Promise(resolve => {
+      resolveDiscovery = resolve;
+    });
+    const { window, documentElement, localStorage } = loadVisualThemeWindow({
+      initialStorage: { 'lexera-visual-theme': 'sleek-uniform' },
+      discovery(command) {
+        if (command === 'discover_visual_themes') return discoveryPromise;
+        return Promise.reject(new Error('Unexpected command: ' + command));
+      }
+    });
+
+    expect(window.getLexeraCurrentVisualThemeId()).toBe('sleek-uniform');
+    expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
+    expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('sleek-uniform');
+    expect(localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
+
+    resolveDiscovery({ rootPath: '/config/lexera/themes', themes: [] });
+    await flushPromises();
+    await flushPromises();
+
+    expect(window.getLexeraCurrentVisualThemeId()).toBe('warm-paper');
+    expect(documentElement.getAttribute('data-visual-theme')).toBe('warm-paper');
+    expect(localStorage.getItem('lexera-visual-theme')).toBe('warm-paper');
   });
 
   it('discovers user themes from the config directory and loads their css inline', async () => {
@@ -193,7 +234,7 @@ describe('visualThemes', () => {
     await flushPromises();
 
     expect(window.getLexeraVisualThemesDirectory()).toBe('/config/lexera/themes');
-    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['classic', 'sleek-uniform', 'midnight-grid']);
+    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['warm-paper', 'no-style', 'sleek-uniform', 'midnight-grid']);
     expect(window.getLexeraCurrentVisualThemeId()).toBe('midnight-grid');
     expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
     expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('midnight-grid');

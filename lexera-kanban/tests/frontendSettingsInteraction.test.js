@@ -73,7 +73,7 @@ describe('LexeraFrontendSettings interactions', () => {
     const setOverlayEditorEnabled = vi.fn();
     const syncMenuCheckStates = vi.fn();
     const applySidebarDisplayOptions = vi.fn();
-    const sidebarOptions = { counts: true, presence: true, grips: false, menus: true };
+    const sidebarOptions = { counts: true, presence: true };
     const LexeraFrontendSettings = loadFrontendSettings(window);
 
     LexeraFrontendSettings.init({
@@ -122,9 +122,7 @@ describe('LexeraFrontendSettings interactions', () => {
     countsToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
     expect(applySidebarDisplayOptions).toHaveBeenCalledWith({
       counts: false,
-      presence: true,
-      grips: false,
-      menus: true
+      presence: true
     });
   });
 
@@ -211,10 +209,11 @@ describe('LexeraFrontendSettings interactions', () => {
     const { window } = dom;
     const applyLexeraVisualTheme = vi.fn(() => ({ id: 'sleek-uniform' }));
     window.LEXERA_VISUAL_THEMES = [
-      { id: 'classic', name: 'No style' },
+      { id: 'warm-paper', name: 'Warm Paper' },
+      { id: 'no-style', name: 'No style' },
       { id: 'sleek-uniform', name: 'Sleek Uniform' }
     ];
-    window.getLexeraCurrentVisualThemeId = vi.fn(() => 'classic');
+    window.getLexeraCurrentVisualThemeId = vi.fn(() => 'warm-paper');
     window.applyLexeraVisualTheme = applyLexeraVisualTheme;
     window.__TAURI__ = {
       core: {
@@ -230,11 +229,56 @@ describe('LexeraFrontendSettings interactions', () => {
 
     const options = runtime.buildFrontendSettingsOptions();
     expect(options.getVisualThemes()).toEqual(window.LEXERA_VISUAL_THEMES);
-    expect(options.getCurrentVisualThemeId()).toBe('classic');
+    expect(options.getCurrentVisualThemeId()).toBe('warm-paper');
 
     options.applyVisualTheme('sleek-uniform');
     expect(applyLexeraVisualTheme).toHaveBeenCalledWith('sleek-uniform');
     expect(window.localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
+  });
+
+  it('settings runtime persists hierarchy display options through the shared settings key', async () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
+    const { window } = dom;
+    const invoke = vi.fn(() => Promise.resolve(null));
+    window.__TAURI__ = {
+      core: { invoke }
+    };
+    window.localStorage.setItem('lexera-sidebar-tree-display', JSON.stringify({
+      counts: false,
+      presence: true,
+      grips: false,
+      menus: false
+    }));
+
+    const runtime = loadIIFE('views/_shared/settingsRuntime.js', 'window.LexeraSettingsRuntime', {
+      window,
+      localStorage: window.localStorage,
+      JSON
+    });
+
+    const options = runtime.buildFrontendSettingsOptions();
+    expect(options.getSidebarDisplayOptions()).toEqual({
+      counts: false,
+      presence: true
+    });
+
+    options.applySidebarDisplayOptions({ counts: true });
+    await Promise.resolve();
+
+    expect(JSON.parse(window.localStorage.getItem('lexera-sidebar-tree-display'))).toEqual({
+      counts: true,
+      presence: true
+    });
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'frontend-setting-changed',
+      payload: {
+        setting: 'sidebarDisplayOptions',
+        value: {
+          counts: true,
+          presence: true
+        }
+      }
+    });
   });
 
   it('settings runtime routes backend notifications through showNotification when present', () => {

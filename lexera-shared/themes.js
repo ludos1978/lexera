@@ -38,7 +38,7 @@ var LEXERA_THEMES = [
   }
 ];
 
-var _lexeraCurrentThemeId = 'lexera';
+var _lexeraCurrentThemeId = null;
 
 function applyLexeraThemePaletteToRoot(root, palette, isDark) {
   if (!root || !root.style || !palette) return;
@@ -95,5 +95,5 @@ function getLexeraCurrentThemeId() {
 
 // Re-apply on OS light/dark switch
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-  applyLexeraTheme(_lexeraCurrentThemeId || 'lexera');
+  if (_lexeraCurrentThemeId) applyLexeraTheme(_lexeraCurrentThemeId);
 });

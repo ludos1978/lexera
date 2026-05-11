@@ -186,8 +186,6 @@
       { separator: true },
       { id: 'toggle-sidebar-counts', label: displayItems[0] ? displayItems[0].label : '' },
       { id: 'toggle-sidebar-presence', label: displayItems[1] ? displayItems[1].label : '' },
-      { id: 'toggle-sidebar-grips', label: displayItems[2] ? displayItems[2].label : '' },
-      { id: 'toggle-sidebar-menus', label: displayItems[3] ? displayItems[3].label : '' },
       { separator: true },
       { id: 'sidebar-fold-all', label: 'Fold All' },
       { id: 'sidebar-unfold-all', label: 'Unfold All' }

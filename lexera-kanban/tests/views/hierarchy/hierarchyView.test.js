@@ -110,6 +110,18 @@ describe('hierarchy view sub-app', () => {
     expect(window.document.querySelector('.ws-list')).toBeNull();
     expect(window.document.querySelector('[data-workspace-id="__all__"]')).toBeNull();
 
+    const menuBtn = window.document.querySelector('#local-boards .tree-node[data-tree-target="board"] .tree-menu-btn');
+    expect(menuBtn).toBeTruthy();
+    menuBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    const openAction = window.document.querySelector('.tree-board-action-menu [data-action="open-tab"]');
+    expect(openAction).toBeTruthy();
+    openAction.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    expect(window.LexeraSubApp.navigate).toHaveBeenCalledWith({
+      type: 'open-board',
+      boardId: 'board-1'
+    });
+    window.LexeraSubApp.navigate.mockClear();
+
     // Click the local board's label → open it. Whole-row click on a
     // board node fires the same navigate path a real click does.
     window.document.querySelector('#local-boards .tree-node[data-tree-target="board"] .tree-label')

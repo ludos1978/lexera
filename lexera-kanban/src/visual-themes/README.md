@@ -1,5 +1,10 @@
 # Visual Themes
 
+Lexera ships two built-in visual theme states:
+
+- `warm-paper` is the default Lexera v2 appearance.
+- `no-style` applies no visual theme attributes, so the raw app CSS baseline remains untouched.
+
 User-installed Lexera themes are discovered from:
 
 - Effective app path: `dirs::config_dir()/lexera/themes/`

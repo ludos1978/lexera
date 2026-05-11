@@ -29,7 +29,8 @@ var LexeraAppearance = (function () {
 
   var THEMES = (typeof LEXERA_THEMES !== 'undefined') ? LEXERA_THEMES : [];
   var VISUAL_THEMES = (typeof LEXERA_VISUAL_THEMES !== 'undefined') ? LEXERA_VISUAL_THEMES : [
-    { id: 'classic', name: 'Classic', description: 'Balanced Lexera layout' }
+    { id: 'warm-paper', name: 'Warm Paper', description: 'Lexera warm-paper board appearance' },
+    { id: 'no-style', name: 'No style', description: 'Do not apply visual theme overrides' }
   ];
   var VISUAL_THEME_LABELS = (typeof LEXERA_VISUAL_THEME_LABELS !== 'undefined') ? LEXERA_VISUAL_THEME_LABELS : {};
 
@@ -61,17 +62,14 @@ var LexeraAppearance = (function () {
 
   var DEFAULT_SIDEBAR_TREE_DISPLAY_OPTIONS = {
     counts: true,
-    presence: true,
-    grips: true
+    presence: true
   };
 
   function normalizeSidebarTreeDisplayOptions(raw) {
     var source = raw && typeof raw === 'object' ? raw : {};
     return {
       counts: source.counts !== false,
-      presence: source.presence !== false,
-      grips: source.grips !== false,
-      menus: !!source.menus
+      presence: source.presence !== false
     };
   }
 
@@ -96,8 +94,8 @@ var LexeraAppearance = (function () {
     if (root) {
       root.setAttribute('data-sidebar-tree-counts', sidebarTreeDisplayOptions.counts ? 'on' : 'off');
       root.setAttribute('data-sidebar-tree-presence', sidebarTreeDisplayOptions.presence ? 'on' : 'off');
-      root.setAttribute('data-sidebar-tree-grips', sidebarTreeDisplayOptions.grips ? 'on' : 'off');
-      root.setAttribute('data-sidebar-tree-menus', sidebarTreeDisplayOptions.menus ? 'on' : 'off');
+      root.removeAttribute('data-sidebar-tree-grips');
+      root.removeAttribute('data-sidebar-tree-menus');
     }
     if (Settings) {
       Settings.set('sidebarTreeDisplay', sidebarTreeDisplayOptions);
@@ -115,9 +113,7 @@ var LexeraAppearance = (function () {
   function getSidebarTreeDisplayOptions() {
     return {
       counts: !!sidebarTreeDisplayOptions.counts,
-      presence: !!sidebarTreeDisplayOptions.presence,
-      grips: !!sidebarTreeDisplayOptions.grips,
-      menus: !!sidebarTreeDisplayOptions.menus
+      presence: !!sidebarTreeDisplayOptions.presence
     };
   }
 
@@ -132,9 +128,7 @@ var LexeraAppearance = (function () {
     var options = getSidebarTreeDisplayOptions();
     return [
       { id: 'toggle-sidebar-counts', label: _callDep('formatMenuToggleLabel', options.counts, 'Counts') },
-      { id: 'toggle-sidebar-presence', label: _callDep('formatMenuToggleLabel', options.presence, 'Presence Badges') },
-      { id: 'toggle-sidebar-grips', label: _callDep('formatMenuToggleLabel', options.grips, 'Drag Icons') },
-      { id: 'toggle-sidebar-menus', label: _callDep('formatMenuToggleLabel', options.menus, 'Burger Menus') }
+      { id: 'toggle-sidebar-presence', label: _callDep('formatMenuToggleLabel', options.presence, 'Presence Badges') }
     ];
   }
 
@@ -144,67 +138,23 @@ var LexeraAppearance = (function () {
   // ─── Theme application ────────────────────────────────────────────────
 
   function applyTheme(themeId) {
-    // Use shared theme applier for base CSS variables
-    if (typeof applyLexeraTheme === 'function') {
-      applyLexeraTheme(themeId);
+    try {
+      if (Settings) Settings.set('theme', 'lexera');
+      else localStorage.removeItem('lexera-theme');
+    } catch (err) {
+      /* ignore legacy storage cleanup failures */
     }
-
-    // Find the active theme and palette for kanban-specific derived tokens
-    var theme = null;
-    for (var i = 0; i < THEMES.length; i++) {
-      if (THEMES[i].id === themeId) { theme = THEMES[i]; break; }
-    }
-    if (!theme) theme = THEMES[0];
-    if (!theme) return;
-
-    var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var palette = isDark ? theme.dark : theme.light;
-    var root = document.documentElement;
-
-    // Derive extended style tokens from the active palette so spacing/colors stay unified.
-    root.style.setProperty('--board-bg', palette['--bg-primary'] || '');
-    root.style.setProperty('--surface-row-bg', palette['--bg-primary'] || '');
-    root.style.setProperty('--surface-row-border', palette['--border'] || '');
-    root.style.setProperty('--surface-stack-bg', palette['--bg-secondary'] || '');
-    root.style.setProperty('--surface-stack-border', palette['--border'] || '');
-    root.style.setProperty('--surface-column-bg', palette['--bg-secondary'] || '');
-    root.style.setProperty('--surface-column-border', palette['--border'] || '');
-    root.style.setProperty('--surface-header-bg', palette['--bg-tertiary'] || palette['--bg-secondary'] || '');
-    root.style.setProperty('--surface-header-border', palette['--border'] || '');
-    root.style.setProperty('--surface-footer-bg', palette['--bg-secondary'] || '');
-    root.style.setProperty('--title-row-color', palette['--text-primary'] || '');
-    root.style.setProperty('--title-stack-color', palette['--text-muted'] || '');
-    root.style.setProperty('--title-column-color', palette['--text-primary'] || '');
-
-    root.style.setProperty('--icon-btn-bg', palette['--bg-tertiary'] || palette['--btn-bg'] || '');
-    root.style.setProperty('--icon-btn-bg-hover', palette['--bg-hover'] || palette['--btn-bg-hover'] || '');
-    root.style.setProperty('--icon-btn-bg-active', 'rgba(0, 122, 204, 0.22)');
-    root.style.setProperty('--icon-btn-border', palette['--text-muted'] || palette['--border'] || '');
-    root.style.setProperty('--icon-btn-border-hover', palette['--text-primary'] || '');
-    root.style.setProperty('--icon-btn-fg', palette['--text-primary'] || palette['--btn-fg'] || '');
-    root.style.setProperty('--icon-btn-fg-hover', palette['--text-primary'] || '');
-
-    // Update theme selector if present
-    var themeSelectors = [
-      document.getElementById('theme-select'),
-      document.getElementById('mgmt-theme-select'),
-      document.getElementById('frontend-settings-theme-select')
-    ];
-    for (var selIndex = 0; selIndex < themeSelectors.length; selIndex++) {
-      var sel = themeSelectors[selIndex];
-      if (sel && sel.value !== theme.id) sel.value = theme.id;
-    }
-
     _callDep('applyBoardSettings');
     _callDep('renderFrontendSettingsPanel');
   }
 
-  // Re-apply kanban-specific derived tokens on OS light/dark switch
-  // (base variables are already re-applied by themes.js listener)
+  // Re-apply the active visual theme on OS light/dark switch. The legacy
+  // palette writer is intentionally not used here; visual themes own the
+  // appearance tokens now.
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-    var themeId = (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
-                  (Settings ? Settings.get('theme') : localStorage.getItem('lexera-theme')) || 'lexera';
-    applyTheme(themeId);
+    var visualTheme = (typeof getLexeraCurrentVisualThemeId === 'function' && getLexeraCurrentVisualThemeId()) ||
+      (Settings ? Settings.get('visualTheme') : localStorage.getItem('lexera-visual-theme')) || 'warm-paper';
+    applyVisualTheme(visualTheme);
   });
 
   // ─── UI scale ─────────────────────────────────────────────────────────
@@ -306,11 +256,9 @@ var LexeraAppearance = (function () {
   // ─── Boot-time apply ──────────────────────────────────────────────────
 
   function applyInitialSettings() {
-    var visualTheme = Settings ? Settings.get('visualTheme') : (localStorage.getItem('lexera-visual-theme') || 'classic');
-    var themeId = Settings ? Settings.get('theme') : (localStorage.getItem('lexera-theme') || 'lexera');
+    var visualTheme = Settings ? Settings.get('visualTheme') : (localStorage.getItem('lexera-visual-theme') || 'warm-paper');
     var uiScaleRaw = Settings ? Settings.get('uiScale') : (localStorage.getItem('lexera-ui-scale') || '0.95');
     applyVisualTheme(visualTheme);
-    applyTheme(themeId);
     _uiScale = normalizeUiScale(uiScaleRaw);
     applyUiScale(_uiScale);
     applySpecialCharactersVisibilitySetting();

@@ -42,7 +42,7 @@ describe('SettingsStore', () => {
 
   describe('get/set', () => {
     it('returns default for unset string setting', () => {
-      expect(Settings.get('visualTheme')).toBe('classic');
+      expect(Settings.get('visualTheme')).toBe('warm-paper');
     });
 
     it('returns default for unset number setting', () => {
@@ -64,9 +64,9 @@ describe('SettingsStore', () => {
     });
 
     it('persists and reads string values', () => {
-      Settings.set('visualTheme', 'classic');
-      expect(Settings.get('visualTheme')).toBe('classic');
-      expect(store['lexera-visual-theme']).toBe('classic');
+      Settings.set('visualTheme', 'no-style');
+      expect(Settings.get('visualTheme')).toBe('no-style');
+      expect(store['lexera-visual-theme']).toBe('no-style');
     });
 
     it('persists and reads number values', () => {

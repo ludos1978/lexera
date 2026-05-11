@@ -34,6 +34,43 @@
     catch (_) { /* localStorage unavailable */ }
   }
 
+  function readJsonLs(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+      return JSON.parse(raw);
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function normalizeSidebarDisplayOptions(raw) {
+    var source = raw && typeof raw === 'object' ? raw : {};
+    return {
+      counts: source.counts !== false,
+      presence: source.presence !== false
+    };
+  }
+
+  function readSidebarDisplayOptions() {
+    var stored = readJsonLs('lexera-sidebar-tree-display', null);
+    if (stored && typeof stored === 'object') {
+      return normalizeSidebarDisplayOptions(stored);
+    }
+    return {
+      counts: getLs('lexera-sidebar-counts', '1') === '1',
+      presence: getLs('lexera-sidebar-presence', '1') === '1'
+    };
+  }
+
+  function writeSidebarDisplayOptions(opts) {
+    var next = normalizeSidebarDisplayOptions(Object.assign(readSidebarDisplayOptions(), opts || {}));
+    try {
+      localStorage.setItem('lexera-sidebar-tree-display', JSON.stringify(next));
+    } catch (_) { /* localStorage unavailable */ }
+    return next;
+  }
+
   function broadcast(event, payload) {
     if (typeof window === 'undefined' || !window.__TAURI__ || !window.__TAURI__.core) return;
     try {
@@ -48,7 +85,8 @@
   // Child settings views now reload that same registry when it is present,
   // but still fall back to a minimal list in plain browser/test contexts.
   var DEFAULT_VISUAL_THEMES = [
-    { id: 'classic', name: 'No style' }
+    { id: 'warm-paper', name: 'Warm Paper' },
+    { id: 'no-style', name: 'No style' }
   ];
 
   function getVisualThemes() {
@@ -68,11 +106,11 @@
         if (current) return String(current);
       } catch (_) { /* ignore theme bridge errors */ }
     }
-    return getLs('lexera-visual-theme', 'classic');
+    return getLs('lexera-visual-theme', 'warm-paper');
   }
 
   function applyVisualTheme(id) {
-    var nextId = String(id || 'classic');
+    var nextId = String(id || 'warm-paper');
     if (typeof window !== 'undefined' &&
         typeof window.applyLexeraVisualTheme === 'function') {
       try {
@@ -142,20 +180,12 @@
 
       // ── Sidebar display options ─────────────────────────────────
       getSidebarDisplayOptions: function () {
-        return {
-          counts: getLs('lexera-sidebar-counts', '1') === '1',
-          presence: getLs('lexera-sidebar-presence', '1') === '1',
-          grips: getLs('lexera-sidebar-grips', '1') === '1',
-          menus: getLs('lexera-sidebar-menus', '1') === '1'
-        };
+        return readSidebarDisplayOptions();
       },
       applySidebarDisplayOptions: function (opts) {
         if (!opts) return;
-        if (typeof opts.counts === 'boolean') setLs('lexera-sidebar-counts', opts.counts ? '1' : '0');
-        if (typeof opts.presence === 'boolean') setLs('lexera-sidebar-presence', opts.presence ? '1' : '0');
-        if (typeof opts.grips === 'boolean') setLs('lexera-sidebar-grips', opts.grips ? '1' : '0');
-        if (typeof opts.menus === 'boolean') setLs('lexera-sidebar-menus', opts.menus ? '1' : '0');
-        broadcast('frontend-setting-changed', { setting: 'sidebarDisplayOptions', value: opts });
+        var next = writeSidebarDisplayOptions(opts);
+        broadcast('frontend-setting-changed', { setting: 'sidebarDisplayOptions', value: next });
       },
 
       // ── Editor toggles ──────────────────────────────────────────

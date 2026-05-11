@@ -25,8 +25,8 @@ var LexeraStateKeyRegistry = {
   'lexera-visual-theme': {
     type: 'string',
     category: 'preference',
-    default: 'classic',
-    description: 'Active visual theme ID (e.g. "classic", "sleek-uniform")',
+    default: 'warm-paper',
+    description: 'Active visual theme ID (e.g. "warm-paper", "no-style", "sleek-uniform")',
     files: ['app.js', 'appearance/appearance.js', 'visualThemes.js'],
     settingsStore: true
   },
@@ -133,7 +133,7 @@ var LexeraStateKeyRegistry = {
     category: 'preference',
     default: {},
     description: 'Sidebar tree display options (show tags, counts, etc.)',
-    files: ['appearance/appearance.js'],
+    files: ['appearance/appearance.js', 'treeView.js', 'views/_shared/settingsRuntime.js'],
     settingsStore: true
   },
 

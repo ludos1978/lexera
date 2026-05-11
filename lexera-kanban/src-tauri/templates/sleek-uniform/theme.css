@@ -5,8 +5,7 @@
  * setting data-visual-theme="sleek" on the document root.
  *
  * All rules in this file are scoped under :root[data-visual-theme="sleek"]
- * so they never leak into the default Lexera (warm paper) baseline
- * defined in app.css.
+ * so they never leak into other visual themes or the raw no-style baseline.
  * ═══════════════════════════════════════════════════════════════════ */
 
 :root[data-visual-theme="sleek"] {

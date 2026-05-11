@@ -64,9 +64,8 @@ Tag groups are the categories defined in `tagColors.js` (status, priority, type,
 #### Sidebar
 | Setting | Key | Default |
 |---------|-----|---------|
-| Show Card Counts | `lexera-sidebar-counts` | `true` |
-| Show Presence Badges | `lexera-sidebar-presence` | `true` |
-| Show Drag Grips | `lexera-sidebar-grips` | `true` |
+| Show Card Counts | `lexera-sidebar-tree-display.counts` | `true` |
+| Show Presence Badges | `lexera-sidebar-tree-display.presence` | `true` |
 | Realtime Sync | `lexera-sidebar-sync` | `true` |
 
 These must persist across page reloads (currently session-only).
