@@ -18,6 +18,7 @@ const webviewMgr = readFileSync(resolve(repoRoot, 'src-tauri', 'src', 'webview_m
 const mainRs = readFileSync(resolve(repoRoot, 'src-tauri', 'src', 'main.rs'), 'utf8');
 const subAppRuntime = readFileSync(resolve(repoRoot, 'src', 'views', '_shared', 'subAppRuntime.js'), 'utf8');
 const hierarchyDragBridge = readFileSync(resolve(repoRoot, 'src', 'shell', 'bridges', 'hierarchyDragBridge.js'), 'utf8');
+const multiviewClient = readFileSync(resolve(repoRoot, 'src', 'shell', 'multiviewClient.js'), 'utf8');
 const embeddedBoardBridge = readFileSync(resolve(repoRoot, 'src', 'shell', 'bridges', 'embeddedBoardBridge.js'), 'utf8');
 const dndListeners = readFileSync(resolve(repoRoot, 'src', 'dragdrop', 'dndListeners.js'), 'utf8');
 const dragDropHandlers = readFileSync(resolve(repoRoot, 'src', 'dragdrop', 'dragDropHandlers.js'), 'utf8');
@@ -67,6 +68,14 @@ describe('cross-window drag/drop routing', () => {
     expect(map[0]).not.toMatch(/hierarchy-entity-drag-end-external/);
     expect(map[0]).not.toMatch(/hierarchy-entity-drop/);
     expect(subAppRuntime).toMatch(/GLOBAL_SUBSCRIBER_EVENTS\[event\][\s\S]{0,160}multiview_broadcast_global_subscribers/);
+  });
+
+  it('hierarchy DnD saves invalidate affected boards without rebroadcasting the full catalog', () => {
+    const installIdx = multiviewClient.search(/function\s+installHierarchyDragBridge\s*\(/);
+    expect(installIdx).toBeGreaterThan(-1);
+    const installBlock = multiviewClient.slice(installIdx, installIdx + 2600);
+    expect(installBlock).toMatch(/hierarchy-board-changed/);
+    expect(installBlock).not.toMatch(/broadcastCatalog\s*\(/);
   });
 
   it('source views route hover/drop directly by source-client coordinates with screen fallback', () => {

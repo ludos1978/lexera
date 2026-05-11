@@ -192,7 +192,7 @@
     }
   }
 
-  function fetchBoardHierarchy(boardId) {
+  function fetchBoardHierarchy(boardId, renderMode) {
     var api = window.LexeraApi;
     if (!api || typeof api.getBoardHierarchy !== 'function') {
       boardHierarchies[boardId] = 'error';
@@ -201,9 +201,11 @@
     boardHierarchies[boardId] = 'loading';
     api.getBoardHierarchy(boardId).then(function (data) {
       boardHierarchies[boardId] = (data && Array.isArray(data.rows)) ? data.rows : [];
+      if (renderMode === 'patch' && patchFromCatalog()) return;
       renderFromCatalog();
     }).catch(function () {
       boardHierarchies[boardId] = 'error';
+      if (renderMode === 'patch' && patchFromCatalog()) return;
       renderFromCatalog();
     });
   }
@@ -220,6 +222,23 @@
     var snap = latestCatalog || {};
     renderTree(snap.boards || [], snap.remoteBoards || [], selectedWorkspaceId);
     refreshActiveHighlight();
+  }
+
+  function patchFromCatalog() {
+    if (!localBoardsEl || !window.TreeView || typeof window.TreeView.patch !== 'function') return false;
+    var snap = latestCatalog || {};
+    var workspaceBoards = selectBoardsForWorkspace(
+      snap.boards || [],
+      snap.remoteBoards || [],
+      selectedWorkspaceId
+    );
+    var patched = window.TreeView.patch(
+      localBoardsEl,
+      workspaceBoards.map(buildBoardNode),
+      { escapeHtml: escapeHtml }
+    );
+    if (patched) refreshActiveHighlight();
+    return !!patched;
   }
 
   function renderTree(boards, remoteBoards, workspaceId) {
@@ -772,9 +791,7 @@
     if (expandedBoardIds[boardId]) {
       // Re-fetch immediately so the user sees the updated structure
       // without having to collapse and re-expand the board.
-      fetchBoardHierarchy(boardId);
-    } else {
-      renderFromCatalog();
+      fetchBoardHierarchy(boardId, 'patch');
     }
   }
 

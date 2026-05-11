@@ -461,5 +461,55 @@ describe('workspaces view sub-app', () => {
       expect(getHierarchy).toHaveBeenCalledTimes(1);
       expect(rowLabels()).toEqual(['R']);
     });
+
+    it('hierarchy-board-changed patches only the affected expanded board', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn()
+      };
+      let fetchCount = 0;
+      const hierarchyVersions = [
+        [{ id: 'r1', title: 'V1', stacks: [] }],
+        [{ id: 'r1', title: 'V2 (after cross-board drop)', stacks: [] }]
+      ];
+      window.LexeraApi = {
+        getBoardHierarchy: vi.fn(() => Promise.resolve({
+          rows: hierarchyVersions[Math.min(fetchCount++, 1)]
+        }))
+      };
+      loadWorkspacesView(window);
+      capturedOpts.onCatalog({
+        boards: [
+          { id: 'b1', title: 'Roadmap' },
+          { id: 'b2', title: 'Sprint' }
+        ],
+        remoteBoards: [],
+        workspaces: []
+      });
+
+      findBoardNode(window, 'b1').querySelector('.tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      function rowLabels() {
+        const entry = findBoardNode(window, 'b1').parentElement;
+        return Array.from(entry.querySelectorAll('.tree-children .tree-row > .tree-label'))
+          .map((n) => n.textContent);
+      }
+      expect(rowLabels()).toEqual(['V1']);
+      const board1Before = findBoardNode(window, 'b1');
+      const board2Before = findBoardNode(window, 'b2');
+
+      capturedOpts.onCustom['hierarchy-board-changed']({ boardId: 'b1' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledTimes(2);
+      expect(findBoardNode(window, 'b1')).toBe(board1Before);
+      expect(findBoardNode(window, 'b2')).toBe(board2Before);
+      expect(rowLabels()).toEqual(['V2 (after cross-board drop)']);
+    });
   });
 });

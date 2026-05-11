@@ -1238,12 +1238,17 @@ describe('hierarchy view sub-app', () => {
       }
       expect(rowLabels()).toEqual(['V1']);
       expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledTimes(1);
+      const boardNodeBefore = window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]');
 
       // Fire the change event the bridge would broadcast after a save.
       capturedOpts.onCustom['hierarchy-board-changed']({ boardId: 'b1' });
       await new Promise((r) => setTimeout(r, 0));
       // Cache invalidated + immediate refetch (board still expanded).
       expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledTimes(2);
+      expect(window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]'))
+        .toBe(boardNodeBefore);
       expect(rowLabels()).toEqual(['V2 (after reorder)']);
     });
 

@@ -139,7 +139,7 @@
     };
   }
 
-  function fetchBoardHierarchy(boardId) {
+  function fetchBoardHierarchy(boardId, renderMode) {
     var api = window.LexeraApi;
     if (!api || typeof api.getBoardHierarchy !== 'function') {
       boardHierarchies[boardId] = 'error';
@@ -148,9 +148,11 @@
     boardHierarchies[boardId] = 'loading';
     api.getBoardHierarchy(boardId).then(function (data) {
       boardHierarchies[boardId] = (data && Array.isArray(data.rows)) ? data.rows : [];
+      if (renderMode === 'patch' && patchLocalBoards()) return;
       rerenderLocalBoards();
     }).catch(function () {
       boardHierarchies[boardId] = 'error';
+      if (renderMode === 'patch' && patchLocalBoards()) return;
       rerenderLocalBoards();
     });
   }
@@ -166,6 +168,17 @@
   function rerenderLocalBoards() {
     renderBoards(localBoardsEl, latestBoardsRendered, localCountEl);
     refreshActiveHighlight();
+  }
+
+  function patchLocalBoards() {
+    if (!localBoardsEl || !window.TreeView || typeof window.TreeView.patch !== 'function') return false;
+    var patched = window.TreeView.patch(
+      localBoardsEl,
+      latestBoardsRendered.map(buildBoardNode),
+      { escapeHtml: escapeHtml }
+    );
+    if (patched) refreshActiveHighlight();
+    return !!patched;
   }
 
   function renderBoards(target, boards, counterEl) {
@@ -738,9 +751,7 @@
     if (!boardId) return;
     delete boardHierarchies[boardId];
     if (expandedBoardIds[boardId]) {
-      fetchBoardHierarchy(boardId);
-    } else {
-      rerenderLocalBoards();
+      fetchBoardHierarchy(boardId, 'patch');
     }
   }
 

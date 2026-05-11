@@ -765,12 +765,10 @@
       getWebviewLabelAtTopPoint: getWebviewLabelAtTopPoint,
       getWebviewRect: getWebviewRect,
       onApplied: function (boardId) {
-        // Nudge the catalog bridge to rebroadcast so every sub-app
-        // sees the new card / column / row / stack order.
-        var c = catalogBridge();
-        if (c && typeof c.broadcastCatalog === 'function') {
-          try { c.broadcastCatalog(); } catch (_) { /* non-fatal */ }
-        }
+        // Entity DnD/rename changes board hierarchy, not the workspace
+        // catalog. `hierarchy-board-changed` already targets the affected
+        // board(s), so avoid a full catalog rebroadcast that makes
+        // workspace/hierarchy panels rebuild the whole tree.
         void boardId;
       }
     });
