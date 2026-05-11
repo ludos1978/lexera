@@ -121,6 +121,13 @@ function buildBoardDom(board, { boardId = 'test-board' } = {}) {
         const colRect = { left: colX, top: yOffset + HEADER_H, right: colX + COL_W, bottom: yOffset + ROW_H, width: COL_W, height: ROW_H - HEADER_H };
         rects.push({ el: colEl, rect: colRect });
 
+        const headerEl = document.createElement('div');
+        headerEl.className = 'column-header';
+        headerEl.textContent = col.title || '';
+        const headerRect = { left: colX, top: yOffset + HEADER_H, right: colX + COL_W, bottom: yOffset + HEADER_H + 20, width: COL_W, height: 20 };
+        rects.push({ el: headerEl, rect: headerRect });
+        colEl.appendChild(headerEl);
+
         const cardsEl = document.createElement('div');
         cardsEl.className = 'column-cards';
         cardsEl.setAttribute('data-col-index', String(flatColIdx));
@@ -128,7 +135,8 @@ function buildBoardDom(board, { boardId = 'test-board' } = {}) {
         cardsEl.setAttribute('data-stack-id', stack.id);
         cardsEl.setAttribute('data-column-id', col.id);
         const cardsTop = yOffset + HEADER_H + 20; // extra for column header
-        const cardsRect = { left: colX, top: cardsTop, right: colX + COL_W, bottom: yOffset + ROW_H, width: COL_W, height: (yOffset + ROW_H) - cardsTop };
+        const cardsBottom = yOffset + ROW_H - 30;
+        const cardsRect = { left: colX, top: cardsTop, right: colX + COL_W, bottom: cardsBottom, width: COL_W, height: cardsBottom - cardsTop };
         rects.push({ el: cardsEl, rect: cardsRect });
 
         let cardY = cardsTop;
@@ -149,6 +157,13 @@ function buildBoardDom(board, { boardId = 'test-board' } = {}) {
           visibleIdx++;
         }
         colEl.appendChild(cardsEl);
+
+        const footerEl = document.createElement('div');
+        footerEl.className = 'column-footer';
+        const footerRect = { left: colX, top: cardsBottom, right: colX + COL_W, bottom: yOffset + ROW_H, width: COL_W, height: 30 };
+        rects.push({ el: footerEl, rect: footerRect });
+        colEl.appendChild(footerEl);
+
         stackEl.appendChild(colEl);
         colX += COL_W;
         flatColIdx++;
@@ -295,7 +310,58 @@ describe('resolveCardDropTarget — drop target hit-testing', () => {
     DDH.setCardDrag(null);
   });
 
-  it('returns null (not a stack target) when hovering over a stack region outside any column', () => {
+  it('returns a main-column append target when hovering over a column header', () => {
+    const board = makeBoard([
+      makeRow('r1', 'Row', [
+        makeStack('s1', 'Stack A', [
+          makeColumn('col-1', 'Col', [
+            makeCard('card-a', 'A'),
+            makeCard('card-b', 'B'),
+            makeCard('card-c', 'C'),
+          ]),
+        ]),
+      ]),
+    ]);
+    buildBoardDom(board);
+    DDH.init(makeDeps({ board }));
+    DDH.setCardDrag({ started: true, el: null, boardId: 'test-board', flatColIndex: 0, cardIndex: 0 });
+
+    // y=35 is inside the column header band (column-cards starts at y=50).
+    const target = DDH.resolveCardDropTarget(100, 35);
+    expect(target).toBeTruthy();
+    expect(target.kind).toBe('main');
+    expect(target.flatColIndex).toBe(0);
+    expect(target.columnId).toBe('col-1');
+    expect(target.insertIdx).toBe(3);
+    expect(target.insertMode).toBe('visible');
+
+    DDH.setCardDrag(null);
+  });
+
+  it('returns a main-column append target when hovering over a column footer', () => {
+    const board = makeBoard([
+      makeRow('r1', 'Row', [
+        makeStack('s1', 'Stack A', [
+          makeColumn('col-1', 'Col', [makeCard('card-a', 'A'), makeCard('card-b', 'B')]),
+        ]),
+      ]),
+    ]);
+    buildBoardDom(board);
+    DDH.init(makeDeps({ board }));
+    DDH.setCardDrag({ started: true, el: null, boardId: 'test-board', flatColIndex: 0, cardIndex: 0 });
+
+    // y=380 is below the cards container in this harness but still inside column.
+    const target = DDH.resolveCardDropTarget(100, 380);
+    expect(target).toBeTruthy();
+    expect(target.kind).toBe('main');
+    expect(target.flatColIndex).toBe(0);
+    expect(target.columnId).toBe('col-1');
+    expect(target.insertIdx).toBe(2);
+
+    DDH.setCardDrag(null);
+  });
+
+  it('returns null when hovering over a stack region outside any column', () => {
     // A card drag hovering over a stack (but not inside any column-cards) must
     // NOT resolve to a stack — per the drop-target hierarchy rules, cards can
     // only land on columns.
@@ -310,16 +376,9 @@ describe('resolveCardDropTarget — drop target hit-testing', () => {
     DDH.init(makeDeps({ board }));
     DDH.setCardDrag({ started: true, el: null, boardId: 'test-board', flatColIndex: 0, cardIndex: 0 });
 
-    // Hover ABOVE all columns (in the stack header band, above column-cards):
-    // column-cards top is 50; stack top is 30; so y=35 is inside the stack but
-    // above all column-cards regions.
-    const target = DDH.resolveCardDropTarget(100, 35);
-    // Old behavior: returned a 'main' target with stackIndex. Our fix: null
-    // because cards are only allowed on columns/between cards.
-    if (target) {
-      expect(target.kind).not.toBe('main');
-      expect(typeof target.stackIndex).not.toBe('number');
-    }
+    // x=290 is inside the stack (width 300) but outside the column (width 280).
+    const target = DDH.resolveCardDropTarget(290, 35);
+    expect(target).toBeNull();
 
     DDH.setCardDrag(null);
   });
@@ -442,6 +501,45 @@ describe('applyCardDropByPoint — end-to-end drop pipeline', () => {
     const [, calledTarget] = moveCardSpy.mock.calls[0];
     expect(calledTarget.flatColIndex).toBe(1);
     expect(calledTarget.columnId).toBe('col-right');
+
+    DDH.setCardDrag(null);
+  });
+
+  it('calls moveCard with append position when dropping on a column header', async () => {
+    const board = makeBoard([
+      makeRow('r1', 'Row', [
+        makeStack('s1', 'Stack', [
+          makeColumn('col-1', 'Col', [
+            makeCard('card-a', 'A'),
+            makeCard('card-b', 'B'),
+            makeCard('card-c', 'C'),
+          ]),
+        ]),
+      ]),
+    ]);
+    buildBoardDom(board);
+    const moveCardSpy = vi.fn().mockResolvedValue();
+    DDH.init(makeDeps({ board, moveCardSpy }));
+    const sourceEl = document.querySelector('.card[data-card-id="card-a"]');
+    sourceEl.classList.add('dragging');
+    DDH.setCardDrag({ started: true, el: sourceEl, boardId: 'test-board', flatColIndex: 0, cardIndex: 0, cardId: 'card-a' });
+
+    const source = {
+      boardId: 'test-board',
+      flatColIndex: 0,
+      cardIndex: 0,
+      cardId: 'card-a',
+      indexMode: 'display',
+      cardIndexMode: 'visible',
+    };
+    const handled = DDH.applyCardDropByPoint(source, 100, 35);
+    expect(handled).toBe(true);
+
+    const [, calledTarget] = moveCardSpy.mock.calls[0];
+    expect(calledTarget.kind).toBe('main');
+    expect(calledTarget.flatColIndex).toBe(0);
+    expect(calledTarget.columnId).toBe('col-1');
+    expect(calledTarget.insertIdx).toBe(3);
 
     DDH.setCardDrag(null);
   });

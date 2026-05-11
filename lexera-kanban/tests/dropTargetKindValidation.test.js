@@ -8,7 +8,7 @@
  *   row    — only above/between/below other rows or in the empty board
  *   stack  — only before/between/after other stacks or in an empty row
  *   column — only before/between/after other columns or in an empty stack
- *   card   — only inside .column-cards (between cards)
+ *   card   — anywhere inside .column (header/footer appends; card area inserts)
  *
  * Header dock buttons (#btn-incoming/#btn-parked/#btn-archived/#btn-trash) are
  * universal valid targets for every kind except 'board'.
@@ -59,18 +59,21 @@ function makeBoardSkeleton() {
   stack.className = 'board-stack';
   const column = document.createElement('div');
   column.className = 'column';
+  const columnHeader = document.createElement('div');
+  columnHeader.className = 'column-header';
   const cardsContainer = document.createElement('div');
   cardsContainer.className = 'column-cards';
   const card = document.createElement('div');
   card.className = 'card';
   cardsContainer.appendChild(card);
+  column.appendChild(columnHeader);
   column.appendChild(cardsContainer);
   stack.appendChild(column);
   rowContent.appendChild(stack);
   row.appendChild(rowContent);
   cc.appendChild(row);
   document.body.appendChild(cc);
-  return { cc, row, rowContent, stack, column, cardsContainer, card };
+  return { cc, row, rowContent, stack, column, columnHeader, cardsContainer, card };
 }
 
 describe('isDropTargetValidForKind — row drag', () => {
@@ -171,6 +174,12 @@ describe('isDropTargetValidForKind — card drag', () => {
   it('accepts hover on a card (descendant of column-cards)', () => {
     const { card } = makeBoardSkeleton();
     stubElementFromPoint(card);
+    expect(DDH.isDropTargetValidForKind('card', 10, 10)).toBe(true);
+  });
+
+  it('accepts hover on a column header', () => {
+    const { columnHeader } = makeBoardSkeleton();
+    stubElementFromPoint(columnHeader);
     expect(DDH.isDropTargetValidForKind('card', 10, 10)).toBe(true);
   });
 

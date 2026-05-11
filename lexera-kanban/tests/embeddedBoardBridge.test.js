@@ -329,6 +329,66 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     );
   });
 
+  it('resolves a cross-view card drop on a column header as column absorb', async () => {
+    const dom = new JSDOM(
+      '<!doctype html><html><head></head><body>' +
+      '<div id="columns-container">' +
+      '<div class="column" data-column-id="col-1">' +
+      '<div class="column-header">Backlog</div>' +
+      '<div class="column-cards" data-col-index="0" data-column-id="col-1">' +
+      '<div class="card" data-card-id="card-existing" data-card-kid="kid-existing"></div>' +
+      '</div>' +
+      '</div>' +
+      '</div>' +
+      '</body></html>',
+      { url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1' }
+    );
+    const { window } = dom;
+    const handlers = {};
+    const dropFn = vi.fn();
+    const invoke = vi.fn(() => Promise.resolve());
+    const header = window.document.querySelector('.column-header');
+    window.document.elementFromPoint = vi.fn(() => header);
+    window.LexeraDashboard = { getActiveBoardId: () => 'board-alpha' };
+    window.__lexeraExternalDnd = { drop: dropFn };
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+    bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn((eventName, handler) => { handlers[eventName] = handler; })
+      }),
+      invoke,
+      handleRequest: vi.fn()
+    });
+
+    const source = { boardId: 'source-board', kind: 'card', entityId: 'card-source' };
+    handlers['external-dnd-drop']({
+      payload: {
+        payload: { source, type: 'tree-card' },
+        x: 50,
+        y: 20
+      }
+    });
+
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'hierarchy-entity-drop',
+      payload: {
+        source,
+        target: { boardId: 'board-alpha', kind: 'column', entityId: 'col-1' }
+      }
+    });
+    expect(dropFn).not.toHaveBeenCalled();
+  });
+
   it('logs receive.no-handler when window.__lexeraExternalDnd is missing at relay time', () => {
     // Same external-dnd-hover firing path, but the receiver hasn't
     // installed __lexeraExternalDnd yet. The bridge must NOT throw

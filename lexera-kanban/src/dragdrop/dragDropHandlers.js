@@ -139,7 +139,8 @@ var LexeraDragDropHandlers = (function () {
   //   row    — above / between / below other rows, or on the empty board
   //   stack  — before / between / after other stacks, or on an empty row
   //   column — before / between / after other columns, or on an empty stack
-  //   card   — only inside .column-cards, before / between / after other cards
+  //   card   — anywhere inside a column; cards area supports precise before /
+  //            between / after slots, header / footer / blank column area appends
   //
   // Header dock buttons (incoming / parked / archive / trash) are universal
   // drop tags accepted for every kind except 'board'.
@@ -212,6 +213,10 @@ var LexeraDragDropHandlers = (function () {
 
   function findColumnCardsContainerAt(mx, my) {
     return findNodeAtPoint(getColumnCardsContainers(), mx, my);
+  }
+
+  function findMainColumnAt(mx, my) {
+    return findNodeAtPoint(getElColumnsContainer().querySelectorAll('.column'), mx, my);
   }
 
   function clearCardDragOverHighlights() {
@@ -365,6 +370,11 @@ var LexeraDragDropHandlers = (function () {
     return cards.length;
   }
 
+  function getRenderedCardAppendIndex(cardsEl) {
+    if (!cardsEl) return 0;
+    return cardsEl.querySelectorAll('.card:not(.dragging)').length;
+  }
+
   function findSidebarCardInsertIndex(mouseY, sidebarColNode) {
     var childContainer = sidebarColNode.querySelector('.tree-children');
     if (!childContainer) return null;
@@ -514,7 +524,9 @@ var LexeraDragDropHandlers = (function () {
       }
     }
 
-    // Cards can only be dropped onto columns or between other cards.
+    // Cards can be dropped anywhere inside a column. Points inside the card
+    // list keep their precise before / between / after slot; points on the
+    // column header, footer, or blank column body append to the end.
     // Sidebar stacks, rows, and boards are NOT valid card drop targets.
 
     var targetContainer = findColumnCardsContainerAt(mx, my);
@@ -537,8 +549,31 @@ var LexeraDragDropHandlers = (function () {
       }
     }
 
+    var targetColumn = findMainColumnAt(mx, my);
+    if (targetColumn) {
+      var targetColumnCards = targetColumn.querySelector('.column-cards[data-col-index]');
+      var targetColumnIndex = targetColumnCards
+        ? parseInt(targetColumnCards.getAttribute('data-col-index'), 10)
+        : parseInt(targetColumn.getAttribute('data-col-index'), 10);
+      if (!isNaN(targetColumnIndex)) {
+        return {
+          kind: 'main',
+          boardId: activeBoardId,
+          flatColIndex: targetColumnIndex,
+          rowId: (targetColumnCards && targetColumnCards.getAttribute('data-row-id')) || targetColumn.getAttribute('data-row-id') || null,
+          stackId: (targetColumnCards && targetColumnCards.getAttribute('data-stack-id')) || targetColumn.getAttribute('data-stack-id') || null,
+          columnId: (targetColumnCards && targetColumnCards.getAttribute('data-column-id')) || targetColumn.getAttribute('data-column-id') || null,
+          indexMode: 'display',
+          insertIdx: getRenderedCardAppendIndex(targetColumnCards),
+          insertMode: 'visible',
+          sidebarNode: null,
+          container: targetColumnCards || null
+        };
+      }
+    }
+
     // Main board stacks and rows are NOT valid card drop targets.
-    // Cards can only land on column-cards containers (columns) or between cards.
+    // Cards can only land inside columns or between cards.
 
     return null;
   }
