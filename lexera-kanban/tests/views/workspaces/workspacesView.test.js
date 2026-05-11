@@ -538,5 +538,67 @@ describe('workspaces view sub-app', () => {
       expect(findBoardNode(window, 'b2')).toBe(board2Before);
       expect(rowLabels()).toEqual(['V2 (after cross-board drop)']);
     });
+
+    // Alt+click on a row / stack / column toggle folds or unfolds every
+    // descendant `.tree-children` container in one go, mirroring the
+    // kanban sidebar behaviour (boardList.js). The clicked node's own
+    // expand state stays put — only descendants change.
+    it('alt+click on a row toggle folds/unfolds all descendants', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn()
+      };
+      const fakeRows = [{
+        id: 'r1', title: 'Backlog',
+        stacks: [{
+          id: 's1', title: 'Frontend',
+          columns: [{
+            id: 'c1', title: 'To do',
+            cards: [{ id: 'card-1', title: 'Wire caret' }]
+          }]
+        }]
+      }];
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: fakeRows })) };
+      loadWorkspacesView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap' }],
+        remoteBoards: [],
+        workspaces: []
+      });
+
+      findBoardNode(window, 'b1').querySelector('.tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const rowNode = window.document.querySelector('#local-boards .tree-row');
+      const rowEntry = rowNode.parentElement;
+      const rowChildren = rowEntry.querySelector('.tree-children');
+      const stackChildren = rowChildren.querySelector('.tree-stack + .tree-children');
+      const columnChildren = stackChildren.querySelector('.tree-column + .tree-children');
+
+      // Sanity: everything is expanded after the board fetch.
+      expect(rowChildren.classList.contains('expanded')).toBe(true);
+      expect(stackChildren.classList.contains('expanded')).toBe(true);
+      expect(columnChildren.classList.contains('expanded')).toBe(true);
+
+      // Alt+click on the row toggle → all descendants collapse, row stays expanded.
+      rowNode.querySelector('.tree-toggle').dispatchEvent(
+        new window.MouseEvent('click', { bubbles: true, cancelable: true, altKey: true })
+      );
+      expect(rowChildren.classList.contains('expanded')).toBe(true);
+      expect(stackChildren.classList.contains('expanded')).toBe(false);
+      expect(columnChildren.classList.contains('expanded')).toBe(false);
+
+      // Alt+click again → all descendants expand back.
+      rowNode.querySelector('.tree-toggle').dispatchEvent(
+        new window.MouseEvent('click', { bubbles: true, cancelable: true, altKey: true })
+      );
+      expect(rowChildren.classList.contains('expanded')).toBe(true);
+      expect(stackChildren.classList.contains('expanded')).toBe(true);
+      expect(columnChildren.classList.contains('expanded')).toBe(true);
+    });
   });
 });

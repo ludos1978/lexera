@@ -1338,5 +1338,65 @@ describe('hierarchy view sub-app', () => {
       expect(rowChildren.classList.contains('expanded')).toBe(true);
       expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledTimes(1);
     });
+
+    // Alt+click on a row / stack / column toggle folds or unfolds every
+    // descendant `.tree-children` container in one go, mirroring the
+    // kanban sidebar behaviour (boardList.js). The clicked node's own
+    // expand state stays put — only descendants change.
+    it('alt+click on a row toggle folds/unfolds all descendants', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn()
+      };
+      const fakeRows = [{
+        id: 'r1', title: 'Backlog',
+        stacks: [{
+          id: 's1', title: 'Frontend',
+          columns: [{ id: 'c1', title: 'To do', cards: [{ id: 'card-1', title: 'Wire caret' }] }]
+        }]
+      }];
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: fakeRows })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const rowNode = window.document.querySelector('#local-boards .tree-row');
+      const rowEntryEl = rowNode.parentElement;
+      const rowChildren = rowEntryEl.querySelector('.tree-children');
+      const stackChildren = rowChildren.querySelector('.tree-stack + .tree-children');
+      const columnChildren = stackChildren.querySelector('.tree-column + .tree-children');
+
+      // Sanity: everything is expanded after the board fetch.
+      expect(rowChildren.classList.contains('expanded')).toBe(true);
+      expect(stackChildren.classList.contains('expanded')).toBe(true);
+      expect(columnChildren.classList.contains('expanded')).toBe(true);
+
+      // Alt+click on the row toggle → all descendants collapse, row stays expanded.
+      rowNode.querySelector('.tree-toggle').dispatchEvent(
+        new window.MouseEvent('click', { bubbles: true, cancelable: true, altKey: true })
+      );
+      expect(rowChildren.classList.contains('expanded')).toBe(true);
+      expect(stackChildren.classList.contains('expanded')).toBe(false);
+      expect(columnChildren.classList.contains('expanded')).toBe(false);
+
+      // Alt+click again → all descendants expand back.
+      rowNode.querySelector('.tree-toggle').dispatchEvent(
+        new window.MouseEvent('click', { bubbles: true, cancelable: true, altKey: true })
+      );
+      expect(rowChildren.classList.contains('expanded')).toBe(true);
+      expect(stackChildren.classList.contains('expanded')).toBe(true);
+      expect(columnChildren.classList.contains('expanded')).toBe(true);
+    });
   });
 });
