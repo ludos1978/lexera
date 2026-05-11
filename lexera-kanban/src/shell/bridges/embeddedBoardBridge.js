@@ -886,6 +886,17 @@
 
     wv.listen('focus-hierarchy-target', function (event) {
       var p = (event && event.payload) || {};
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        try {
+          window.lexeraLog('debug', '[focus-trace] embeddedBoardBridge.receive ' +
+            JSON.stringify({
+              label: wv.label,
+              hasTarget: !!p.target,
+              boardId: p.target && p.target.boardId,
+              cardId: p.target && p.target.cardId
+            }));
+        } catch (_) { /* non-fatal */ }
+      }
       if (p.target) {
         dispatchAsMessage({ type: 'lexera-focus-hierarchy-target', target: p.target });
       }

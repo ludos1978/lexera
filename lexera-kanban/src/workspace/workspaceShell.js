@@ -4610,6 +4610,18 @@
   // the target tab. The embedded board's `focus-hierarchy-target`
   // handler does the unfold + scroll + edit-mode work locally.
   function deliverFocusTargetToFrame(frame, target, options) {
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      try {
+        var tabAttr = frame && frame.getAttribute && frame.getAttribute('data-tab-id');
+        window.lexeraLog('debug', '[focus-trace] shell.deliverToFrame ' +
+          JSON.stringify({
+            hasFrame: !!frame,
+            tabId: tabAttr,
+            boardId: target && target.boardId,
+            cardId: target && target.cardId
+          }));
+      } catch (_) { /* non-fatal */ }
+    }
     if (!frame) return;
     var tabId = frame.getAttribute && frame.getAttribute('data-tab-id');
     if (!tabId) return;
@@ -4618,7 +4630,14 @@
 
   function focusHierarchyTarget(target, boardId, options) {
     options = options || {};
+    function fxLog(stage, info) {
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        try { window.lexeraLog('debug', '[focus-trace] shell.' + stage + ' ' + JSON.stringify(info || {})); }
+        catch (_) { /* non-fatal */ }
+      }
+    }
     if (isHierarchyLauncherWindow()) {
+      fxLog('focusHierarchy.launcher-window', { boardId: boardId });
       openWindow({
         boardId: boardId,
         viewKind: options.viewKind ? normalizeViewKind(options.viewKind) : null,
@@ -4632,8 +4651,10 @@
       preferExisting: true,
       viewKind: options.viewKind
     });
+    fxLog('focusHierarchy.openBoard', { boardId: boardId, hasTab: !!tab, tabId: tab && tab.id });
     if (!tab) return false;
     var frame = getOrCreateFrame(tab, { shouldLoad: true });
+    fxLog('focusHierarchy.frame', { tabId: tab.id, hasFrame: !!frame });
     // Forward only the option keys deliverFocusTargetToFrame needs so
     // unrelated focusHierarchyTarget options don't leak into the frame.
     var deliveryOptions = { edit: !!options.edit };

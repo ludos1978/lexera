@@ -136,6 +136,21 @@
    * @returns {boolean}
    */
   function focusHierarchy(tabId, target, options) {
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      try {
+        var resolvedLabel = multiview && typeof multiview.labelForTabId === 'function'
+          ? multiview.labelForTabId(tabId) : null;
+        window.lexeraLog('debug', '[focus-trace] messageBridge.focusHierarchy ' +
+          JSON.stringify({
+            tabId: tabId,
+            targetLabel: resolvedLabel,
+            hasTauriCore: !!tauriCore(),
+            hasMultiview: !!multiview,
+            boardId: target && target.boardId,
+            cardId: target && target.cardId
+          }));
+      } catch (_) { /* non-fatal */ }
+    }
     return emitToTabId(tabId, 'focus-hierarchy-target', {
       target: target,
       options: options || {}
