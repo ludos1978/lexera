@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-10):** ✓ 2785 frontend passed | 2 skipped (228 files); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`). `--typedefs` gate: OK (30 files in gate after Stages 17j–17t).
+**Last run (2026-05-11):** ✓ 2824 frontend passed | 2 skipped (232 files via `./run-lexera-tests.sh --unit`); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-10). `--typedefs` gate: OK (30 files in gate after Stages 17j–17t).
 
 ## Open Tasks
 
@@ -121,6 +121,10 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 #### Sub-app card title (2026-05-08)
 
 - [x] (done) ~~**all cards show '(no title)' in workspace tree + hierarchy panel**~~ — user reported "all cards show 'no title' (the title of a card is defined by the first text line (non empty or special character) of the card!)". `nodeLabel(card)` in [views/hierarchy/hierarchy.js](lexera-kanban/src/views/hierarchy/hierarchy.js) and [views/workspaces/workspaces.js](lexera-kanban/src/views/workspaces/workspaces.js) was delegating to `LexeraTitleHelpers.resolveBoardLabel` — a board-specific resolver looking at `meta.title → filePath → name`. `KanbanCard` ([lexera-core/src/types.rs:33-47](lexera-core/src/types.rs#L33-L47)) has no `title` field, so the kanban-view title is derived from `content` via `getCardTitle()` in app.js — but the sub-app webviews don't load app.js. Fix: added `LexeraTitleHelpers.resolveCardLabel(card)` mirroring `getCardTitle`'s algorithm (first non-empty line of content, skip image-only lines, strip H1/H2/H3 markers, HTML comments, and `#hidden-internal-*` tags). Honors a pre-derived `card.title` if a caller (e.g. boardCleanup) stashed one. Both `buildCardNode` call sites switched to it. Pinned by `titleHelpersCardLabel.test.js` (12 cases) + typedef interface updated. (commit 833fc6ad)
+
+#### Card-edit click-outside (2026-05-11)
+
+- [x] (done) ~~**clicking outside an editing card (within the kanban view) must save & close the edit; clicking another webview or refocusing the window must NOT close it**~~ — user reported the inline editor only closed via textarea blur, which never fires for clicks on non-focusable empty kanban space, so the edit stayed open. Fix in [inlineCardEditor.js](lexera-kanban/src/editor/inlineCardEditor.js): added a document-level capture-phase mousedown listener that saves & closes when the target is inside `getElColumnsContainer()` but outside the editing card. Dialogs/menus that overlay the board live elsewhere in the DOM, so they don't trigger. Cross-webview clicks never reach this listener (separate Tauri webviews), so focusing another view leaves the edit open. Listener is deregistered on every close path so a later click can't re-fire save. Also flipped the overlay editor's backdrop click from `{ save: false }` to `{ save: true }` per the project's "WE ALWAYS SAVE — to undo a change there is undo!" rule. **Root-cause of "it's not working" round-trip:** initial implementation called `_deps.getElColumnsContainer()` inside the new handler but the dep was never passed at `InlineCardEditor.init({...})` in app.js, so the runtime call silently returned undefined and the close path short-circuited. Wiring added in same commit. Pinned by 5 new interaction tests (mousedown outside card → save; inside card → no-op; outside columns container → no-op; right-click → no-op; listener removed after close), `inlineCardEditorDepsWiringContract.test.js` (asserts every `_deps.X` used in the module is passed at the init call site, verified to fail when the wiring is removed), and `cardEditorOverlayBackdropSavesContract.test.js` (source-level guard against re-introducing `save: false` on the overlay backdrop). Saved rules: `feedback_editing_always_saves`, `feedback_verify_dep_wiring`. (commits 7bd63590 + 2bc008a5)
 
 #### Card-edit scroll drift (2026-05-08)
 
