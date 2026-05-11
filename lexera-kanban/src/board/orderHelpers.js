@@ -788,6 +788,28 @@ var LexeraOrderHelpers = (function () {
 
   function handleEmbeddedHierarchyFocusMessage(event) {
     var data = event && event.data;
+    // Diagnostic — chain trace 2026-05-11 stopped here without
+    // any orderHelpers.navigateInIframe line. Logs every entry so
+    // we can see whether (a) the handler fires for our message
+    // type at all, (b) the embeddedMode gate trips, (c) target is
+    // empty. Only logs when data.type matches one we care about
+    // OR when it's the focus type but a gate bailed — keeps the
+    // log signal-to-noise high (workspace catalogs / other dom
+    // messages aren't relevant here).
+    if (data && data.type === 'lexera-focus-hierarchy-target' &&
+        typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      try {
+        window.lexeraLog('debug', '[focus-trace] orderHelpers.handlerEnter ' +
+          JSON.stringify({
+            embeddedMode: !!_dep('embeddedMode'),
+            hasData: !!data,
+            type: data && data.type,
+            hasTarget: !!(data && data.target),
+            boardId: data && data.target && data.target.boardId,
+            cardId: data && data.target && data.target.cardId
+          }));
+      } catch (_) { /* non-fatal */ }
+    }
     if (!_dep('embeddedMode')) return;
     if (!data || !data.type) return;
     if (data.type === 'lexera-workspace-catalog') {
