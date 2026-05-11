@@ -3,12 +3,28 @@ import { JSDOM } from 'jsdom';
 import { loadIIFE } from './load-iife.js';
 
 function createEditorHarness() {
-  const dom = new JSDOM('<!doctype html><div class="card"><div class="card-content"></div></div>', {
-    pretendToBeVisual: true,
-    url: 'http://127.0.0.1/'
-  });
+  const dom = new JSDOM(
+    '<!doctype html>' +
+      '<div class="columns-container">' +
+        '<div class="column">' +
+          '<div class="column-header"></div>' +
+          '<div class="column-cards">' +
+            '<div class="card" data-card-id="card-1"><div class="card-content"></div></div>' +
+            '<div class="card other-card" data-card-id="card-2"><div class="card-content">Other</div></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="dialog-overlay outside-board"><div class="dialog"><button class="dialog-btn">OK</button></div></div>',
+    {
+      pretendToBeVisual: true,
+      url: 'http://127.0.0.1/'
+    }
+  );
   const { window } = dom;
+  const columnsContainer = window.document.querySelector('.columns-container');
   const cardEl = window.document.querySelector('.card');
+  const otherCardEl = window.document.querySelector('.other-card');
+  const dialogBtn = window.document.querySelector('.dialog-btn');
   const card = { kid: 'card-1', content: 'Original task' };
   const column = { cards: [card] };
   const deps = {
@@ -36,7 +52,9 @@ function createEditorHarness() {
     saveCardEdit: vi.fn(() => Promise.resolve(true)),
     renderCardDisplayState: vi.fn(),
     revertCardDraftLiveSync: vi.fn(() => Promise.resolve(true)),
-    flushDeferredBoardRefresh: vi.fn(() => Promise.resolve(true))
+    flushDeferredBoardRefresh: vi.fn(() => Promise.resolve(true)),
+    getElColumnsContainer: vi.fn(() => columnsContainer),
+    lockBoardScrollHorizontal: vi.fn()
   };
 
   const InlineCardEditor = loadIIFE('editor/inlineCardEditor.js', 'InlineCardEditor', {
@@ -50,7 +68,18 @@ function createEditorHarness() {
     logFrontendIssue: vi.fn()
   });
   InlineCardEditor.init(deps);
-  return { window, cardEl, deps, InlineCardEditor };
+  return { window, cardEl, otherCardEl, dialogBtn, columnsContainer, deps, InlineCardEditor };
+}
+
+function dispatchMousedown(window, target, opts = {}) {
+  const event = new window.MouseEvent('mousedown', {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    ...opts
+  });
+  target.dispatchEvent(event);
+  return event;
 }
 
 describe('InlineCardEditor user interactions', () => {
@@ -112,5 +141,68 @@ describe('InlineCardEditor user interactions', () => {
     expect(deps.renderCardDisplayState).toHaveBeenCalledWith(cardEl, 'Original task');
     expect(deps.revertCardDraftLiveSync).toHaveBeenCalledWith(0, 0, 'Original task');
     expect(deps.flushDeferredBoardRefresh).toHaveBeenCalledWith({ refreshSidebar: true });
+  });
+
+  it('saves and closes on mousedown outside the card but inside the columns container', () => {
+    const { window, cardEl, otherCardEl, deps, InlineCardEditor } = harness;
+
+    InlineCardEditor.enterInlineCardEditMode(cardEl, 0, 0);
+    const textarea = cardEl.querySelector('.card-inline-textarea');
+    textarea.value = 'Edited via click-outside';
+    textarea.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    dispatchMousedown(window, otherCardEl);
+
+    expect(deps.saveCardEdit).toHaveBeenCalledWith(
+      cardEl, 0, 0, 'Edited via click-outside', { preEditScrollLeft: 0 }
+    );
+    expect(deps.setIsEditing).toHaveBeenLastCalledWith(false);
+    expect(InlineCardEditor.getCurrentInlineCardEditor()).toBeNull();
+  });
+
+  it('does NOT close on mousedown inside the editing card', () => {
+    const { window, cardEl, InlineCardEditor, deps } = harness;
+
+    InlineCardEditor.enterInlineCardEditMode(cardEl, 0, 0);
+    const textarea = cardEl.querySelector('.card-inline-textarea');
+
+    dispatchMousedown(window, textarea);
+
+    expect(deps.saveCardEdit).not.toHaveBeenCalled();
+    expect(InlineCardEditor.getCurrentInlineCardEditor()).not.toBeNull();
+  });
+
+  it('does NOT close on mousedown outside the columns container (dialog overlay)', () => {
+    const { window, cardEl, dialogBtn, InlineCardEditor, deps } = harness;
+
+    InlineCardEditor.enterInlineCardEditMode(cardEl, 0, 0);
+
+    dispatchMousedown(window, dialogBtn);
+
+    expect(deps.saveCardEdit).not.toHaveBeenCalled();
+    expect(InlineCardEditor.getCurrentInlineCardEditor()).not.toBeNull();
+  });
+
+  it('ignores right-click (non-primary button) outside the card', () => {
+    const { window, cardEl, otherCardEl, InlineCardEditor, deps } = harness;
+
+    InlineCardEditor.enterInlineCardEditMode(cardEl, 0, 0);
+
+    dispatchMousedown(window, otherCardEl, { button: 2 });
+
+    expect(deps.saveCardEdit).not.toHaveBeenCalled();
+    expect(InlineCardEditor.getCurrentInlineCardEditor()).not.toBeNull();
+  });
+
+  it('removes the outside-mousedown listener after closing so a later click does not re-fire save', () => {
+    const { window, cardEl, otherCardEl, InlineCardEditor, deps } = harness;
+
+    InlineCardEditor.enterInlineCardEditMode(cardEl, 0, 0);
+    dispatchMousedown(window, otherCardEl);
+    expect(deps.saveCardEdit).toHaveBeenCalledTimes(1);
+
+    // After close, another click outside should not invoke saveCardEdit again.
+    dispatchMousedown(window, otherCardEl);
+    expect(deps.saveCardEdit).toHaveBeenCalledTimes(1);
   });
 });

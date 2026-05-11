@@ -521,7 +521,9 @@ var LexeraDashboard = (function () {
     saveCardEdit: function(el, ci, fi, val) { return saveCardEdit(el, ci, fi, val); },
     renderCardDisplayState: function(el, content) { renderCardDisplayState(el, content); },
     revertCardDraftLiveSync: function(ci, fi, orig) { return revertCardDraftLiveSync(ci, fi, orig); },
-    flushDeferredBoardRefresh: function(opts) { return flushDeferredBoardRefresh(opts); }
+    flushDeferredBoardRefresh: function(opts) { return flushDeferredBoardRefresh(opts); },
+    getElColumnsContainer: function() { return getElColumnsContainer(); },
+    lockBoardScrollHorizontal: function(durationMs, targetLeft) { return lockBoardScrollHorizontal(durationMs, targetLeft); }
   });
   var CanvasLayout = window.LexeraCanvasLayout;
   if (CanvasLayout) CanvasLayout.init({
