@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-11):** ✓ 2824 frontend passed | 2 skipped (232 files via `./run-lexera-tests.sh --unit`); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-10). `--typedefs` gate: OK (30 files in gate after Stages 17j–17t).
+**Last run (2026-05-11):** ✓ 2836 frontend passed | 2 skipped (234 files via `./run-lexera-tests.sh --unit`); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-10). `--typedefs` gate: OK (30 files in gate after Stages 17j–17t).
 
 ## Open Tasks
 
@@ -121,6 +121,12 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 #### Sub-app card title (2026-05-08)
 
 - [x] (done) ~~**all cards show '(no title)' in workspace tree + hierarchy panel**~~ — user reported "all cards show 'no title' (the title of a card is defined by the first text line (non empty or special character) of the card!)". `nodeLabel(card)` in [views/hierarchy/hierarchy.js](lexera-kanban/src/views/hierarchy/hierarchy.js) and [views/workspaces/workspaces.js](lexera-kanban/src/views/workspaces/workspaces.js) was delegating to `LexeraTitleHelpers.resolveBoardLabel` — a board-specific resolver looking at `meta.title → filePath → name`. `KanbanCard` ([lexera-core/src/types.rs:33-47](lexera-core/src/types.rs#L33-L47)) has no `title` field, so the kanban-view title is derived from `content` via `getCardTitle()` in app.js — but the sub-app webviews don't load app.js. Fix: added `LexeraTitleHelpers.resolveCardLabel(card)` mirroring `getCardTitle`'s algorithm (first non-empty line of content, skip image-only lines, strip H1/H2/H3 markers, HTML comments, and `#hidden-internal-*` tags). Honors a pre-derived `card.title` if a caller (e.g. boardCleanup) stashed one. Both `buildCardNode` call sites switched to it. Pinned by `titleHelpersCardLabel.test.js` (12 cases) + typedef interface updated. (commit 833fc6ad)
+
+#### Workspace tree polish (2026-05-11)
+
+- [x] (done) ~~**workspace tree adds one indention too much on all levels except the kanban itself; rows and below have the wrong indention**~~ — user reported the workspace + hierarchy panels rendered rows / stacks / columns / cards one indent column too deep. Root cause: the CSS rule that hides the phantom board-level continuation guide on descendants used `> .tree-children` but `.tree-children` is a SIBLING of `.tree-node` (both inside `.tree-entry`), so the selector silently matched nothing and the phantom column reappeared on every descendant. Bug present since 2646d014 — the rule never worked. Fix: replaced `>` with `+` (adjacent sibling combinator) in [workspaces.css](lexera-kanban/src/views/workspaces/workspaces.css) and [hierarchy.css](lexera-kanban/src/views/hierarchy/hierarchy.css); added an inline NOTE warning future readers about the `+` vs `>` pitfall. (commit c2f1a920)
+
+- [x] (done) ~~**alt+click on a workspace fold icon must toggle fold all children (kanban view already works this way)**~~ — user reported the kanban sidebar's alt+click-on-toggle expand-all/collapse-all behaviour (boardList.js:2452-2459) was missing in the workspace + hierarchy panels. Fix: added an alt+click branch to the delegated click handler in [workspaces.js](lexera-kanban/src/views/workspaces/workspaces.js) and [hierarchy.js](lexera-kanban/src/views/hierarchy/hierarchy.js) — for non-board nodes, grabs the clicked node's children container, checks if every descendant `.tree-children` is collapsed, then `TreeView.setDescendantsExpanded(container, allCollapsed)`. The clicked node's own expand state stays put. Boards are excluded: their children rebuild on every `toggleBoardExpand` with `expanded: true` by default, so descendant fold state wouldn't survive a re-render. Pinned by `alt+click on a row toggle folds/unfolds all descendants` test in both `workspacesView.test.js` and `hierarchyView.test.js`. (commit a39629f3)
 
 #### Card-edit click-outside (2026-05-11)
 
