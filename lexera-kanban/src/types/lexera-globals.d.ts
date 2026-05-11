@@ -2215,6 +2215,10 @@ declare global {
     LexeraTestApi: any;
     LexeraApi: any;
     LexeraCalendarRuntime: any;
+    LEXERA_VISUAL_THEMES: any;
+    getLexeraCurrentVisualThemeId: any;
+    applyLexeraVisualTheme: any;
+    ContextMenuBuilders: any;
     LexeraDragDropHandlers: any;
     LexeraOrderHelpers: any;
     LexeraRowStackMenu: any;
@@ -2298,6 +2302,10 @@ declare global {
   function showInFinder(...args: any[]): any;
   function logFrontendIssue(...args: any[]): any;
   function lexeraLog(...args: any[]): any;
+  // Vendor IIFE bound to bare-name access in settingsRuntime.js
+  // (loaded via plain <script> tag, doesn't carry `window.` prefix
+  // at every call site).
+  const ContextMenuBuilders: any;
 
   // Custom property the shell stashes on a side-dock header DOM
   // node so it can match the centre-tree overflow header lookup.
