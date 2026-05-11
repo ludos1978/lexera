@@ -2219,6 +2219,7 @@ declare global {
     getLexeraCurrentVisualThemeId: any;
     applyLexeraVisualTheme: any;
     ContextMenuBuilders: any;
+    LexeraInspectorTestApi: any;
     LexeraDragDropHandlers: any;
     LexeraOrderHelpers: any;
     LexeraRowStackMenu: any;

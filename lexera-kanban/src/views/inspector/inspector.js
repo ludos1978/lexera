@@ -53,8 +53,11 @@
   procInfoEl.appendChild(renderRow('User agent', navigator.userAgent.substring(0, 100)));
   procInfoEl.appendChild(renderRow('Platform', navigator.platform));
   procInfoEl.appendChild(renderRow('CPU cores', String(navigator.hardwareConcurrency || '?')));
-  procInfoEl.appendChild(renderRow('Memory (heap)', performance.memory
-    ? Math.round(performance.memory.usedJSHeapSize / 1024 / 1024) + ' MB'
+  // Chrome / V8 non-standard `performance.memory` extension — used only
+  // for the inspector readout, gracefully falls back when unavailable.
+  var perfMem = /** @type {any} */ (performance).memory;
+  procInfoEl.appendChild(renderRow('Memory (heap)', perfMem
+    ? Math.round(perfMem.usedJSHeapSize / 1024 / 1024) + ' MB'
     : 'unavailable'));
   procInfoEl.appendChild(renderRow('Timestamp', new Date().toISOString()));
 
@@ -67,7 +70,7 @@
       invoke('multiview_list'),
       invoke('multiview_list_health').catch(function () { return {}; })
     ]).then(function (results) {
-      var list = results[0];
+      var list = /** @type {any[]} */ (results[0]);
       lastHealth = results[1] || {};
       lastList = list;
       webviewCountEl.textContent = '(' + list.length + ')';
@@ -93,7 +96,7 @@
     });
   }
   webviewTbody.addEventListener('click', function (e) {
-    var btn = e.target.closest('button.destroy-btn');
+    var btn = /** @type {Element} */ (e.target).closest('button.destroy-btn');
     if (!btn) return;
     var label = btn.dataset.label;
     var isReload = btn.dataset.reload === '1';

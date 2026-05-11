@@ -57,6 +57,7 @@
     "src/core/moduleRuntime.js",
     "src/views/files/files.js",
     "src/views/_shared/calendarRuntime.js",
-    "src/views/_shared/settingsRuntime.js"
+    "src/views/_shared/settingsRuntime.js",
+    "src/views/inspector/inspector.js"
   ]
 }
