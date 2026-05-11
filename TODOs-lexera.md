@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-11):** ✓ 2842 frontend passed | 2 skipped (234 files via `./run-lexera-tests.sh --unit`); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-10). `--typedefs` gate: OK (30 files in gate after Stages 17j–17t).
+**Last run (2026-05-11):** ✓ 2865 frontend passed | 2 skipped (235 files via `npx vitest run` from `lexera-kanban/`); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-10). `--typedefs` gate: OK (30 files in gate after Stages 17j–17t).
 
 ## Open Tasks
 
@@ -333,5 +333,6 @@ Locked down by `lexera-kanban/tests/*.test.js` so future drift fails at test tim
 - `backendStatusBridge.test.js` (12 assertions) — backend-status bridge describe/render/install
 - `indexHtmlScriptTagsContract.test.js` (4 assertions) — every `<script src>` resolves, non-empty, non-duplicated
 - `managementLogViewerScriptTagContract.test.js` (12 assertions) — every host HTML loading `management.js` also loads `managementLogViewer.js` first
+- `rustErrorTypeBaselineContract.test.js` (23 assertions) — every Rust domain crate uses `thiserror = "2"`, no `anyhow` / `eyre` / `snafu` / `miette` ever sneaks in, and the 8 known domain error enums keep their `#[derive(thiserror::Error)]`
 
 ## Open Tasks
