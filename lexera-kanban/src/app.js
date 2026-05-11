@@ -1289,6 +1289,12 @@ var LexeraDashboard = (function () {
     getHierarchyControllerApi: function () { return getHierarchyControllerApi(); },
     TreeView: TreeView,
     navigateToSearchResult: function (r) { return navigateToSearchResult(r); },
+    // Canonical entity lookup — used by the embedded-iframe focus path
+    // in orderHelpers so a single function handles BOTH the kid and
+    // Loro id card forms (Stage post-2026-05-11 unification).
+    findBoardEntityElement: function (target) { return findBoardEntityElement(target); },
+    focusCard: function (el) { return focusCard(el); },
+    focusBoardEntity: function (el) { return focusBoardEntity(el); },
     requestFileInfo: function (b, f) { return requestFileInfo(b, f); },
     resolveMarkdownRelativeTargets: function (c, f) { return resolveMarkdownRelativeTargets(c, f); },
     parseMarkdownTarget: function (r) { return parseMarkdownTarget(r); },

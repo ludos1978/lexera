@@ -727,38 +727,17 @@ var LexeraOrderHelpers = (function () {
         }
       },
       focusHierarchyTargetLocally: function (t) {
-        var c = document.getElementById('columns-container');
-        if (!c) return false;
-        var el = null;
-        if (t.cardId) el = c.querySelector('.card[data-card-id="' + t.cardId + '"]');
-        if (!el && typeof t.columnIndex === 'number' && typeof t.cardIndex === 'number') {
-          el = c.querySelector('.card[data-col-index="' + t.columnIndex + '"][data-card-index="' + t.cardIndex + '"]');
-        }
-        if (!el && t.columnId) el = c.querySelector('.column[data-column-id="' + t.columnId + '"]');
-        if (!el && typeof t.columnIndex === 'number') {
-          var cardsEl = c.querySelector('.column-cards[data-col-index="' + t.columnIndex + '"]');
-          el = cardsEl && typeof cardsEl.closest === 'function' ? cardsEl.closest('.column') : null;
-        }
-        if (!el && t.stackId) el = c.querySelector('.board-stack[data-stack-id="' + t.stackId + '"]');
-        if (!el && t.rowId) el = c.querySelector('.board-row[data-row-id="' + t.rowId + '"]');
-        if (!el && typeof t.rowIndex === 'number' && typeof t.stackIndex === 'number' && typeof t.colLocalIndex === 'number') {
-          el = c.querySelector(
-            '.column[data-row-index="' + t.rowIndex + '"][data-stack-index="' + t.stackIndex + '"][data-col-local-index="' + t.colLocalIndex + '"]'
-          );
-        }
-        if (!el && typeof t.rowIndex === 'number' && typeof t.stackIndex === 'number') {
-          el = c.querySelector(
-            '.board-stack[data-row-index="' + t.rowIndex + '"][data-stack-index="' + t.stackIndex + '"]'
-          );
-        }
-        if (!el && typeof t.rowIndex === 'number') {
-          el = c.querySelector('.board-row[data-row-index="' + t.rowIndex + '"]');
-        }
-        if (!el && t.brokenSrc) {
-          var broken = c.querySelector('[data-file-path="' + t.brokenSrc + '"]') ||
-                       c.querySelector('[data-include-path="' + t.brokenSrc + '"]');
-          if (broken) el = broken.closest('.card') || broken.closest('.column') || broken;
-        }
+        // Canonical lookup — boardSearch's findBoardEntityElement
+        // tries every selector path (data-card-kid + data-card-id +
+        // indices + columnId + stackId + rowId + brokenSrc fallback).
+        // This embedded-iframe path used to duplicate ~40 lines of
+        // selector logic inline AND was missing the data-card-kid
+        // lookup, so workspace-tree clicks (which send the kid form)
+        // never focused. User report 2026-05-11: "dont we have a
+        // function to focus something already? where is it, is it
+        // used everywhere where we need to focus something". Yes —
+        // and now it is.
+        var el = _callDep('findBoardEntityElement', t);
         if (!el) return false;
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         if (el.classList.contains('card')) {

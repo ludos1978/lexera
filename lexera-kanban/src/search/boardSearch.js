@@ -216,7 +216,20 @@ var LexeraBoardSearch = (function () {
     if (!target || !getElColumnsContainer()) return null;
 
     if (target.cardId) {
-      var byCardId = getElColumnsContainer().querySelector('.card[data-card-id="' + escapeAttr(String(target.cardId)) + '"]');
+      var cardIdStr = escapeAttr(String(target.cardId));
+      // Cards carry BOTH `data-card-id` (the Loro container id, shape
+      // "crdt-N-…") AND `data-card-kid` (the persistent 8-char hex id
+      // backend logs report as `state_kids`). Callers source the id
+      // from different places — the workspace tree's data-tree-id is
+      // populated from `card.kid || card.id` (commit b3f17185), so
+      // a workspace-click target arrives as the kid form. The kanban
+      // search-result target arrives as the Loro id. Try kid first
+      // (workspace-click + most other callers), fall back to the
+      // Loro id (legacy search-result path). Same id-OR-kid fallback
+      // `findColumnRefByStablePath` uses for kanban-internal moves.
+      var byCardKid = getElColumnsContainer().querySelector('.card[data-card-kid="' + cardIdStr + '"]');
+      if (byCardKid) return byCardKid;
+      var byCardId = getElColumnsContainer().querySelector('.card[data-card-id="' + cardIdStr + '"]');
       if (byCardId) return byCardId;
     }
 

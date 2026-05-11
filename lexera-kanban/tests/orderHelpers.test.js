@@ -157,6 +157,13 @@ describe('orderHelpers.handleEmbeddedHierarchyFocusMessage', () => {
       },
       focusBoardEntity: vi.fn(),
       focusCard,
+      // The embedded-iframe focus path now delegates to the canonical
+      // findBoardEntityElement (defined in boardSearch.js, exposed via
+      // app.js wiring). In test fixtures we mock it to mirror what the
+      // production implementation would return for this target shape.
+      findBoardEntityElement(target) {
+        return target && target.cardId === 'card-1' ? cardEl : null;
+      },
       navigateToHierarchyTarget: routeThroughWorkspaceNavigation
     });
 
@@ -225,7 +232,10 @@ describe('orderHelpers.handleEmbeddedHierarchyFocusMessage', () => {
         return { id: 'board-1' };
       },
       focusBoardEntity: vi.fn(),
-      focusCard
+      focusCard,
+      findBoardEntityElement(target) {
+        return target && target.cardId === 'card-1' ? cardEl : null;
+      }
     });
 
     expect(typeof dashboardNavigateHandler).toBe('function');
@@ -282,7 +292,16 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
         return { id: 'board-1' };
       },
       focusBoardEntity,
-      focusCard
+      focusCard,
+      // Mock the canonical lookup: 'card-hidden' is intentionally
+      // not in the DOM, so findBoardEntityElement falls through to
+      // the columnId branch (mirroring its real selector chain:
+      // cardId → columnIndex/cardIndex → columnId → ...).
+      findBoardEntityElement(target) {
+        if (!target) return null;
+        if (target.columnId === 'col-live') return columnEl;
+        return null;
+      }
     });
 
     const result = await EmbeddedOrderHelpers.navigateHierarchyTargetInIframe({
@@ -337,7 +356,12 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
         return { id: 'board-1' };
       },
       focusBoardEntity,
-      focusCard
+      focusCard,
+      // Mock the canonical lookup: visible column/card indices match.
+      findBoardEntityElement(target) {
+        if (target && target.columnIndex === 7 && target.cardIndex === 3) return cardEl;
+        return null;
+      }
     });
 
     const result = await EmbeddedOrderHelpers.navigateHierarchyTargetInIframe({
