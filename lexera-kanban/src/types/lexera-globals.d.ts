@@ -2221,6 +2221,7 @@ declare global {
     ContextMenuBuilders: any;
     LexeraInspectorTestApi: any;
     LexeraLogTestApi: any;
+    LexeraDebugWindow: any;
     LexeraDragDropHandlers: any;
     LexeraOrderHelpers: any;
     LexeraRowStackMenu: any;

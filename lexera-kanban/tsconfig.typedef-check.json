@@ -59,6 +59,7 @@
     "src/views/_shared/calendarRuntime.js",
     "src/views/_shared/settingsRuntime.js",
     "src/views/inspector/inspector.js",
-    "src/views/log/log.js"
+    "src/views/log/log.js",
+    "src/views/debug/debug.js"
   ]
 }

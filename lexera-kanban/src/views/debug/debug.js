@@ -119,7 +119,7 @@
     // changes label + behaviour. We never disable it during recording
     // because we WANT the user to be able to stop early. The handler
     // routes off the data-debug-action attribute.
-    var btn = document.querySelector('[data-debug-action="profile-render"]');
+    var btn = /** @type {HTMLButtonElement | null} */ (document.querySelector('[data-debug-action="profile-render"]'));
     if (btn) {
       btn.disabled = false;
       btn.textContent = isRunning ? 'Stop now' : 'Record render trace';
@@ -131,7 +131,7 @@
   // button still works when index.html ships without the field
   // (older debug-window builds).
   function readProfileDurationMs() {
-    var input = document.querySelector('[data-debug-profile-duration]');
+    var input = /** @type {HTMLInputElement | null} */ (document.querySelector('[data-debug-profile-duration]'));
     if (!input) return 5000;
     var seconds = parseFloat(input.value);
     if (!isFinite(seconds) || seconds <= 0) return 5000;
@@ -228,7 +228,7 @@
       var payload = (event && event.payload) || {};
       _profileState.running = false;
       _profileState.lastPayload = payload;
-      var copyBtn = document.querySelector('[data-debug-profile-copy]');
+      var copyBtn = /** @type {HTMLButtonElement | null} */ (document.querySelector('[data-debug-profile-copy]'));
       if (copyBtn) copyBtn.disabled = false;
       var entries = Array.isArray(payload.entries) ? payload.entries : [];
       var events = Array.isArray(payload.events) ? payload.events : [];
@@ -331,7 +331,8 @@
   // `data-debug-action` attribute.
   function bindActions() {
     document.body.addEventListener('click', function (e) {
-      var btn = e.target && e.target.closest ? e.target.closest('[data-debug-action]') : null;
+      var evTarget = /** @type {Element | null} */ (e.target);
+      var btn = evTarget && evTarget.closest ? evTarget.closest('[data-debug-action]') : null;
       if (!btn) return;
       var action = btn.getAttribute('data-debug-action');
       if (action === 'toggle-overlays') return toggleOverlays();
