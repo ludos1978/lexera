@@ -966,7 +966,7 @@ var LexeraDashboard = (function () {
   function applyVisualTheme(themeId) { return Appearance ? Appearance.applyVisualTheme(themeId) : null; }
   function applyTheme(themeId) { if (Appearance) Appearance.applyTheme(themeId); }
   function applySidebarTreeDisplayOptions(opts) { return Appearance ? Appearance.applySidebarTreeDisplayOptions(opts) : opts; }
-  function getSidebarTreeDisplayOptions() { return Appearance ? Appearance.getSidebarTreeDisplayOptions() : { counts: true, presence: true, grips: true }; }
+  function getSidebarTreeDisplayOptions() { return Appearance ? Appearance.getSidebarTreeDisplayOptions() : { counts: true, presence: true }; }
   function toggleSidebarTreeDisplayOption(key) { return Appearance ? Appearance.toggleSidebarTreeDisplayOption(key) : getSidebarTreeDisplayOptions(); }
   function buildSidebarHierarchyDisplayMenuItems() { return Appearance ? Appearance.buildSidebarHierarchyDisplayMenuItems() : []; }
   function normalizeUiScale(value) { return Appearance ? Appearance.normalizeUiScale(value) : 1; }
@@ -5464,6 +5464,70 @@ var LexeraDashboard = (function () {
           'Failed to reload active board after hierarchy-board-changed', err);
       });
     });
+
+    // Workspace tree burger-menu action dispatch (user contract
+    // 2026-05-11: "an element in the workspace view must have the
+    // same burger menu items as it has in the kanban view"). The
+    // workspace tree builds the items list locally (mirror of
+    // contextMenuBuilders.js scopes) and broadcasts the chosen
+    // action via `hierarchy-entity-menu-action`. The kanban frame
+    // resolves entityId → kanban-local indices via the DOM and
+    // dispatches through ActionRegistry — same path the kanban's
+    // own native context menu uses.
+    window.addEventListener('message', function (event) {
+      var data = event && event.data;
+      if (!data || data.type !== 'lexera-hierarchy-entity-menu-action') return;
+      if (!data.kind || !data.entityId || !data.action) return;
+      if (data.boardId && data.boardId !== activeBoardId) return;
+      if (!ActionRegistry) return;
+      // Resolve entity → kanban-local indices via the canonical DOM
+      // lookup. The workspace's `runEntityAction` fires
+      // focus-hierarchy-target BEFORE this message, so the entity's
+      // DOM is in view and findBoardEntityElement returns a hit.
+      var el = (typeof findBoardEntityElement === 'function')
+        ? findBoardEntityElement({
+            cardId:   data.kind === 'card'   ? data.entityId : null,
+            columnId: data.kind === 'column' ? data.entityId : null,
+            stackId:  data.kind === 'stack'  ? data.entityId : null,
+            rowId:    data.kind === 'row'    ? data.entityId : null
+          })
+        : null;
+      if (!el) {
+        logFrontendIssue('warn', 'hierarchy-entity-menu-action.lookup',
+          'Could not resolve entity element', { kind: data.kind, entityId: data.entityId });
+        return;
+      }
+      function intAttr(name) {
+        var v = el.getAttribute(name);
+        var n = v == null ? NaN : parseInt(v, 10);
+        return isNaN(n) ? undefined : n;
+      }
+      var ctx = {};
+      var rowIdx = intAttr('data-row-index');
+      var stackIdx = intAttr('data-stack-index');
+      var colLocalIdx = intAttr('data-col-local-index');
+      var colIdx = intAttr('data-col-index');
+      var cardIdx = intAttr('data-card-index');
+      if (typeof rowIdx === 'number') ctx.rowIdx = rowIdx;
+      if (typeof stackIdx === 'number') ctx.stackIdx = stackIdx;
+      if (typeof colLocalIdx === 'number') ctx.colLocalIdx = colLocalIdx;
+      if (typeof colIdx === 'number') ctx.colIndex = colIdx;
+      if (typeof cardIdx === 'number') ctx.cardIndex = cardIdx;
+      var rowId = el.getAttribute('data-row-id');
+      var stackId = el.getAttribute('data-stack-id');
+      var columnId = el.getAttribute('data-column-id');
+      var cardId = el.getAttribute('data-card-kid') || el.getAttribute('data-card-id');
+      if (rowId) ctx.rowId = rowId;
+      if (stackId) ctx.stackId = stackId;
+      if (columnId) ctx.columnId = columnId;
+      if (cardId) ctx.cardId = cardId;
+      try {
+        ActionRegistry.dispatch(data.kind, data.action, ctx);
+      } catch (err) {
+        logFrontendIssue('warn', 'hierarchy-entity-menu-action.dispatch',
+          'ActionRegistry.dispatch failed', err);
+      }
+    });
   }
 
   function ensureCardAutoSizeObserver() {
@@ -6617,7 +6681,7 @@ var LexeraDashboard = (function () {
       getVisualThemes: function () { return Array.isArray(VISUAL_THEMES) ? VISUAL_THEMES : []; },
       getCurrentVisualThemeId: function () {
         return (typeof getLexeraCurrentVisualThemeId === 'function' && getLexeraCurrentVisualThemeId()) ||
-          (Settings ? Settings.get('visualTheme') : localStorage.getItem('lexera-visual-theme')) || 'classic';
+          (Settings ? Settings.get('visualTheme') : localStorage.getItem('lexera-visual-theme')) || 'warm-paper';
       },
       applyVisualTheme: function (id) { applyVisualTheme(id); },
       // UI scale
@@ -6679,6 +6743,32 @@ var LexeraDashboard = (function () {
       renderFrontendSettingsPanel();
     });
   }
+
+  function installFrontendSettingsBroadcastListener() {
+    var tauri = window.__TAURI__ || null;
+    var eventApi = tauri && tauri.event ? tauri.event : null;
+    var currentWebview = tauri && tauri.webview && typeof tauri.webview.getCurrentWebview === 'function'
+      ? tauri.webview.getCurrentWebview() : null;
+    var listen = currentWebview && typeof currentWebview.listen === 'function'
+      ? function (eventName, handler) { return currentWebview.listen(eventName, handler); }
+      : eventApi && typeof eventApi.listen === 'function'
+        ? function (eventName, handler) { return eventApi.listen(eventName, handler); }
+        : null;
+    if (!listen) return;
+    try {
+      listen('frontend-setting-changed', function (event) {
+        var payload = event && event.payload ? event.payload : null;
+        if (!payload || typeof payload !== 'object') return;
+        if (payload.setting === 'sidebarDisplayOptions') {
+          applySidebarTreeDisplayOptions(payload.value || {});
+        }
+      });
+    } catch (err) {
+      logFrontendIssue('warn', 'frontend.settings', 'Failed to listen for frontend settings changes', err);
+    }
+  }
+
+  installFrontendSettingsBroadcastListener();
 
   function initFrontendSettingsPanel(panelEl) {
     if (FrontendSettings) return FrontendSettings.init(buildFrontendSettingsOptions(), panelEl);
