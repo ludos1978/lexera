@@ -113,6 +113,14 @@
         shell.openWorkspaceWindow(payload.workspaceId);
       } else if (payload.type === 'reveal-panel' && payload.panelId && typeof shell.revealPanel === 'function') {
         shell.revealPanel(payload.panelId);
+      } else if (payload.type === 'focus-hierarchy-target' && payload.target && payload.target.boardId && typeof shell.focusHierarchyTarget === 'function') {
+        // User contract 2026-05-11: clicking a tree-node in the
+        // workspace must focus that entity in the kanban view AND
+        // open the kanban if it isn't already open. shell.focusHierarchyTarget
+        // already does both: openBoard({ preferExisting: true }) +
+        // post-mount delivery of the focus-hierarchy-target event to
+        // the frame. We just route the sub-app's navigate call here.
+        shell.focusHierarchyTarget(payload.target, payload.target.boardId, payload.options || {});
       }
     } catch (err) {
       console.warn('[multiview-navigate] handler failed:', err);

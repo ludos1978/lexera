@@ -170,6 +170,20 @@
     refreshActiveHighlight();
   }
 
+  function patchOrRenderLocalBoards(boards) {
+    latestBoardsRendered = boards;
+    if (localCountEl) localCountEl.textContent = '(' + boards.length + ')';
+    if (!boards.length) {
+      renderBoards(localBoardsEl, boards, localCountEl);
+      refreshActiveHighlight();
+      return;
+    }
+    if (!patchLocalBoards()) {
+      renderBoards(localBoardsEl, boards, localCountEl);
+      refreshActiveHighlight();
+    }
+  }
+
   function patchLocalBoards() {
     if (!localBoardsEl || !window.TreeView || typeof window.TreeView.patch !== 'function') return false;
     var patched = window.TreeView.patch(
@@ -703,12 +717,45 @@
         }
         return;
       }
-      // Whole-row click on a board → navigate-open. Other types are
-      // not navigable (no per-card open yet).
+      // Whole-row click on a board → navigate-open.
       if (target === 'board') {
         var rowBid = node.getAttribute('data-board-id') || '';
         if (rowBid) LexeraSubApp.navigate({ type: 'open-board', boardId: rowBid });
+        return;
       }
+      // User contract 2026-05-11: clicking a row / stack / column /
+      // card tree-node focuses that entity in the kanban view AND
+      // opens the kanban if not already open. Mirror of the same
+      // handler in hierarchy.js — clicks on the burger menu
+      // (`.tree-menu-btn`) and drag icon (`.tree-grip`) intentionally
+      // NOT routed here.
+      if (e.target.closest && (e.target.closest('.tree-menu-btn') || e.target.closest('.tree-grip'))) {
+        return;
+      }
+      var dragKind = node.getAttribute('data-drag-kind') || '';
+      if (!dragKind) return;
+      var focusBoardId = node.getAttribute('data-drag-board-id') || '';
+      if (!focusBoardId) return;
+      var focusTarget = {
+        boardId: focusBoardId,
+        rowId: node.getAttribute('data-row-id') || null,
+        stackId: node.getAttribute('data-stack-id') || null,
+        columnId: node.getAttribute('data-column-id') || null,
+        cardId: node.getAttribute('data-card-kid') ||
+                node.getAttribute('data-card-id') || null
+      };
+      var rowIdx = parseInt(node.getAttribute('data-row-index') || '', 10);
+      if (!isNaN(rowIdx)) focusTarget.rowIndex = rowIdx;
+      var stackIdx = parseInt(node.getAttribute('data-stack-index') || '', 10);
+      if (!isNaN(stackIdx)) focusTarget.stackIndex = stackIdx;
+      var colLocalIdx = parseInt(node.getAttribute('data-col-local-index') || '', 10);
+      if (!isNaN(colLocalIdx)) focusTarget.colLocalIndex = colLocalIdx;
+      var cardIdx = parseInt(node.getAttribute('data-card-index') || '', 10);
+      if (!isNaN(cardIdx)) focusTarget.cardIndex = cardIdx;
+      LexeraSubApp.navigate({
+        type: 'focus-hierarchy-target',
+        target: focusTarget
+      });
     });
     localBoardsEl.__workspacesClickBound = true;
   }
@@ -796,7 +843,7 @@
       var visibleBoards = workspace && workspace.id === REMOTE_WORKSPACE_ID
         ? (snap.remoteBoards || [])
         : (snap.boards || []);
-      renderBoards(localBoardsEl, visibleBoards, localCountEl);
+      patchOrRenderLocalBoards(visibleBoards);
       renderCurrentWorkspace(snap || {});
       refreshActiveHighlight();
       statusEl.textContent = 'connected';

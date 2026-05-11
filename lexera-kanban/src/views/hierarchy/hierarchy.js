@@ -224,6 +224,19 @@
     refreshActiveHighlight();
   }
 
+  function patchOrRenderFromCatalog() {
+    var snap = latestCatalog || {};
+    var workspaceBoards = selectBoardsForWorkspace(
+      snap.boards || [],
+      snap.remoteBoards || [],
+      selectedWorkspaceId
+    );
+    if (!workspaceBoards.length || !patchFromCatalog()) {
+      renderTree(snap.boards || [], snap.remoteBoards || [], selectedWorkspaceId);
+      refreshActiveHighlight();
+    }
+  }
+
   function patchFromCatalog() {
     if (!localBoardsEl || !window.TreeView || typeof window.TreeView.patch !== 'function') return false;
     var snap = latestCatalog || {};
@@ -776,7 +789,40 @@
       if (target === 'board') {
         var rowBid = node.getAttribute('data-board-id') || '';
         if (rowBid) LexeraSubApp.navigate({ type: 'open-board', boardId: rowBid });
+        return;
       }
+      // User contract 2026-05-11: clicking a row / stack / column /
+      // card tree-node focuses that entity in the kanban view AND
+      // opens the kanban if not already open. Clicks on the burger
+      // menu (`.tree-menu-btn`) and drag icon (`.tree-grip`) are
+      // intentionally NOT routed here so they keep their own behavior.
+      if (e.target.closest && (e.target.closest('.tree-menu-btn') || e.target.closest('.tree-grip'))) {
+        return;
+      }
+      var dragKind = node.getAttribute('data-drag-kind') || '';
+      if (!dragKind) return;
+      var focusBoardId = node.getAttribute('data-drag-board-id') || '';
+      if (!focusBoardId) return;
+      var focusTarget = {
+        boardId: focusBoardId,
+        rowId: node.getAttribute('data-row-id') || null,
+        stackId: node.getAttribute('data-stack-id') || null,
+        columnId: node.getAttribute('data-column-id') || null,
+        cardId: node.getAttribute('data-card-kid') ||
+                node.getAttribute('data-card-id') || null
+      };
+      var rowIdx = parseInt(node.getAttribute('data-row-index') || '', 10);
+      if (!isNaN(rowIdx)) focusTarget.rowIndex = rowIdx;
+      var stackIdx = parseInt(node.getAttribute('data-stack-index') || '', 10);
+      if (!isNaN(stackIdx)) focusTarget.stackIndex = stackIdx;
+      var colLocalIdx = parseInt(node.getAttribute('data-col-local-index') || '', 10);
+      if (!isNaN(colLocalIdx)) focusTarget.colLocalIndex = colLocalIdx;
+      var cardIdx = parseInt(node.getAttribute('data-card-index') || '', 10);
+      if (!isNaN(cardIdx)) focusTarget.cardIndex = cardIdx;
+      LexeraSubApp.navigate({
+        type: 'focus-hierarchy-target',
+        target: focusTarget
+      });
     });
     localBoardsEl.__hierarchyClickBound = true;
   }
@@ -839,6 +885,7 @@
     },
     onCatalog: function (snap) {
       latestCatalog = snap || null;
+      var previousWorkspaceId = selectedWorkspaceId;
       var ws = resolveWorkspaceFromSnapshot(snap);
       if (ws && ws.name) {
         titleEl.textContent = ws.name;
@@ -848,7 +895,11 @@
         selectedWorkspaceId = null;
       }
       viewModeEl.textContent = snap && snap.workspaceViewMode === 'manual' ? 'manual view' : 'follow active board';
-      renderFromCatalog();
+      if (previousWorkspaceId === selectedWorkspaceId) {
+        patchOrRenderFromCatalog();
+      } else {
+        renderFromCatalog();
+      }
       // Status pill removed from the panel chrome — keep the assignment
       // null-safe so onCatalog still runs cleanly, and the test API can
       // still surface the most-recent label when a fixture mounts one.
