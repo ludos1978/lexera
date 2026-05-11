@@ -277,11 +277,19 @@ interface LexeraMultiviewApi {
   listWebviews(): Promise<Array<{ label: string }>>;
 
   // ── Drag coordinator ───────────────────────────────────────
-  dragStart(...args: any[]): unknown;
-  dragPointerMove(...args: any[]): unknown;
-  dragPointerUp(...args: any[]): unknown;
-  dragCancel(...args: any[]): unknown;
-  dropAck(...args: any[]): unknown;
+  /** Begin a drag session: `source` is a short kind tag
+   *  (`'tab'`, `'tree-card'`, …); `payload` carries the kind-specific
+   *  source descriptor for the receiving webview to consume. */
+  dragStart(source: string, payload: unknown): Promise<unknown>;
+  /** Forward the current pointer position to the Rust drag coordinator. */
+  dragPointerMove(x: number, y: number): Promise<unknown>;
+  /** Forward pointer-up to end the drag session. */
+  dragPointerUp(x: number, y: number): Promise<unknown>;
+  /** Abandon the current drag session without firing a drop. */
+  dragCancel(): Promise<unknown>;
+  /** Ack a drop event back to the coordinator. `accepted=false`
+   *  signals the target rejected the drop. */
+  dropAck(accepted: boolean): Promise<unknown>;
 
   // ── Scoped event bus ───────────────────────────────────────
   listen(event: string, handler: (data: unknown) => void): unknown;
@@ -305,7 +313,11 @@ interface LexeraMultiviewApi {
   closeSidePanel(label: string): Promise<unknown>;
 
   // ── Logging / theme / catalog bridges ──────────────────────
-  broadcastLog(...args: any[]): Promise<unknown>;
+  /** Best-effort: forward a log entry to every other webview's log
+   *  panel. Returns `void` — the underlying invoke promise is
+   *  swallowed so a missing/dead log subscriber never rejects into
+   *  the caller. */
+  broadcastLog(level: LexeraLogLevel, source: string, message: string): void;
   broadcastTheme(): Promise<unknown>;
   snapshotTheme(): LexeraThemeSnapshot | null;
   applyThemeSnapshot(snapshot: LexeraThemeSnapshot | null | undefined): void;
@@ -317,14 +329,23 @@ interface LexeraMultiviewApi {
   promptModal(opts: { title?: string; message: string; initial?: string }): Promise<string | null>;
 
   // ── Drag ghost window (Stage 7) ────────────────────────────
-  ghostEnsure(...args: any[]): Promise<unknown>;
-  ghostMove(x: number, y: number): unknown;
-  ghostHide(): unknown;
-  ghostSetContent(...args: any[]): unknown;
+  /** Spawn the drag-ghost window if it doesn't exist. Defaults
+   *  match the impl (url=views/drag-ghost/index.html, 220×60). */
+  ghostEnsure(opts?: { url?: string; width?: number; height?: number }): Promise<unknown>;
+  ghostMove(x: number, y: number): Promise<unknown>;
+  ghostHide(): Promise<unknown>;
+  ghostSetContent(html: string): Promise<unknown>;
 
   // ── Request/response IPC ───────────────────────────────────
-  request(...args: any[]): Promise<unknown>;
-  handleRequest(...args: any[]): unknown;
+  /** Delegates to LexeraRequestBridge. Rejects with "not loaded"
+   *  if the bridge global isn't installed. */
+  request(targetLabel: string, requestEvent: string, payload?: unknown, timeoutMs?: number): Promise<unknown>;
+  /** Register a per-event handler that fires on incoming requests
+   *  for `requestEvent`. Handler signature is decided by the
+   *  requestBridge contract; left loose here so each bridge can pin
+   *  its own shape. Rejects with "not loaded" if the bridge global
+   *  isn't installed. */
+  handleRequest(requestEvent: string, handler: (...args: any[]) => any): Promise<unknown>;
 
   // ── Lifecycle sub-API (Stage 8) ────────────────────────────
   lifecycle: LexeraMultiviewLifecycleApi;
