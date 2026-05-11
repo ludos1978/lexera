@@ -2060,6 +2060,22 @@ var LexeraDashboard = (function () {
     }
 
     setupHeaderFileControls();
+    // Diagnostic — chain trace 2026-05-11. If this log fires but
+    // `orderHelpers.setupEmbeddedPaneActivation` does NOT, the call
+    // is being intercepted by app.js's wrapper (line 1473) which
+    // routes through OrderHelpers proxy. If THIS log doesn't fire,
+    // init() threw somewhere upstream and the outer try/catch
+    // swallowed it.
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      try {
+        window.lexeraLog('debug', '[focus-trace] init.about-to-setup-embedded ' +
+          JSON.stringify({
+            embeddedMode: !!embeddedMode,
+            hasOrderHelpers: !!(window.LexeraOrderHelpers),
+            url: (window.location && window.location.search) || ''
+          }));
+      } catch (_) { /* non-fatal */ }
+    }
     setupEmbeddedPaneActivation();
     registerExternalDndBridge();
 
