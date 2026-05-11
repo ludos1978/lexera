@@ -2213,6 +2213,8 @@ declare global {
     // type-check; the actual public surfaces live in their respective
     // modules' IIFE assignments.
     LexeraTestApi: any;
+    LexeraApi: any;
+    LexeraCalendarRuntime: any;
     LexeraDragDropHandlers: any;
     LexeraOrderHelpers: any;
     LexeraRowStackMenu: any;

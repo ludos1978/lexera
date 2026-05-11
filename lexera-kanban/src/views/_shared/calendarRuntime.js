@@ -81,7 +81,7 @@
           if (t.boardId) {
             item.addEventListener('click', function () {
               if (window.LexeraSubApp) {
-                LexeraSubApp.navigate({ type: 'open-board', boardId: t.boardId });
+                window.LexeraSubApp.navigate({ type: 'open-board', boardId: t.boardId });
               }
             });
           }
@@ -137,7 +137,7 @@
         (key2 === todayKey ? ' is-today' : '');
       var label = document.createElement('div');
       label.className = 'cal-month-cell-date';
-      label.textContent = cur.getDate();
+      label.textContent = String(cur.getDate());
       cell.appendChild(label);
       var dayTasks2 = byDay[key2] || [];
       if (dayTasks2.length > 0) {
@@ -175,7 +175,7 @@
       if (t.boardId) {
         li.addEventListener('click', function () {
           if (window.LexeraSubApp) {
-            LexeraSubApp.navigate({ type: 'open-board', boardId: t.boardId });
+            window.LexeraSubApp.navigate({ type: 'open-board', boardId: t.boardId });
           }
         });
       }

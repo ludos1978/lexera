@@ -55,6 +55,7 @@
     "src/shell/bridges/managementBridge.js",
     "src/shell/bridges/backendStatusBridge.js",
     "src/core/moduleRuntime.js",
-    "src/views/files/files.js"
+    "src/views/files/files.js",
+    "src/views/_shared/calendarRuntime.js"
   ]
 }
