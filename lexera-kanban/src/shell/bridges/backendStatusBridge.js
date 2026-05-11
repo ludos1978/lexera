@@ -1,9 +1,18 @@
 (function () {
   'use strict';
 
+  /** @type {'lexera-backend-status-indicator'} */
   var INDICATOR_ID = 'lexera-backend-status-indicator';
+  /** @type {'backend-status'} */
   var EVENT_NAME = 'backend-status';
 
+  /**
+   * @typedef {'connected' | 'waiting' | 'reconnecting' | 'unavailable' | 'unknown'} BackendStatusTone
+   * @typedef {{ visible: boolean, label: string, tone: BackendStatusTone }} BackendStatusView
+   *
+   * @param {{ state?: string, attempt?: number, reason?: string } | null | undefined} payload
+   * @returns {BackendStatusView}
+   */
   function describe(payload) {
     if (!payload || typeof payload !== 'object') {
       return { visible: true, label: 'Connecting to backend…', tone: 'waiting' };
