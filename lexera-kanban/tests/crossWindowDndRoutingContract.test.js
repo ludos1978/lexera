@@ -121,7 +121,9 @@ describe('cross-window drag/drop routing', () => {
   it('kanban destinations globally echo cross-view-drag-handled after a resolved external drop', () => {
     const idx = embeddedBoardBridge.search(/wv\.listen\(\s*['"]external-dnd-drop['"]/);
     expect(idx).toBeGreaterThan(-1);
-    const tail = embeddedBoardBridge.slice(idx, idx + 2500);
+    const handlerIdx = embeddedBoardBridge.search(/function\s+handleExternalDndDrop\s*\(/);
+    expect(handlerIdx).toBeGreaterThan(-1);
+    const tail = embeddedBoardBridge.slice(handlerIdx, handlerIdx + 3500);
     expect(tail).toMatch(/hierarchy-entity-drop/);
     expect(tail).toMatch(/broadcastCrossViewDragHandled/);
     expect(embeddedBoardBridge).toMatch(/multiview_broadcast_global_subscribers[\s\S]{0,120}cross-view-drag-handled/);

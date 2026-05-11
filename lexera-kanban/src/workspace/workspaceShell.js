@@ -2365,6 +2365,60 @@
     }
   }
 
+  function forceLoadBoardFrame(tab) {
+    if (!tab || isPanelTab(tab)) return false;
+    var view = getOrCreateFrame(tab, { shouldLoad: false });
+    if (!view) return false;
+    var desiredSrc = getEmbeddedUrlForTab(tab);
+    view.setAttribute('data-src', desiredSrc);
+    view.setAttribute('title', getTabTitle(tab));
+    state.loadedBoardFrames[tab.id] = true;
+    view.setAttribute('data-loaded-src', desiredSrc);
+    if (view.parentNode) {
+      multiview.ensure(tab, view, desiredSrc);
+    } else {
+      requestAnimationFrame(function () {
+        if (view.parentNode) multiview.ensure(tab, view, desiredSrc);
+      });
+    }
+    return true;
+  }
+
+  function ensureVisibleBoardFramesLoaded(reason) {
+    if (!state.mounted || isPanelOnlyWindow()) return 0;
+    var loaded = 0;
+    var seen = Object.create(null);
+    var treeIds = allTreeIds();
+    for (var ti = 0; ti < treeIds.length; ti++) {
+      var root = getTreeRoot(treeIds[ti]);
+      if (!root) continue;
+      visitTree(root, function (node) {
+        if (!node || node.type !== 'tabs') return;
+        var tabs = Array.isArray(node.tabs) ? node.tabs : [];
+        var activeTabId = node.activeTabId || (tabs[0] ? tabs[0].id : '');
+        if (!activeTabId || seen[activeTabId]) return;
+        var found = findTab(root, activeTabId);
+        if (!found || !found.tab || isPanelTab(found.tab)) return;
+        seen[activeTabId] = true;
+        if (forceLoadBoardFrame(found.tab)) loaded += 1;
+      });
+    }
+    if (loaded > 0) {
+      state.deferredBoardLoadQueue = state.deferredBoardLoadQueue.filter(function (tabId) {
+        return !seen[tabId];
+      });
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        try {
+          window.lexeraLog('debug', '[xview-dnd] preload.visible-board-frames ' + JSON.stringify({
+            count: loaded,
+            reason: reason || ''
+          }));
+        } catch (_) {}
+      }
+    }
+    return loaded;
+  }
+
   function scheduleDeferredBoardFrameLoads() {
     clearDeferredBoardFrameLoads();
     state.deferredBoardLoadQueue = buildDeferredBoardFrameQueue();
@@ -5327,6 +5381,7 @@
     openWorkspaceWindow: openWorkspaceWindow,
     ensureInitialTab: ensureInitialTab,
     focusHierarchyTarget: focusHierarchyTarget,
+    ensureVisibleBoardFramesLoaded: ensureVisibleBoardFramesLoaded,
     showContextMenuInBoardFrame: showContextMenuInBoardFrame,
     handleBoardAction: handleBoardAction,
     setPanelVisibility: setPanelVisibility,

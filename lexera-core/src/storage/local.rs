@@ -4202,8 +4202,26 @@ impl BoardStorage for LocalStorage {
     }
 
     fn read_board_hierarchy(&self, board_id: &str) -> Option<Vec<KanbanRow>> {
-        let boards = self.boards.read().ok()?;
-        let state = boards.get(board_id)?;
+        let lock = self.get_write_lock(board_id).ok()?;
+        let _guard =
+            Self::acquire_board_write_guard(board_id, lock.as_ref(), "read_board_hierarchy");
+        let mut boards = self.boards.write().ok()?;
+        let state = boards.get_mut(board_id)?;
+        let _ = self.ensure_board_state_crdt_loaded(board_id, state);
+        let board_dir = state
+            .file_path
+            .parent()
+            .unwrap_or(Path::new("."))
+            .to_path_buf();
+        if let Some(crdt) = state.crdt.as_ref() {
+            if let Some(canonical_board) =
+                Self::board_from_crdt_if_semantically_equal(&state.board, crdt, &board_dir)
+            {
+                let hierarchy_rows = Self::build_board_hierarchy(board_id, &canonical_board);
+                state.hierarchy_rows = hierarchy_rows.clone();
+                return Some(hierarchy_rows);
+            }
+        }
         Some(state.hierarchy_rows.clone())
     }
 
@@ -5819,6 +5837,67 @@ kanban-plugin: board
             .collect();
         assert_eq!(
             loaded_kids,
+            expected_kids
+                .iter()
+                .map(|kid| kid.to_string())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_read_board_hierarchy_uses_crdt_aligned_card_kids() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let mut snapshot_board = LocalStorage::normalize_board_for_write(
+            &parser::parse_markdown(TEST_BOARD),
+            dir.path(),
+        );
+        let expected_kids = ["a1b2c3d4", "b1c2d3e4", "c1d2e3f4"];
+        let mut next = 0usize;
+        for column in snapshot_board.all_columns_mut() {
+            for card in &mut column.cards {
+                card.kid = Some(expected_kids[next].to_string());
+                card.id = format!("seed-{}", next);
+                next += 1;
+            }
+        }
+
+        let crdt = CrdtStore::from_board(&snapshot_board).unwrap();
+        crdt.save_to_file(&board_path.with_extension("md.crdt"))
+            .unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        {
+            let mut boards = storage.boards.write().unwrap();
+            let state = boards.get_mut(&id).unwrap();
+            let drift_kids = ["dead0001", "dead0002", "dead0003"];
+            let mut drift_idx = 0usize;
+            for column in state.board.all_columns_mut() {
+                for card in &mut column.cards {
+                    let drift_kid = drift_kids[drift_idx].to_string();
+                    card.content =
+                        crate::merge::card_identity::inject_kid(&card.content, &drift_kid);
+                    card.kid = Some(drift_kid);
+                    drift_idx += 1;
+                }
+            }
+            state.hierarchy_rows = LocalStorage::build_board_hierarchy(&id, &state.board);
+        }
+
+        let rows = storage.read_board_hierarchy(&id).unwrap();
+        let hierarchy_kids: Vec<String> = rows
+            .iter()
+            .flat_map(|row| row.stacks.iter())
+            .flat_map(|stack| stack.columns.iter())
+            .flat_map(|column| column.cards.iter())
+            .map(|card| card.kid.clone().unwrap())
+            .collect();
+        assert_eq!(
+            hierarchy_kids,
             expected_kids
                 .iter()
                 .map(|kid| kid.to_string())

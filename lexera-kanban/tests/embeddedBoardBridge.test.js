@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { loadIIFE } from './load-iife.js';
 
@@ -75,6 +75,10 @@ describe('LexeraEmbeddedBoardBridge.shortcutForKeydownEvent', () => {
 });
 
 describe('LexeraEmbeddedBoardBridge.install', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns false when the URL does not mark this as embedded', () => {
     const { bridge } = freshBridge('?board=alpha');
     expect(bridge.install({})).toBe(false);
@@ -161,6 +165,55 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     expect(styleEl).not.toBeNull();
     expect(styleEl?.textContent).toContain('html, body { width: 100%; height: 100%; min-height: 100%;');
     expect(styleEl?.textContent).toContain('overflow: hidden;');
+  });
+
+  it('queues early external DnD events until the kanban DnD API is registered', () => {
+    vi.useFakeTimers();
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1'
+    });
+    const { window } = dom;
+    const handlers = {};
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout,
+      clearTimeout,
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+
+    const installed = bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn((eventName, handler) => {
+          handlers[eventName] = handler;
+        })
+      }),
+      invoke: vi.fn(() => Promise.resolve()),
+      handleRequest: vi.fn()
+    });
+
+    expect(installed).toBe(true);
+    handlers['external-dnd-hover']({
+      payload: {
+        payload: { type: 'tree-card', source: { kind: 'card', entityId: 'card-1' } },
+        x: 12,
+        y: 34
+      }
+    });
+
+    const hover = vi.fn();
+    window.__lexeraExternalDnd = { hover };
+    vi.advanceTimersByTime(50);
+
+    expect(hover).toHaveBeenCalledWith(
+      { type: 'tree-card', source: { kind: 'card', entityId: 'card-1' } },
+      12,
+      34
+    );
   });
 
   it('subscribes embedded boards to dashboard navigation broadcasts and reports applied focus', async () => {

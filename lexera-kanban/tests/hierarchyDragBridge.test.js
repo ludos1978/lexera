@@ -13,9 +13,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadIIFE } from './load-iife.js';
 
-function loadBridge() {
+function loadBridge(windowObj = {}) {
   return loadIIFE('shell/bridges/hierarchyDragBridge.js', 'window.LexeraHierarchyDragBridge', {
-    window: {},
+    window: windowObj,
     globalThis: {}
   });
 }
@@ -797,6 +797,7 @@ describe('LexeraHierarchyDragBridge.install', () => {
       events: [
         'hierarchy-entity-drop',
         'hierarchy-entity-rename',
+        'hierarchy-entity-drag-start',
         'hierarchy-entity-drag-move',
         'hierarchy-entity-drag-end-external'
       ]
@@ -821,6 +822,33 @@ describe('LexeraHierarchyDragBridge.install', () => {
     expect(savedBoard.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
       .toEqual(['card-2', 'card-1', 'card-3']);
     expect(onApplied).toHaveBeenCalledWith('b1');
+  });
+
+  it('warms visible board webviews on hierarchy-entity-drag-start so first cross-view drops are not lost to cold panes', () => {
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    const ensureVisibleBoardFramesLoaded = vi.fn(() => 2);
+    const bridgeWithShell = loadBridge({
+      LexeraWorkspaceShell: { ensureVisibleBoardFramesLoaded },
+      lexeraLog: vi.fn()
+    });
+
+    const ok = bridgeWithShell.install({
+      getCurrentWebview: () => wv,
+      invoke,
+      loadBoard: () => Promise.resolve(makeBoard()),
+      saveBoard: () => Promise.resolve(),
+      ...shellGeomDeps
+    });
+
+    expect(ok).toBe(true);
+    wv._fire('hierarchy-entity-drag-start', {
+      boardId: 'b1',
+      kind: 'card',
+      entityId: 'card-1'
+    });
+
+    expect(ensureVisibleBoardFramesLoaded).toHaveBeenCalledWith('xview-drag-start');
   });
 
   it('persists cross-parent same-kind drops (cross-column card move) — saveBoard fires once with the rebuilt board', async () => {
@@ -1285,8 +1313,9 @@ describe('LexeraHierarchyDragBridge.install', () => {
     const subscribesAfterFirst = invoke.mock.calls.filter((c) => c[0] === 'multiview_subscribe').length;
     const listensAfterFirst = wv.listen.mock.calls.length;
     expect(subscribesAfterFirst).toBe(1);
-    // Shell-mode wires 4 listeners: drop, rename, drag-move, drag-end-external.
-    expect(listensAfterFirst).toBe(4);
+    // Shell-mode wires 5 listeners: drop, rename, drag-start preload,
+    // drag-move, drag-end-external.
+    expect(listensAfterFirst).toBe(5);
 
     const secondOk = bridge.install(deps);
     // Second call is a no-op — return value indicates "we did not

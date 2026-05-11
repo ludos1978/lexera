@@ -249,6 +249,11 @@
     // `[xview-dnd]` prefix as the source-side bridge in
     // hierarchyDragBridge.js so a single filter pulls the whole chain.
     var _xviewLoggedHover = false;
+    var _pendingExternalDnd = [];
+    var _pendingExternalDndTimer = 0;
+    var _pendingExternalDndStartedAt = 0;
+    var PENDING_EXTERNAL_DND_MAX_MS = 1500;
+    var PENDING_EXTERNAL_DND_RETRY_MS = 40;
     function xviewLog(stage, info) {
       if (typeof window === 'undefined' || typeof window.lexeraLog !== 'function') return;
       try {
@@ -264,11 +269,81 @@
         if (promise && typeof promise.catch === 'function') promise.catch(function () {});
       } catch (_) { /* non-fatal */ }
     }
-    function relayExternalDnd(method, event) {
+    function nowMs() {
+      return (typeof Date !== 'undefined' && Date.now) ? Date.now() : (new Date()).getTime();
+    }
+    function schedulePendingExternalDndFlush() {
+      if (_pendingExternalDndTimer) return;
+      _pendingExternalDndTimer = setTimeout(flushPendingExternalDnd, PENDING_EXTERNAL_DND_RETRY_MS);
+    }
+    function queueExternalDndUntilHandlerReady(method, event) {
+      var queuedAt = nowMs();
+      if (!_pendingExternalDndStartedAt) _pendingExternalDndStartedAt = queuedAt;
+      if (method === 'hover') {
+        for (var hi = 0; hi < _pendingExternalDnd.length; hi++) {
+          if (_pendingExternalDnd[hi] && _pendingExternalDnd[hi].method === 'drop') {
+            schedulePendingExternalDndFlush();
+            return;
+          }
+        }
+        _pendingExternalDnd = _pendingExternalDnd.filter(function (item) {
+          return item && item.method !== 'hover';
+        });
+      } else if (method === 'drop') {
+        _pendingExternalDnd = _pendingExternalDnd.filter(function (item) {
+          return item && item.method !== 'hover' && item.method !== 'drop';
+        });
+      }
+      _pendingExternalDnd.push({ method: method, event: event, queuedAt: queuedAt });
+      if (_pendingExternalDnd.length > 8) _pendingExternalDnd.shift();
+      xviewLog('receive.queue(no-handler)', {
+        method: method,
+        pending: _pendingExternalDnd.length
+      });
+      schedulePendingExternalDndFlush();
+    }
+    function flushPendingExternalDnd() {
+      _pendingExternalDndTimer = 0;
+      if (!_pendingExternalDnd.length) {
+        _pendingExternalDndStartedAt = 0;
+        return;
+      }
+      var api = window.__lexeraExternalDnd;
+      var ready = !!api;
+      if (ready) {
+        for (var i = 0; i < _pendingExternalDnd.length; i++) {
+          if (typeof api[_pendingExternalDnd[i].method] !== 'function') {
+            ready = false;
+            break;
+          }
+        }
+      }
+      if (!ready) {
+        if (nowMs() - _pendingExternalDndStartedAt < PENDING_EXTERNAL_DND_MAX_MS) {
+          schedulePendingExternalDndFlush();
+        } else {
+          xviewLog('receive.queue.dropped(no-handler)', { pending: _pendingExternalDnd.length });
+          _pendingExternalDnd = [];
+          _pendingExternalDndStartedAt = 0;
+        }
+        return;
+      }
+      var queued = _pendingExternalDnd.slice();
+      _pendingExternalDnd = [];
+      _pendingExternalDndStartedAt = 0;
+      xviewLog('receive.queue.flush', { pending: queued.length });
+      for (var qi = 0; qi < queued.length; qi++) {
+        relayExternalDnd(queued[qi].method, queued[qi].event, { noQueue: true });
+      }
+    }
+    function relayExternalDnd(method, event, options) {
       var p = (event && event.payload) || {};
       var api = window.__lexeraExternalDnd;
       var isDrop = method === 'drop';
       if (!api || typeof api[method] !== 'function') {
+        if (!options || options.noQueue !== true) {
+          queueExternalDndUntilHandlerReady(method, event);
+        }
         if (isDrop || !_xviewLoggedHover) {
           xviewLog('receive.no-handler', { method: method, hasApi: !!api });
           _xviewLoggedHover = !isDrop;
@@ -293,22 +368,26 @@
       }
     }
     wv.listen('external-dnd-hover', function (event) { relayExternalDnd('hover', event); });
-    // The external-dnd-drop arrives via the shell's
-    // forwardCrossViewDrag chain (source pointerup outside source
-    // bounds → shell looks up cursor's webview → emits
-    // external-dnd-drop here). Pointer capture on the source means
-    // the destination's OWN pointerup never fires for cross-WKWebView
-    // drops, so this listener — NOT the per-webview pointerup
-    // tracker installed below — is the path that lands the user's
-    // release. relayExternalDnd's legacy __lexeraExternalDnd.drop is
-    // a kanban-internal mutator that doesn't persist cross-board, so
-    // we ALSO build a tree-target from the destination's DOM and
-    // broadcast hierarchy-entity-drop for the shell-side
-    // hierarchyDragBridge.applyDrop persistence chain. The legacy
-    // local apply is kept (relayExternalDnd) so the in-kanban hover
-    // visual stays consistent for the brief moment between drop and
-    // re-render — saveBoard's broadcast will overwrite it shortly.
-    wv.listen('external-dnd-drop', function (event) {
+    var EXTERNAL_DROP_RETRY_MS = 40;
+    var EXTERNAL_DROP_MAX_RETRIES = 25;
+    function isKanbanDropSurfaceBootingForSource(source) {
+      var kind = source && source.kind;
+      if (kind !== 'card' && kind !== 'column' && kind !== 'stack') return false;
+      var container = document.getElementById('columns-container');
+      if (!container || typeof container.querySelector !== 'function') return true;
+      if (kind === 'card') {
+        return !container.querySelector('.column[data-column-id], .column-cards');
+      }
+      if (kind === 'column') {
+        return !container.querySelector('.column[data-column-id], .board-stack[data-stack-id]');
+      }
+      if (kind === 'stack') {
+        return !container.querySelector('.board-stack[data-stack-id], .board-row[data-row-id]');
+      }
+      return false;
+    }
+    function handleExternalDndDrop(event, attempt) {
+      attempt = attempt || 0;
       var p = (event && event.payload) || {};
       var inner = p.payload || null;
       var src = inner && inner.source;
@@ -321,7 +400,8 @@
           targetKind: target && target.kind,
           targetEntityId: target && target.entityId,
           targetPosition: target && target.position,
-          resolved: !!target
+          resolved: !!target,
+          attempt: attempt
         });
         if (target) {
           try {
@@ -339,6 +419,19 @@
           } catch (_) { /* non-fatal */ }
         }
       }
+      if (!broadcastFired &&
+          src &&
+          attempt < EXTERNAL_DROP_MAX_RETRIES &&
+          isKanbanDropSurfaceBootingForSource(src)) {
+        xviewLog('receive.drop.retry(waiting-for-surface)', {
+          attempt: attempt + 1,
+          srcKind: src.kind
+        });
+        setTimeout(function () {
+          handleExternalDndDrop(event, attempt + 1);
+        }, EXTERNAL_DROP_RETRY_MS);
+        return;
+      }
       // The legacy `relayExternalDnd('drop')` path calls
       // `__lexeraExternalDnd.drop` which mutates THIS webview's
       // local board data — fine for kanban-internal-only drag, but
@@ -351,6 +444,24 @@
       // Skip the legacy path when the broadcast handles it.
       // Reported 2026-05-10.
       if (!broadcastFired) relayExternalDnd('drop', event);
+    }
+    // The external-dnd-drop arrives via the shell's
+    // forwardCrossViewDrag chain (source pointerup outside source
+    // bounds → shell looks up cursor's webview → emits
+    // external-dnd-drop here). Pointer capture on the source means
+    // the destination's OWN pointerup never fires for cross-WKWebView
+    // drops, so this listener — NOT the per-webview pointerup
+    // tracker installed below — is the path that lands the user's
+    // release. relayExternalDnd's legacy __lexeraExternalDnd.drop is
+    // a kanban-internal mutator that doesn't persist cross-board, so
+    // we ALSO build a tree-target from the destination's DOM and
+    // broadcast hierarchy-entity-drop for the shell-side
+    // hierarchyDragBridge.applyDrop persistence chain. The legacy
+    // local apply is kept (relayExternalDnd) so the in-kanban hover
+    // visual stays consistent for the brief moment between drop and
+    // re-render — saveBoard's broadcast will overwrite it shortly.
+    wv.listen('external-dnd-drop', function (event) {
+      handleExternalDndDrop(event, 0);
     });
 
     // ─── Per-webview cross-view drag tracking ──────────────────────

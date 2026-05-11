@@ -619,10 +619,28 @@
         events: [
           'hierarchy-entity-drop',
           'hierarchy-entity-rename',
+          'hierarchy-entity-drag-start',
           'hierarchy-entity-drag-move',
           'hierarchy-entity-drag-end-external'
         ]
       }).catch(function () {});
+      wv.listen('hierarchy-entity-drag-start', function (event) {
+        try {
+          var shell = (typeof window !== 'undefined') ? window.LexeraWorkspaceShell : null;
+          if (!shell || typeof shell.ensureVisibleBoardFramesLoaded !== 'function') return;
+          var p = (event && event.payload) || {};
+          var count = shell.ensureVisibleBoardFramesLoaded('xview-drag-start');
+          xviewLog('preload.visible-board-frames.requested', {
+            count: count,
+            sourceKind: p && p.kind,
+            sourceBoard: p && p.boardId
+          });
+        } catch (err) {
+          xviewLog('preload.visible-board-frames.failed', {
+            err: (err && err.message) ? err.message : String(err)
+          });
+        }
+      });
       wv.listen('hierarchy-entity-drag-move', function (event) {
         forwardCrossViewDrag('external-dnd-hover', (event && event.payload) || null);
       });
