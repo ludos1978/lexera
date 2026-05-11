@@ -1098,8 +1098,9 @@
     visitTree(tree, function(node) {
       if (node.type !== 'tabs') return;
       for (var i = 0; i < node.tabs.length; i++) {
-        if (!isPanelTab(node.tabs[i])) continue;
-        var panelId = resolvePanelTarget(node.tabs[i].panelId);
+        var tab = node.tabs[i];
+        if (!isPanelTab(tab)) continue;
+        var panelId = resolvePanelTarget(tab.panelId);
         if (!panelId) continue;
         if (!state.panelVisibility[panelId]) continue;
         if (isPanelInCenterDock(panelId)) continue;
@@ -1134,8 +1135,9 @@
       visitTree(root, function (node) {
         if (!node || node.type !== 'tabs') return;
         for (var i = 0; i < node.tabs.length; i++) {
-          if (!isPanelTab(node.tabs[i])) continue;
-          var panelId = resolvePanelTarget(node.tabs[i].panelId);
+          var tab = node.tabs[i];
+          if (!isPanelTab(tab)) continue;
+          var panelId = resolvePanelTarget(tab.panelId);
           if (!panelId) continue;
           state.panelVisibility[panelId] = true;
         }
@@ -3402,8 +3404,9 @@
     visitTree(tree, function (node) {
       if (node.type !== 'tabs') return;
       for (var t = 0; t < node.tabs.length; t++) {
-        if (isPanelTab(node.tabs[t])) {
-          var pid = resolvePanelTarget(node.tabs[t].panelId);
+        var tab = node.tabs[t];
+        if (isPanelTab(tab)) {
+          var pid = resolvePanelTarget(tab.panelId);
           visBits.push(pid + ':' + (state.panelVisibility[pid] ? '1' : '0'));
         }
       }

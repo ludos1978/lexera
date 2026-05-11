@@ -495,10 +495,21 @@ interface LexeraLayoutTreeApi {
   /** TS type predicate — narrows arbitrary values to
    *  `LexeraDockTreeBoardTab`. */
   isBoardTab(tab: unknown): tab is LexeraDockTreeBoardTab;
+  /** Depth-first walk of the dock tree. Visitor fires for every
+   *  node (root + every child of every split); `parent` is `null` at
+   *  the root and otherwise the enclosing node (typed as the full
+   *  `DockTreeNode` union rather than `DockTreeSplit` because some
+   *  consumers — e.g. `findNodeAndParent`'s permissive `parent` slot
+   *  — keep the looser shape). `side` is `''` at the root and
+   *  `'first'`/`'second'` for split children. */
   visitTree(
-    node: any,
-    visitor: (candidate: any, parent: any, side: 'first' | 'second' | '') => void,
-    parent?: any,
+    node: LexeraDockTreeNode | null,
+    visitor: (
+      candidate: LexeraDockTreeNode,
+      parent: LexeraDockTreeNode | null,
+      side: 'first' | 'second' | ''
+    ) => void,
+    parent?: LexeraDockTreeNode | null,
     side?: 'first' | 'second' | ''
   ): void;
   getFirstLeaf(node: LexeraDockTreeNode | null): LexeraDockTreeLeaf | null;
