@@ -819,6 +819,17 @@
       if (!isNaN(colLocalIdx)) focusTarget.colLocalIndex = colLocalIdx;
       var cardIdx = parseInt(node.getAttribute('data-card-index') || '', 10);
       if (!isNaN(cardIdx)) focusTarget.cardIndex = cardIdx;
+      // Diagnostic — user-reported "click doesn't focus" is impossible
+      // to debug without runtime evidence that the click actually
+      // produced a focus-target navigate call. Pair with the
+      // corresponding receive-side logs in navigationBridge and
+      // orderHelpers to trace the whole chain.
+      if (typeof window.lexeraLog === 'function') {
+        try {
+          window.lexeraLog('debug', '[focus-trace] hierarchy.click.navigate ' +
+            JSON.stringify({ kind: dragKind, boardId: focusBoardId, cardId: focusTarget.cardId, columnId: focusTarget.columnId, stackId: focusTarget.stackId, rowId: focusTarget.rowId }));
+        } catch (_) { /* non-fatal */ }
+      }
       LexeraSubApp.navigate({
         type: 'focus-hierarchy-target',
         target: focusTarget

@@ -708,10 +708,32 @@ var LexeraOrderHelpers = (function () {
   // Bypasses boardSearch chain (which incorrectly routes through workspace shell
   // in the iframe) and focuses the card element directly via DOM.
   function navigateHierarchyTargetInIframe(target) {
+    // Diagnostic — user report 2026-05-11: workspace clicks not
+    // focusing. Pair with [focus-trace] hierarchy.click.navigate +
+    // navbridge.dispatch to pin where the chain falls off.
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      try {
+        window.lexeraLog('debug', '[focus-trace] orderHelpers.navigateInIframe ' +
+          JSON.stringify({
+            hasTarget: !!target,
+            boardId: target && target.boardId,
+            cardId: target && target.cardId,
+            columnId: target && target.columnId
+          }));
+      } catch (_) { /* non-fatal */ }
+    }
     if (!target || !target.boardId) return Promise.resolve(false);
     // Use boardNavigation directly — bypasses boardSearch WS path
     var nav = _callDep('getBoardNavigationApi');
-    if (!nav || typeof nav.navigateToHierarchyTarget !== 'function') return Promise.resolve(false);
+    if (!nav || typeof nav.navigateToHierarchyTarget !== 'function') {
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        try {
+          window.lexeraLog('debug', '[focus-trace] orderHelpers.skip(no-nav-api) ' +
+            JSON.stringify({ hasNav: !!nav, hasFn: !!(nav && nav.navigateToHierarchyTarget) }));
+        } catch (_) { /* non-fatal */ }
+      }
+      return Promise.resolve(false);
+    }
     return nav.navigateToHierarchyTarget(target, {
       selectBoard: function () { return Promise.resolve(); },
       getActiveBoardId: function () { return target.boardId; },
@@ -738,6 +760,19 @@ var LexeraOrderHelpers = (function () {
         // used everywhere where we need to focus something". Yes —
         // and now it is.
         var el = _callDep('findBoardEntityElement', t);
+        if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+          try {
+            window.lexeraLog('debug', '[focus-trace] focusLocally.lookup ' +
+              JSON.stringify({
+                found: !!el,
+                tag: el && el.tagName,
+                classes: el && el.className,
+                cardId: t && t.cardId,
+                columnId: t && t.columnId,
+                hasFindFn: typeof _deps.findBoardEntityElement === 'function'
+              }));
+          } catch (_) { /* non-fatal */ }
+        }
         if (!el) return false;
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         if (el.classList.contains('card')) {

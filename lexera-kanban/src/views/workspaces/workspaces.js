@@ -752,6 +752,14 @@
       if (!isNaN(colLocalIdx)) focusTarget.colLocalIndex = colLocalIdx;
       var cardIdx = parseInt(node.getAttribute('data-card-index') || '', 10);
       if (!isNaN(cardIdx)) focusTarget.cardIndex = cardIdx;
+      // Diagnostic — see hierarchy.js for the rationale; mirror log
+      // so workspace clicks emit the same trace.
+      if (typeof window.lexeraLog === 'function') {
+        try {
+          window.lexeraLog('debug', '[focus-trace] workspaces.click.navigate ' +
+            JSON.stringify({ kind: dragKind, boardId: focusBoardId, cardId: focusTarget.cardId, columnId: focusTarget.columnId, stackId: focusTarget.stackId, rowId: focusTarget.rowId }));
+        } catch (_) { /* non-fatal */ }
+      }
       LexeraSubApp.navigate({
         type: 'focus-hierarchy-target',
         target: focusTarget

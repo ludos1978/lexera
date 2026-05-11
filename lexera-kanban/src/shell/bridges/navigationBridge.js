@@ -120,7 +120,24 @@
         // already does both: openBoard({ preferExisting: true }) +
         // post-mount delivery of the focus-hierarchy-target event to
         // the frame. We just route the sub-app's navigate call here.
+        if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+          try {
+            window.lexeraLog('debug', '[focus-trace] navbridge.dispatch ' +
+              JSON.stringify({ boardId: payload.target.boardId, cardId: payload.target.cardId || null, columnId: payload.target.columnId || null }));
+          } catch (_) { /* non-fatal */ }
+        }
         shell.focusHierarchyTarget(payload.target, payload.target.boardId, payload.options || {});
+      } else if (payload.type === 'focus-hierarchy-target' && typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        // Diagnostic for when the dispatch SHOULD fire but a gate
+        // failed — surfaces missing boardId / missing shell function.
+        try {
+          window.lexeraLog('debug', '[focus-trace] navbridge.skip ' +
+            JSON.stringify({
+              hasTarget: !!payload.target,
+              hasBoardId: !!(payload.target && payload.target.boardId),
+              hasShellFn: typeof shell.focusHierarchyTarget === 'function'
+            }));
+        } catch (_) { /* non-fatal */ }
       }
     } catch (err) {
       console.warn('[multiview-navigate] handler failed:', err);
