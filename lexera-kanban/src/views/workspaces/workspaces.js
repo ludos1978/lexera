@@ -36,6 +36,120 @@
   var boardHierarchies = {};
   var latestBoardsRendered = [];
 
+  function findRenderedBoard(boardId) {
+    for (var i = 0; i < latestBoardsRendered.length; i++) {
+      if (String(latestBoardsRendered[i] && latestBoardsRendered[i].id || '') === String(boardId || '')) {
+        return latestBoardsRendered[i];
+      }
+    }
+    return null;
+  }
+
+  function closeBoardActionMenus() {
+    var menus = document.querySelectorAll('.tree-board-action-menu');
+    for (var i = 0; i < menus.length; i++) menus[i].remove();
+  }
+
+  function runBoardAction(boardId, action) {
+    var board = findRenderedBoard(boardId);
+    var filePath = board && (board.filePath || board.path || '');
+    if (action === 'open-tab') {
+      LexeraSubApp.navigate({ type: 'open-board', boardId: boardId });
+    } else if (action === 'detach') {
+      LexeraSubApp.invoke('open_new_window', { boardId: boardId, profile: 'detachedBoard' }).catch(function () {});
+    } else if (action === 'backend-settings') {
+      LexeraSubApp.navigate({ type: 'reveal-panel', panelId: 'backendSettings' });
+    } else if (action === 'reveal' && filePath) {
+      LexeraSubApp.invoke('show_in_folder', { path: filePath }).catch(function () {});
+    }
+  }
+
+  function showBoardActionMenu(boardId, anchorEl) {
+    if (!boardId || !anchorEl) return;
+    var board = findRenderedBoard(boardId);
+    var filePath = board && (board.filePath || board.path || '');
+    var items = [
+      { id: 'open-tab', label: 'Open / Focus Tab' },
+      { id: 'detach', label: 'Open in Detached Window' },
+      { id: 'backend-settings', label: 'Backend Settings' }
+    ];
+    if (filePath) items.push({ id: 'reveal', label: 'Reveal in Finder' });
+    renderMenuAt(anchorEl, items, function (action) {
+      runBoardAction(boardId, action);
+    });
+  }
+
+  // User contract 2026-05-11: "the burger menu in the workspace is
+  // on the kanban boards and on each element as well!!!". Mirror of
+  // legacy sidebarTree.js behaviour — every node type carries a
+  // burger menu with type-appropriate actions.
+  function runEntityAction(node, action) {
+    var dragKind = node.getAttribute('data-drag-kind') || '';
+    var boardId = node.getAttribute('data-drag-board-id') || '';
+    var entityId = node.getAttribute('data-tree-id') || '';
+    if (action === 'focus') {
+      var focusTarget = { boardId: boardId };
+      if (dragKind === 'card') focusTarget.cardId = entityId;
+      else if (dragKind === 'column') focusTarget.columnId = entityId;
+      else if (dragKind === 'stack') focusTarget.stackId = entityId;
+      else if (dragKind === 'row') focusTarget.rowId = entityId;
+      else return;
+      LexeraSubApp.navigate({ type: 'focus-hierarchy-target', target: focusTarget });
+    } else if (action === 'rename') {
+      startInlineRename(node);
+    }
+  }
+
+  function showEntityActionMenu(node, anchorEl) {
+    if (!node || !anchorEl) return;
+    var dragKind = node.getAttribute('data-drag-kind') || '';
+    var kindLabel = dragKind === 'card' ? 'Card'
+      : dragKind === 'column' ? 'Column'
+      : dragKind === 'stack' ? 'Stack'
+      : dragKind === 'row' ? 'Row'
+      : 'Entity';
+    var items = [
+      { id: 'focus', label: 'Focus ' + kindLabel + ' in Kanban' },
+      { id: 'rename', label: 'Rename ' + kindLabel + '…' }
+    ];
+    renderMenuAt(anchorEl, items, function (action) {
+      runEntityAction(node, action);
+    });
+  }
+
+  function renderMenuAt(anchorEl, items, onAction) {
+    closeBoardActionMenus();
+    var menu = document.createElement('div');
+    menu.className = 'ws-tab-overflow-menu tree-board-action-menu is-open';
+    for (var i = 0; i < items.length; i++) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'ws-tab-overflow-menu-item';
+      item.setAttribute('data-action', items[i].id);
+      var label = document.createElement('span');
+      label.className = 'ws-tab-overflow-menu-item-label';
+      label.textContent = items[i].label;
+      item.appendChild(label);
+      menu.appendChild(item);
+    }
+    menu.addEventListener('click', function (event) {
+      var item = event.target && event.target.closest ? event.target.closest('[data-action]') : null;
+      if (!item) return;
+      event.preventDefault();
+      event.stopPropagation();
+      var action = item.getAttribute('data-action') || '';
+      closeBoardActionMenus();
+      onAction(action);
+    });
+    document.body.appendChild(menu);
+    var rect = anchorEl.getBoundingClientRect();
+    menu.style.top = Math.round(rect.bottom + 2) + 'px';
+    menu.style.left = Math.round(Math.max(8, Math.min(rect.right, window.innerWidth - menu.offsetWidth - 8))) + 'px';
+    setTimeout(function () {
+      document.addEventListener('mousedown', closeBoardActionMenus, { once: true });
+    }, 0);
+  }
+
   function refreshActiveHighlight() {
     if (!localBoardsEl) return;
     var nodes = localBoardsEl.querySelectorAll('.tree-node[data-tree-target="board"]');
@@ -76,6 +190,7 @@
              label: window.LexeraTitleHelpers.resolveCardLabel(card),
              type: 'card',
              children: null, expanded: false, hasToggle: false, grip: true,
+             menu: true,
              gripTitle: 'Drag card to reorder',
              attrs: dragAttrs(ctx.boardId, 'card') };
   }
@@ -84,6 +199,7 @@
     return { id: column.id || null, label: nodeLabel(column), type: 'column',
              children: cards.map(function (c) { return buildCardNode(c, ctx); }),
              expanded: true, grip: true,
+             menu: true,
              gripTitle: 'Drag column to reorder',
              attrs: dragAttrs(ctx.boardId, 'column') };
   }
@@ -92,6 +208,7 @@
     return { id: stack.id || null, label: nodeLabel(stack), type: 'stack',
              children: cols.map(function (c) { return buildColumnNode(c, ctx); }),
              expanded: true, grip: true,
+             menu: true,
              gripTitle: 'Drag stack to reorder',
              attrs: dragAttrs(ctx.boardId, 'stack') };
   }
@@ -100,6 +217,7 @@
     return { id: row.id || null, label: nodeLabel(row), type: 'row',
              children: stacks.map(function (s) { return buildStackNode(s, ctx); }),
              expanded: true, grip: true,
+             menu: true,
              gripTitle: 'Drag row to reorder',
              attrs: dragAttrs(ctx.boardId, 'row') };
   }
@@ -131,6 +249,7 @@
       hasToggle: true,
       expanded: isExpanded,
       grip: false,
+      menu: true,
       children: children,
       attrs: {
         'data-board-id': boardId,
@@ -686,6 +805,7 @@
       // Don't hijack a dblclick on the toggle/grip — those have their
       // own behaviours.
       if (e.target.closest('.tree-toggle')) return;
+      if (e.target.closest('.tree-menu-btn')) return;
       if (e.target.closest('.tree-grip')) return;
       e.preventDefault();
       startInlineRename(node);
@@ -700,6 +820,20 @@
       var node = e.target.closest && e.target.closest('.tree-node');
       if (!node || !localBoardsEl.contains(node)) return;
       var target = node.getAttribute('data-tree-target') || '';
+      var menuButton = e.target.closest && e.target.closest('.tree-menu-btn');
+      if (menuButton) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (target === 'board') {
+          showBoardActionMenu(node.getAttribute('data-board-id') || '', menuButton);
+        } else if (node.getAttribute('data-drag-kind')) {
+          // User contract 2026-05-11: every workspace tree node
+          // gets a burger menu, not just boards.
+          showEntityActionMenu(node, menuButton);
+        }
+        return;
+      }
+      if (e.target.closest && e.target.closest('.tree-grip')) return;
       if (toggle) {
         // Alt+click on a toggle → fold/unfold all descendants while
         // leaving the clicked node's own expand state unchanged.
