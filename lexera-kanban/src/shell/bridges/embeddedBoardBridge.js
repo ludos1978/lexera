@@ -233,7 +233,13 @@
         // hierarchyDragBridge broadcasts `hierarchy-board-changed`
         // post-saveBoard; subscribing here lets us dispatch a reload
         // message into app.js when the active board changed.
-        'hierarchy-board-changed'
+        'hierarchy-board-changed',
+        // User contract 2026-05-11: workspace tree burger menu items
+        // dispatch their action through this broadcast. The kanban
+        // frame's app.js resolves the entityId to local indices and
+        // calls ActionRegistry.dispatch — same path the kanban's
+        // native context menu uses.
+        'hierarchy-entity-menu-action'
       ]
     }).catch(function () {});
 
@@ -860,6 +866,25 @@
       if (p.boardId) {
         dispatchAsMessage({ type: 'lexera-hierarchy-board-changed', boardId: p.boardId });
       }
+    });
+
+    // Workspace tree burger-menu action dispatch (user contract
+    // 2026-05-11). The workspace tree's `runEntityAction` already
+    // broadcasts `focus-hierarchy-target` BEFORE this event, so the
+    // kanban frame's active board is the target one + the entity's
+    // DOM is in view by the time the action message arrives. app.js
+    // hooks `lexera-hierarchy-entity-menu-action` to call
+    // ActionRegistry.dispatch with the resolved scope + indices.
+    wv.listen('hierarchy-entity-menu-action', function (event) {
+      var p = (event && event.payload) || {};
+      if (!p.boardId || !p.kind || !p.entityId || !p.action) return;
+      dispatchAsMessage({
+        type: 'lexera-hierarchy-entity-menu-action',
+        boardId: p.boardId,
+        kind: p.kind,
+        entityId: p.entityId,
+        action: p.action
+      });
     });
 
     wv.listen('catalog-snapshot', function (event) {

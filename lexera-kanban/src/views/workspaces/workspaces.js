@@ -79,10 +79,89 @@
     });
   }
 
-  // User contract 2026-05-11: "the burger menu in the workspace is
-  // on the kanban boards and on each element as well!!!". Mirror of
-  // legacy sidebarTree.js behaviour — every node type carries a
-  // burger menu with type-appropriate actions.
+  // User contract 2026-05-11: same items as the kanban view's burger
+  // menu plus a "Focus <Kind>" item at the top. See hierarchy.js for
+  // the full architectural note — both sub-apps render the identical
+  // menu and broadcast the same `hierarchy-entity-menu-action` for
+  // execution in the kanban frame.
+  function buildEntityMenuItems(kind) {
+    if (kind === 'card') {
+      return [
+        { id: 'focus',         label: 'Focus card in Kanban' },
+        { separator: true },
+        { id: 'insert-before', label: 'Add card before' },
+        { id: 'insert-after',  label: 'Add card after' },
+        { id: 'duplicate',     label: 'Duplicate card' },
+        { separator: true },
+        { id: 'copy-markdown', label: 'Copy as markdown' },
+        { id: 'copy-html',     label: 'Copy as formatted' },
+        { separator: true },
+        { id: 'edit',          label: 'Edit card' },
+        { separator: true },
+        { id: 'park',          label: 'Park card' },
+        { id: 'park-copy',     label: 'Park copy' },
+        { id: 'archive',       label: 'Archive' },
+        { id: 'delete',        label: 'Delete' }
+      ];
+    }
+    if (kind === 'column') {
+      return [
+        { id: 'focus',         label: 'Focus column in Kanban' },
+        { separator: true },
+        { id: 'rename',        label: 'Rename column' },
+        { id: 'add-card',      label: 'Add card' },
+        { id: 'add-after',     label: 'Add column after' },
+        { id: 'duplicate',     label: 'Duplicate column' },
+        { separator: true },
+        { id: 'copy-markdown', label: 'Copy as markdown' },
+        { id: 'copy-html',     label: 'Copy as formatted' },
+        { id: 'export-column', label: 'Export column' },
+        { separator: true },
+        { id: 'park',          label: 'Park column' },
+        { id: 'archive',       label: 'Archive column' },
+        { id: 'delete',        label: 'Delete column' }
+      ];
+    }
+    if (kind === 'stack') {
+      return [
+        { id: 'focus',            label: 'Focus stack in Kanban' },
+        { separator: true },
+        { id: 'rename',           label: 'Rename stack' },
+        { id: 'add-column',       label: 'Add column' },
+        { id: 'add-stack-before', label: 'Add stack before' },
+        { id: 'add-stack-after',  label: 'Add stack after' },
+        { id: 'duplicate',        label: 'Duplicate stack' },
+        { separator: true },
+        { id: 'copy-markdown',    label: 'Copy as markdown' },
+        { id: 'copy-html',        label: 'Copy as formatted' },
+        { id: 'export-stack',     label: 'Export stack' },
+        { separator: true },
+        { id: 'park',             label: 'Park stack' },
+        { id: 'archive',          label: 'Archive stack' },
+        { id: 'delete',           label: 'Delete stack' }
+      ];
+    }
+    if (kind === 'row') {
+      return [
+        { id: 'focus',         label: 'Focus row in Kanban' },
+        { separator: true },
+        { id: 'rename',        label: 'Rename row' },
+        { id: 'add-stack',     label: 'Add stack' },
+        { id: 'add-row-after', label: 'Add row after' },
+        { id: 'duplicate',     label: 'Duplicate row' },
+        { separator: true },
+        { id: 'copy-markdown', label: 'Copy as markdown' },
+        { id: 'copy-html',     label: 'Copy as formatted' },
+        { id: 'export-row',    label: 'Export row' },
+        { separator: true },
+        { id: 'park',          label: 'Park row' },
+        { id: 'archive',       label: 'Archive row' },
+        { id: 'delete',        label: 'Delete row' }
+      ];
+    }
+    return [];
+  }
+
   function runEntityAction(node, action) {
     var dragKind = node.getAttribute('data-drag-kind') || '';
     var boardId = node.getAttribute('data-drag-board-id') || '';
@@ -95,23 +174,34 @@
       else if (dragKind === 'row') focusTarget.rowId = entityId;
       else return;
       LexeraSubApp.navigate({ type: 'focus-hierarchy-target', target: focusTarget });
-    } else if (action === 'rename') {
+      return;
+    }
+    if (action === 'rename') {
       startInlineRename(node);
+      return;
+    }
+    LexeraSubApp.navigate({ type: 'focus-hierarchy-target', target: {
+      boardId: boardId,
+      cardId:   dragKind === 'card'   ? entityId : null,
+      columnId: dragKind === 'column' ? entityId : null,
+      stackId:  dragKind === 'stack'  ? entityId : null,
+      rowId:    dragKind === 'row'    ? entityId : null
+    } });
+    if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+      window.LexeraSubApp.broadcast('hierarchy-entity-menu-action', {
+        boardId: boardId,
+        kind: dragKind,
+        entityId: entityId,
+        action: action
+      });
     }
   }
 
   function showEntityActionMenu(node, anchorEl) {
     if (!node || !anchorEl) return;
     var dragKind = node.getAttribute('data-drag-kind') || '';
-    var kindLabel = dragKind === 'card' ? 'Card'
-      : dragKind === 'column' ? 'Column'
-      : dragKind === 'stack' ? 'Stack'
-      : dragKind === 'row' ? 'Row'
-      : 'Entity';
-    var items = [
-      { id: 'focus', label: 'Focus ' + kindLabel + ' in Kanban' },
-      { id: 'rename', label: 'Rename ' + kindLabel + '…' }
-    ];
+    var items = buildEntityMenuItems(dragKind);
+    if (!items.length) return;
     renderMenuAt(anchorEl, items, function (action) {
       runEntityAction(node, action);
     });

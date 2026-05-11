@@ -278,7 +278,11 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
         // post-saveBoard hierarchy-board-changed broadcast lets the
         // bridge dispatch a `lexera-hierarchy-board-changed` message
         // into app.js so the active board reloads automatically.
-        'hierarchy-board-changed'
+        'hierarchy-board-changed',
+        // 2026-05-11 follow-up: workspace tree burger-menu items
+        // broadcast their action via this event; the kanban frame's
+        // app.js dispatches through ActionRegistry.
+        'hierarchy-entity-menu-action'
       ]
     });
     expect(typeof handlers['dashboard-navigate']).toBe('function');
