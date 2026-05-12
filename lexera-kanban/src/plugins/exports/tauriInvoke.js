@@ -1,3 +1,14 @@
+/**
+ * @typedef {Object} LexeraExportTauriIpcLike
+ * @property {(command: string, args?: Record<string, unknown>) => Promise<unknown>} invoke
+ */
+
+/**
+ * @typedef {Object} LexeraExportTauriInvokeApi
+ * @property {(command: string, args?: Record<string, unknown> | undefined) => Promise<unknown>} invoke
+ */
+
+/** @type {LexeraExportTauriInvokeApi} */
 var LexeraExportTauriInvoke = (function () {
   // Mirrors resolveExportTauriIpc in src/export/exportService.js. The kanban
   // UI runs inside a workspace-shell iframe; Tauri 2 does NOT inject

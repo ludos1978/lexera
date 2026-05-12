@@ -92,6 +92,7 @@
     "src/fold/foldState.js",
     "src/interaction/scrollBehavior.js",
     "src/hierarchy/hierarchyContract.js",
-    "src/render/markdownRenderer.js"
+    "src/render/markdownRenderer.js",
+    "src/plugins/exports/tauriInvoke.js"
   ]
 }

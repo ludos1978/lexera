@@ -2288,6 +2288,19 @@ interface LexeraMarkdownRendererApi {
   isReady(): boolean;
 }
 
+// LexeraExportTauriInvoke — thin shim around the Tauri 2 IPC core.
+// Source: src/plugins/exports/tauriInvoke.js (IIFE; window.LexeraExportTauriInvoke = api).
+// The kanban UI runs inside a workspace-shell iframe; Tauri 2 does NOT
+// inject __TAURI_INTERNALS__ into sub-frames, so this shim walks up to
+// the parent window when the current window is bare. Export plugins
+// (Marp / Pandoc status checks, engine path resolution, etc.) call
+// `LexeraExportTauriInvoke.invoke(command, args)` instead of touching
+// the Tauri globals directly so the shell's discovery layer can
+// interpose on the IPC.
+interface LexeraExportTauriInvokeApi {
+  invoke(command: string, args?: Record<string, unknown> | undefined): Promise<unknown>;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3770,6 +3783,13 @@ declare global {
     LexeraScrollBehavior: LexeraScrollBehaviorApi;
     LexeraHierarchyContract: LexeraHierarchyContractApi;
     LexeraMarkdownRenderer: LexeraMarkdownRendererApi;
+    LexeraExportTauriInvoke: LexeraExportTauriInvokeApi;
+    // Backend-discovery transport hook — declared as `any` here
+    // because the discovery module itself isn't in the typedef gate
+    // yet. tauriInvoke.js reads `window.LexeraBackendDiscovery?.invokeTauri`
+    // to let a shared abstraction layer interpose on the IPC.
+    LexeraBackendDiscovery: any;
+    __TAURI_INTERNALS__: any;
     LexeraTagColors: any;
     tagColors: any;
     markdownit: any;
