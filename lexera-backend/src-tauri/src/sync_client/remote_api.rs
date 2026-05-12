@@ -19,6 +19,57 @@ use serde::Deserialize;
 
 use super::friendly_error;
 
+/// Typed error for the two HTTP remote-API helpers below. Display impls
+/// reproduce the prior `format!()` wire strings byte-for-byte so the
+/// existing callers (which stringify via `{}`) remain behaviourally
+/// identical. Variants are kept matchable so future call-site refactors
+/// can pattern-match on Http {status, ..} or Parse(..) without parsing
+/// log strings. The Request variant pre-stringifies via friendly_error
+/// because reqwest::Error isn't Clone and friendly_error's rich shaping
+/// (connect / timeout / status-mapped) is already lossy — preserving the
+/// typed source there would need a larger refactor of friendly_error
+/// itself.
+#[derive(Debug, thiserror::Error)]
+pub(super) enum RemoteApiError {
+    #[error("{0}")]
+    Request(String),
+    // status is reqwest::StatusCode so its Display reproduces the prior
+    // `format!("{}", status)` shape — "404 Not Found" with canonical
+    // reason phrase, NOT bare "404". Switching to u16 would silently
+    // drop the reason phrase from log output.
+    #[error("{context} failed (HTTP {status}): {body}")]
+    Http {
+        context: &'static str,
+        status: reqwest::StatusCode,
+        body: String,
+    },
+    // source is reqwest::Error (not serde_json::Error) because
+    // reqwest::Response::json() returns its own Error wrapping the
+    // underlying serde failure; preserving that matches the prior
+    // `format!("Parse initial board response: {}", e)` wire shape.
+    #[error("Parse {context}: {source}")]
+    Parse {
+        context: &'static str,
+        #[source]
+        source: reqwest::Error,
+    },
+}
+
+impl RemoteApiError {
+    fn request(context: &str, err: reqwest::Error) -> Self {
+        Self::Request(friendly_error(context, err))
+    }
+}
+
+// Lets the `?` operator inside Tauri/HTTP-bound callers keep their
+// existing `Result<_, String>` outer signatures unchanged — same
+// boundary pattern used by CaptureGeometryError (Slice 5).
+impl From<RemoteApiError> for String {
+    fn from(err: RemoteApiError) -> String {
+        err.to_string()
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RemoteBoardColumnsResponse {
@@ -34,7 +85,7 @@ pub(super) async fn register_remote_user(
     server_url: &str,
     user_id: &str,
     user_name: &str,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, RemoteApiError> {
     let register_body = serde_json::json!({
         "id": user_id,
         "name": user_name,
@@ -44,7 +95,7 @@ pub(super) async fn register_remote_user(
         .json(&register_body)
         .send()
         .await
-        .map_err(|e| friendly_error("User registration", e))?;
+        .map_err(|e| RemoteApiError::request("User registration", e))?;
 
     let status = register_resp.status();
     if status.is_success() {
@@ -88,7 +139,7 @@ pub(super) async fn fetch_remote_board_snapshot(
     server_url: &str,
     remote_board_id: &str,
     auth_token: Option<&str>,
-) -> Result<KanbanBoard, String> {
+) -> Result<KanbanBoard, RemoteApiError> {
     log::info!(
         "[sync_client] Fetching initial board snapshot remote_board_id={} server={}",
         remote_board_id,
@@ -101,21 +152,25 @@ pub(super) async fn fetch_remote_board_snapshot(
     let board_resp = req
         .send()
         .await
-        .map_err(|e| friendly_error("Initial board fetch", e))?;
+        .map_err(|e| RemoteApiError::request("Initial board fetch", e))?;
 
     if !board_resp.status().is_success() {
         let status = board_resp.status();
-        let text = board_resp.text().await.unwrap_or_default();
-        return Err(format!(
-            "Initial board fetch failed (HTTP {}): {}",
-            status, text
-        ));
+        let body = board_resp.text().await.unwrap_or_default();
+        return Err(RemoteApiError::Http {
+            context: "Initial board fetch",
+            status,
+            body,
+        });
     }
 
     let initial_board = board_resp
         .json::<RemoteBoardColumnsResponse>()
         .await
-        .map_err(|e| format!("Parse initial board response: {}", e))?
+        .map_err(|source| RemoteApiError::Parse {
+            context: "initial board response",
+            source,
+        })?
         .full_board;
     log::info!(
         "[sync_client] Initial snapshot loaded remote_board_id={} title={} cards={}",
@@ -128,4 +183,62 @@ pub(super) async fn fetch_remote_board_snapshot(
             .sum::<usize>()
     );
     Ok(initial_board)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remote_api_error_request_variant_wraps_friendly_error_output() {
+        // The Request variant pre-stringifies via friendly_error so its
+        // Display is just the stored string verbatim. We can't easily
+        // synthesize a reqwest::Error in tests (no public constructor),
+        // but we can verify the Display passthrough by constructing the
+        // variant directly with the same string friendly_error would
+        // produce.
+        let err = RemoteApiError::Request(
+            "User registration: Could not connect to server (is it running and accessible on the network?)"
+                .into(),
+        );
+        assert_eq!(
+            err.to_string(),
+            "User registration: Could not connect to server (is it running and accessible on the network?)"
+        );
+    }
+
+    #[test]
+    fn remote_api_error_http_variant_preserves_status_with_reason_phrase() {
+        // Prior wire format: format!("Initial board fetch failed (HTTP {}): {}", status, text)
+        // where {status} is a reqwest::StatusCode whose Display emits
+        // "404 Not Found" (the canonical reason phrase, not bare "404").
+        // The typed variant must reproduce that exactly.
+        let err = RemoteApiError::Http {
+            context: "Initial board fetch",
+            status: reqwest::StatusCode::NOT_FOUND,
+            body: "board missing".into(),
+        };
+        assert_eq!(
+            err.to_string(),
+            "Initial board fetch failed (HTTP 404 Not Found): board missing"
+        );
+
+        // Same shape for a 5xx case.
+        let err500 = RemoteApiError::Http {
+            context: "Initial board fetch",
+            status: reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            body: "boom".into(),
+        };
+        assert_eq!(
+            err500.to_string(),
+            "Initial board fetch failed (HTTP 500 Internal Server Error): boom"
+        );
+    }
+
+    #[test]
+    fn from_remote_api_error_for_string_uses_display() {
+        let err = RemoteApiError::Request("any text".into());
+        let s: String = err.into();
+        assert_eq!(s, "any text");
+    }
 }
