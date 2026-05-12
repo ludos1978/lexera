@@ -81,6 +81,7 @@
     "src/menuContributorRegistry.js",
     "src/debug/debugApi.js",
     "src/canvas/canvasDom.js",
-    "src/themes.js"
+    "src/themes.js",
+    "src/plugins/pluginLoader.js"
   ]
 }

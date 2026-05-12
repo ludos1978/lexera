@@ -1,3 +1,26 @@
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk.
+
+/** @typedef {{ register(plugin: unknown): boolean; setEnabled(id: string, enabled: boolean): void; getDisabledIds(): Array<string>; [k: string]: unknown }} LexeraPluginLoaderRegistry */
+
+/** @typedef {{ force?: boolean; disabled?: Array<string>; [k: string]: unknown }} LexeraPluginLoaderOpts */
+
+/** @typedef {{ loaded: boolean; registered: number; disabled: number }} LexeraPluginLoaderLoadResult */
+
+/** @typedef {(opts: LexeraPluginLoaderOpts) => unknown} LexeraPluginLoaderFactory */
+
+/**
+ * @typedef {Object} LexeraPluginLoaderInstance
+ * @property {(factory: LexeraPluginLoaderFactory) => void} addBuiltin
+ * @property {(registry: LexeraPluginLoaderRegistry | null | undefined, opts?: LexeraPluginLoaderOpts) => LexeraPluginLoaderLoadResult} loadBuiltins
+ * @property {() => void} reset
+ * @property {() => boolean} isLoaded
+ * @property {() => number} getBuiltinCount
+ */
+
+/**
+ * @typedef {LexeraPluginLoaderInstance & { createLoader(): LexeraPluginLoaderInstance }} LexeraPluginLoaderApi
+ */
+
 var LexeraPluginLoader = (function () {
   function logInfo(msg, detail) {
     if (typeof console !== 'undefined' && console.log) {
@@ -13,11 +36,13 @@ var LexeraPluginLoader = (function () {
     }
   }
 
+  /** @returns {LexeraPluginLoaderInstance} */
   function createLoader() {
     var loaded = false;
 
     // List of factory functions that return plugin manifests.
     // Phase 1: empty — later phases push built-in plugin factories here.
+    /** @type {Array<LexeraPluginLoaderFactory>} */
     var builtinFactories = [];
 
     function addBuiltin(factory) {
@@ -77,16 +102,19 @@ var LexeraPluginLoader = (function () {
       return builtinFactories.length;
     }
 
-    return {
+    /** @type {LexeraPluginLoaderInstance} */
+    var inst = {
       addBuiltin: addBuiltin,
       loadBuiltins: loadBuiltins,
       reset: reset,
       isLoaded: isLoaded,
       getBuiltinCount: getBuiltinCount
     };
+    return inst;
   }
 
-  var api = createLoader();
+  /** @type {LexeraPluginLoaderApi} */
+  var api = /** @type {LexeraPluginLoaderApi} */ (createLoader());
   api.createLoader = createLoader;
   return api;
 })();
