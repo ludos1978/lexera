@@ -1,13 +1,50 @@
+// Leading line comment so checkJs doesn't parse the first @typedef
+// block as a module-description comment + typedef duplicate (slice-13
+// lesson).
+
+/**
+ * @typedef {Object} LexeraSidebarTreeStackLocal
+ * @property {Array<{ cards?: Array<unknown> }>} [columns]
+ */
+
+/**
+ * @typedef {Object} LexeraSidebarTreeRowLocal
+ * @property {Array<LexeraSidebarTreeStackLocal>} [stacks]
+ */
+
+/**
+ * @typedef {Object} LexeraSidebarTreeStateLocal
+ * @property {Array<string>} [rows]
+ * @property {Array<string>} [stacks]
+ * @property {Array<string>} [columns]
+ */
+
+/**
+ * @typedef {Object} LexeraSidebarTreeOptionsLocal
+ * @property {(text: string | null | undefined) => string} [stripLayoutTags]
+ * @property {(columns: Array<unknown>) => Array<{ col: unknown; fullIndex: number }>} [getDisplayOrderedColumnEntries]
+ */
+
+/**
+ * @typedef {Object} LexeraSidebarTreeApiLocal
+ * @property {(content: string | null | undefined) => boolean} isHiddenCard
+ * @property {(row: LexeraSidebarTreeRowLocal | null | undefined) => number} countCardsInRow
+ * @property {(stack: LexeraSidebarTreeStackLocal | null | undefined) => number} countCardsInStack
+ * @property {(content: string | null | undefined) => string} cardPreviewText
+ * @property {(rows: Array<LexeraSidebarTreeRowLocal> | null | undefined, boardId: string, treeState: LexeraSidebarTreeStateLocal | null | undefined, hasTreeState: boolean, options?: LexeraSidebarTreeOptionsLocal) => Array<unknown>} buildSidebarTreeNodes
+ */
+
 (function (root, factory) {
   var api = factory();
   if (typeof module === 'object' && module.exports) {
     module.exports = api;
   }
-  root.LexeraSidebarTree = api;
+  /** @type {any} */ (root).LexeraSidebarTree = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
 
+  /** @param {LexeraSidebarTreeStackLocal | null | undefined} stack */
   function countCardsInStack(stack) {
     var columns = stack && Array.isArray(stack.columns) ? stack.columns : [];
     var n = 0;
@@ -17,6 +54,7 @@
     return n;
   }
 
+  /** @param {LexeraSidebarTreeRowLocal | null | undefined} row */
   function countCardsInRow(row) {
     var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
     var n = 0;
@@ -237,11 +275,13 @@
     return nodes;
   }
 
-  return {
+  /** @type {LexeraSidebarTreeApiLocal} */
+  var api = {
     isHiddenCard: isHiddenCard,
     countCardsInRow: countCardsInRow,
     countCardsInStack: countCardsInStack,
     cardPreviewText: cardPreviewText,
     buildSidebarTreeNodes: buildSidebarTreeNodes
   };
+  return api;
 }));

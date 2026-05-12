@@ -68,6 +68,7 @@
     "src/canvas/canvasLayout.js",
     "src/keyboard/appShellShortcuts.js",
     "src/actionRegistry.js",
-    "src/contentEnhancerRegistry.js"
+    "src/contentEnhancerRegistry.js",
+    "src/sidebar/sidebarTree.js"
   ]
 }

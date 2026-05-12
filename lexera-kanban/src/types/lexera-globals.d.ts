@@ -1319,6 +1319,48 @@ interface LexeraVisualTheme {
   [k: string]: unknown;
 }
 
+/**
+ * Source: src/sidebar/sidebarTree.js (IIFE;
+ * window.LexeraSidebarTree = api). Helpers for rendering the kanban
+ * sidebar's expanded board hierarchy view — card counts per row/stack,
+ * hidden-card detection, preview text extraction, and the recursive
+ * tree-node builder consumed by the sidebar TreeView.
+ */
+interface LexeraSidebarTreeStack {
+  columns?: Array<{ cards?: Array<unknown> }>;
+}
+
+interface LexeraSidebarTreeRow {
+  stacks?: Array<LexeraSidebarTreeStack>;
+}
+
+interface LexeraSidebarTreeState {
+  rows?: Array<string>;
+  stacks?: Array<string>;
+  columns?: Array<string>;
+}
+
+interface LexeraSidebarTreeOptions {
+  stripLayoutTags?: (text: string | null | undefined) => string;
+  getDisplayOrderedColumnEntries?: (
+    columns: Array<unknown>
+  ) => Array<{ col: unknown; fullIndex: number }>;
+}
+
+interface LexeraSidebarTreeApi {
+  isHiddenCard(content: string | null | undefined): boolean;
+  countCardsInRow(row: LexeraSidebarTreeRow | null | undefined): number;
+  countCardsInStack(stack: LexeraSidebarTreeStack | null | undefined): number;
+  cardPreviewText(content: string | null | undefined): string;
+  buildSidebarTreeNodes(
+    rows: Array<LexeraSidebarTreeRow> | null | undefined,
+    boardId: string,
+    treeState: LexeraSidebarTreeState | null | undefined,
+    hasTreeState: boolean,
+    options?: LexeraSidebarTreeOptions
+  ): Array<unknown>;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -2777,7 +2819,7 @@ declare global {
     LexeraAppShellShortcuts: LexeraAppShellShortcutsApi;
     LexeraBoardList: any;
     LexeraSidebarSync: LexeraSidebarSyncApi;
-    LexeraSidebarTree: any;
+    LexeraSidebarTree: LexeraSidebarTreeApi;
     LexeraHierarchyController: any;
     LexeraFrontendTests: any;
     LexeraFilesTestApi: LexeraFilesTestApi;
@@ -2855,6 +2897,12 @@ declare global {
   // Plugin registry IIFE — accessed by bare name via `typeof
   // LexeraPluginRegistry !== 'undefined'` in contentEnhancerRegistry.js.
   const LexeraPluginRegistry: any;
+  // Tag system IIFE — accessed by bare name via `LexeraTagSystem.x`
+  // from sidebarTree.js and other consumers loaded after tagSystem.js.
+  const LexeraTagSystem: any;
+  // Hierarchy contract IIFE — accessed by bare name from sidebarTree.js
+  // for entity capability lookups.
+  const LexeraHierarchyContract: any;
 
   // Custom property the shell stashes on a side-dock header DOM
   // node so it can match the centre-tree overflow header lookup.
