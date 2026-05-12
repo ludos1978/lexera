@@ -1093,6 +1093,41 @@ interface LexeraAppShellShortcutsApi {
   dispatchWorkspaceShellAction(event: KeyboardEvent, deps: LexeraAppShellShortcutsDeps): boolean;
 }
 
+/**
+ * Source: src/actionRegistry.js (IIFE;
+ * window.LexeraActionRegistry = api). Pluggable per-scope action
+ * dispatcher used by burger menus, native menu bar, hierarchy entity
+ * actions, etc. Each scope registers patterns (`'string'`, `'prefix*'`,
+ * or a RegExp); `dispatch(scope, action, ctx)` finds the first match
+ * and runs the handler.
+ */
+type LexeraActionPattern = string | RegExp;
+type LexeraActionHandler = (action: string, context: Record<string, unknown>) => void;
+
+type LexeraParsedActionPattern =
+  | { type: 'exact'; value: LexeraActionPattern; raw: LexeraActionPattern }
+  | { type: 'prefix'; prefix: string; raw: LexeraActionPattern }
+  | { type: 'regex'; regex: RegExp; raw: string };
+
+interface LexeraActionRegistryEntry {
+  parsed: LexeraParsedActionPattern;
+  handler: LexeraActionHandler;
+}
+
+interface LexeraActionRegistryApi {
+  register(scope: string, pattern: LexeraActionPattern, handler: LexeraActionHandler): void;
+  registerGroup(
+    scope: string,
+    entries: Array<[LexeraActionPattern, LexeraActionHandler]>
+  ): void;
+  dispatch(
+    scope: string,
+    action: string | null | undefined,
+    context?: Record<string, unknown>
+  ): boolean;
+  find(scope: string, action: string): LexeraActionRegistryEntry | null;
+}
+
 interface LexeraGeometryObserverApi {
   /** Build an instance bound to the supplied callback bag.
    *  `onTabsLayoutChanged(headerEl)` fires after each recompute so
@@ -2477,7 +2512,7 @@ declare global {
     LexeraDragDropHandlers: any;
     LexeraOrderHelpers: any;
     LexeraRowStackMenu: any;
-    LexeraActionRegistry: any;
+    LexeraActionRegistry: LexeraActionRegistryApi;
     LexeraContentEnhancerRegistry: any;
     LexeraTagSystem: any;
     LexeraDropZoneIndicators: LexeraDropZoneIndicatorsApi;

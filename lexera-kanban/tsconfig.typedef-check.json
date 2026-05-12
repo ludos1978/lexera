@@ -66,6 +66,7 @@
     "src/canvas/canvasMode.js",
     "src/canvas/canvasPan.js",
     "src/canvas/canvasLayout.js",
-    "src/keyboard/appShellShortcuts.js"
+    "src/keyboard/appShellShortcuts.js",
+    "src/actionRegistry.js"
   ]
 }
