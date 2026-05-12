@@ -689,6 +689,11 @@ var LexeraBoardDataStore = (function () {
     } catch (err) {
       var saveErrMsg = err && err.message ? err.message : String(err);
       dep('logFrontendIssue')('error', 'board.save', 'Save failed: ' + saveErrMsg, err);
+      // Save just failed: a pending draft IS the unsaved work the user
+      // performed since the last successful save. Flush it now so the
+      // crashsave + cold-restart recovery have an up-to-date draft to
+      // surface, not a stale one from up to 500ms earlier.
+      try { dep('flushPendingDraftSave')(); } catch (_) { /* best-effort */ }
       var failedSaveCrashsave = await writeBoardCrashsave('save-exception', getFullBoardData(), {
         error: saveErrMsg
       });
@@ -1097,6 +1102,13 @@ var LexeraBoardDataStore = (function () {
     var seq = dep('incrementBoardLoadSeq')();
     var activeBoardId = getActiveBoardId();
     var isBoardSwitch = boardId !== activeBoardId;
+    // Board switch is one of the four critical boundaries where a
+    // 500ms-debounced draft save could otherwise be silently dropped:
+    // we're about to replace the in-memory board state, so any pending
+    // draft for the OUTGOING board must hit storage before the switch.
+    if (isBoardSwitch) {
+      try { dep('flushPendingDraftSave')(); } catch (_) { /* best-effort */ }
+    }
     dep('resetBoardStatsFilter')();
     dep('resetColumnSortState')();
     dep('closeSearchReplacePanel')();

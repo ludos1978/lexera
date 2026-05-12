@@ -3038,6 +3038,7 @@ var LexeraDashboard = (function () {
   function traceBoardIdentityPair(level, target, message, boardId, labelA, boardA, labelB, boardB, extra) { _bl('traceBoardIdentityPair', level, target, message, boardId, labelA, boardA, labelB, boardB, extra); }
   function hasBoardIdentityMismatch(boardA, boardB) { return _bl('hasBoardIdentityMismatch', boardA, boardB); }
   function saveLocalBoardDraft(boardId, boardData) { _bl('saveLocalBoardDraft', boardId, boardData); }
+  function flushPendingDraftSave() { return _bl('flushPendingDraftSave'); }
   function loadLocalBoardDraft(boardId) { return _bl('loadLocalBoardDraft', boardId); }
   function clearLocalBoardDraft(boardId) { _bl('clearLocalBoardDraft', boardId); }
   function boardCardSummary(bd) { return _bl('boardCardSummary', bd); }
@@ -3093,6 +3094,7 @@ var LexeraDashboard = (function () {
     setPendingExternalRebaseConflict: function (v) { pendingExternalRebaseConflict = v; },
     clearLocalBoardDraft: function (id) { clearLocalBoardDraft(id); },
     saveLocalBoardDraft: function (id, bd) { saveLocalBoardDraft(id, bd); },
+    flushPendingDraftSave: function () { return flushPendingDraftSave(); },
     loadLocalBoardDraft: function (id) { return loadLocalBoardDraft(id); },
     // Logging
     traceFrontendAction: function (level, target, msg, details) { traceFrontendAction(level, target, msg, details); },
@@ -5446,6 +5448,15 @@ var LexeraDashboard = (function () {
   // CSS `content-visibility` trick and observer short-circuit never apply
   // to boards hosted inside the shell — only to the parent's own body.
   if (typeof window !== 'undefined' && window.addEventListener) {
+    // Flush any pending debounced draft save before the page is torn
+    // down (tab close, navigation, Tauri window close). The 500ms
+    // debounce in saveLocalBoardDraft would otherwise silently lose
+    // up to 500ms of edits — pagehide is the last reliable hook the
+    // platform gives us. Best-effort; errors swallowed so we don't
+    // block teardown.
+    window.addEventListener('pagehide', function () {
+      try { flushPendingDraftSave(); } catch (_) { /* best-effort teardown */ }
+    });
     window.addEventListener('message', function (event) {
       var data = event && event.data;
       if (!data || data.type !== 'lexera-layout-drag') return;

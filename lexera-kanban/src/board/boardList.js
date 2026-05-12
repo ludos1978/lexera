@@ -439,36 +439,67 @@ var LexeraBoardList = (function () {
   // ─── Local board draft ────────────────────────────────────────────
 
   var _draftSaveTimer = null;
+  // Captures the {boardId, boardData} of the latest pending save so
+  // flushPendingDraftSave can execute it synchronously at critical
+  // boundaries (pagehide, board switch, save failure, app shutdown)
+  // without waiting for the 500ms debounce. Cleared after fire/cancel.
+  var _draftSavePending = null;
+
+  function _executeDraftSave(boardId, boardData) {
+    try {
+      var bd = _dep('fullBoardData') || boardData;
+      var baseBoard = getBoardSaveBase(bd) || bd;
+      var draftPayload = {
+        savedAt: Date.now(),
+        revision: _dep('_lastLoadedRevision') || (function () {
+          var abd = _dep('activeBoardData');
+          return abd && abd.revision ? abd.revision : null;
+        })(),
+        board: cloneBoardData(bd),
+        baseBoard: cloneBoardData(baseBoard)
+      };
+      if (_Settings) { _Settings.setForBoard('boardDraft', boardId, draftPayload); }
+      else { writeLocalStorageItem(boardDraftStorageKey(boardId), JSON.stringify(draftPayload)); }
+    } catch (err) {
+      logFrontendIssue('warn', 'board.draft.save', 'Failed to persist local board draft', err);
+    }
+  }
+
   function saveLocalBoardDraft(boardId, boardData) {
     if (!boardId || !boardData) return;
     if (_callDep('isRemoteBoardId', boardId)) return;
     // Debounce: draft save does 2 deep clones + JSON.stringify of the entire board.
     // On large boards this is expensive. Delay 500ms to coalesce rapid mutations.
     if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
+    _draftSavePending = { boardId: boardId, boardData: boardData };
     _draftSaveTimer = setTimeout(function () {
       _draftSaveTimer = null;
-      try {
-        var bd = _dep('fullBoardData') || boardData;
-        var baseBoard = getBoardSaveBase(bd) || bd;
-        var draftPayload = {
-          savedAt: Date.now(),
-          revision: _dep('_lastLoadedRevision') || (function () {
-            var abd = _dep('activeBoardData');
-            return abd && abd.revision ? abd.revision : null;
-          })(),
-          board: cloneBoardData(bd),
-          baseBoard: cloneBoardData(baseBoard)
-        };
-        if (_Settings) { _Settings.setForBoard('boardDraft', boardId, draftPayload); }
-        else { writeLocalStorageItem(boardDraftStorageKey(boardId), JSON.stringify(draftPayload)); }
-      } catch (err) {
-        logFrontendIssue('warn', 'board.draft.save', 'Failed to persist local board draft', err);
-      }
+      var pending = _draftSavePending;
+      _draftSavePending = null;
+      if (pending) _executeDraftSave(pending.boardId, pending.boardData);
     }, 500);
   }
 
   function cancelPendingDraftSave() {
     if (_draftSaveTimer) { clearTimeout(_draftSaveTimer); _draftSaveTimer = null; }
+    _draftSavePending = null;
+  }
+
+  /**
+   * Fire any pending debounced draft save immediately. Returns true if a
+   * pending save was executed, false if the timer was idle. Safe to call
+   * at any boundary where a 500ms loss window matters: pagehide / board
+   * switch / save failure / app shutdown.
+   */
+  function flushPendingDraftSave() {
+    if (!_draftSaveTimer) return false;
+    clearTimeout(_draftSaveTimer);
+    _draftSaveTimer = null;
+    var pending = _draftSavePending;
+    _draftSavePending = null;
+    if (!pending) return false;
+    _executeDraftSave(pending.boardId, pending.boardData);
+    return true;
   }
 
   function loadLocalBoardDraft(boardId) {
@@ -2904,6 +2935,7 @@ var LexeraBoardList = (function () {
     hasBoardIdentityMismatch: hasBoardIdentityMismatch,
     saveLocalBoardDraft: saveLocalBoardDraft,
     cancelPendingDraftSave: cancelPendingDraftSave,
+    flushPendingDraftSave: flushPendingDraftSave,
     loadLocalBoardDraft: loadLocalBoardDraft,
     clearLocalBoardDraft: clearLocalBoardDraft,
     boardCardSummary: boardCardSummary,
