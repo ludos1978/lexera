@@ -1,7 +1,35 @@
+// Leading line comment so checkJs doesn't parse the first @typedef
+// block as a module-description comment + typedef duplicate (slice-13
+// lesson). See `lexera-globals.d.ts` for the `LexeraContentEnhancer*`
+// shape declarations consumed via Window typing.
+
+/**
+ * @typedef {Object} LexeraContentEnhancer
+ * @property {string} id
+ * @property {string} [name]
+ * @property {string} [version]
+ * @property {number} [priority]
+ * @property {string} [selector]
+ * @property {boolean} [lazy]
+ * @property {(el: Element, context: unknown) => void} enhance
+ * @property {string} [kind]
+ * @property {{ id: string; name: string; version: string; priority: number }} [metadata]
+ */
+
+/**
+ * @typedef {Object} LexeraContentEnhancerRegistryApi
+ * @property {(enhancer: LexeraContentEnhancer) => void} register
+ * @property {(id: string) => void} remove
+ * @property {() => Array<LexeraContentEnhancer>} getAll
+ * @property {(root: Element | null | undefined, context: unknown) => void} enhance
+ * @property {(root: Element | Document | null | undefined) => void} observeLazyImages
+ */
+
 (function () {
   var KIND = 'contentEnhancer';
 
   // ── Lazy-loading infrastructure ────────────────────────────────────
+  /** @type {IntersectionObserver | null} */
   var lazyObserver = null;
   var LAZY_ROOT_MARGIN = '200px';
 
@@ -17,9 +45,9 @@
         if (!entries[i].isIntersecting) continue;
         var el = entries[i].target;
         lazyObserver.unobserve(el);
-        var pendingEnhance = el.__lazyEnhance;
+        var pendingEnhance = /** @type {any} */ (el).__lazyEnhance;
         if (typeof pendingEnhance === 'function') {
-          delete el.__lazyEnhance;
+          delete (/** @type {any} */ (el)).__lazyEnhance;
           el.removeAttribute('data-lazy-pending');
           pendingEnhance();
         }
@@ -29,20 +57,23 @@
     return lazyObserver;
   }
 
+  /** @type {IntersectionObserver | null} */
   var imageObserver = null;
 
+  /** @param {Element | null | undefined} el */
   function _activateLazyMedia(el) {
     if (!el) return;
     var lazySrc = el.getAttribute('data-lazy-src');
     if (!lazySrc) return;
     var tag = el.tagName ? el.tagName.toLowerCase() : '';
+    var mediaEl = /** @type {HTMLImageElement | HTMLMediaElement} */ (el);
     if (tag === 'img') {
-      el.src = lazySrc;
+      mediaEl.src = lazySrc;
     } else if (tag === 'video' || tag === 'audio') {
-      el.src = lazySrc;
-      try { if (typeof el.load === 'function') el.load(); } catch (_) {}
+      mediaEl.src = lazySrc;
+      try { if (typeof (/** @type {HTMLMediaElement} */ (mediaEl)).load === 'function') (/** @type {HTMLMediaElement} */ (mediaEl)).load(); } catch (_) {}
     } else {
-      el.src = lazySrc;
+      mediaEl.src = lazySrc;
     }
     el.removeAttribute('data-lazy-src');
   }
@@ -61,6 +92,7 @@
     return imageObserver;
   }
 
+  /** @param {Element | Document | null | undefined} root */
   function observeLazyImages(root) {
     if (!root) return;
     var observer = getImageObserver();
@@ -71,6 +103,7 @@
     }
   }
 
+  /** @param {Element | Document | null | undefined} el */
   function swapLazyImages(el) {
     if (!el) return;
     var els = el.querySelectorAll ? el.querySelectorAll('img[data-lazy-src], video[data-lazy-src], audio[data-lazy-src]') : [];
@@ -82,6 +115,7 @@
   // The legacy object shape (id, priority, selector, lazy, enhance) is preserved via
   // in-place augmentation with kind + metadata so registry identity is kept.
 
+  /** @type {LexeraContentEnhancerRegistryApi} */
   var ContentEnhancerRegistry = {
     register: function (enhancer) {
       var reg = getRegistry();
@@ -125,7 +159,7 @@
             var el = elements[j];
             if (enhancer.lazy && observer) {
               el.setAttribute('data-lazy-pending', enhancer.id);
-              el.__lazyEnhance = (function (enhanceFn, element, ctx) {
+              (/** @type {any} */ (el)).__lazyEnhance = (function (enhanceFn, element, ctx) {
                 return function () { enhanceFn(element, ctx); };
               })(enhancer.enhance, el, context);
               observer.observe(el);

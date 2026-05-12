@@ -1128,6 +1128,41 @@ interface LexeraActionRegistryApi {
   find(scope: string, action: string): LexeraActionRegistryEntry | null;
 }
 
+/**
+ * Source: src/contentEnhancerRegistry.js (IIFE;
+ * window.LexeraContentEnhancerRegistry = api). Facade over
+ * LexeraPluginRegistry for content-enhancer plugins (mermaid,
+ * excalidraw, code-highlight, etc.). Each enhancer matches a CSS
+ * selector against rendered card content and either runs the enhance
+ * fn immediately or defers it via IntersectionObserver when `lazy`.
+ */
+interface LexeraContentEnhancer {
+  id: string;
+  name?: string;
+  version?: string;
+  /** Lower priority runs first (ascending sort in `getAll()`). */
+  priority?: number;
+  /** CSS selector matched against `root`. Falsy = root-wide enhance. */
+  selector?: string;
+  /** When true the enhance call is deferred until the element scrolls
+   *  into the lazy observer's intersection margin. */
+  lazy?: boolean;
+  enhance(el: Element, context: unknown): void;
+  kind?: string;
+  metadata?: { id: string; name: string; version: string; priority: number };
+}
+
+interface LexeraContentEnhancerRegistryApi {
+  register(enhancer: LexeraContentEnhancer): void;
+  remove(id: string): void;
+  /** Returns enhancers sorted by ascending `priority`. */
+  getAll(): Array<LexeraContentEnhancer>;
+  /** Walk every registered enhancer against `root` + (lazy)
+   *  IntersectionObserver. */
+  enhance(root: Element | null | undefined, context: unknown): void;
+  observeLazyImages(root: Element | Document | null | undefined): void;
+}
+
 interface LexeraGeometryObserverApi {
   /** Build an instance bound to the supplied callback bag.
    *  `onTabsLayoutChanged(headerEl)` fires after each recompute so
@@ -2513,7 +2548,7 @@ declare global {
     LexeraOrderHelpers: any;
     LexeraRowStackMenu: any;
     LexeraActionRegistry: LexeraActionRegistryApi;
-    LexeraContentEnhancerRegistry: any;
+    LexeraContentEnhancerRegistry: LexeraContentEnhancerRegistryApi;
     LexeraTagSystem: any;
     LexeraDropZoneIndicators: LexeraDropZoneIndicatorsApi;
     LexeraPollingService: any;
@@ -2601,6 +2636,9 @@ declare global {
   // Settings store IIFE — loaded before sidebarSync.js, accessed by
   // bare name via `typeof LexeraSettings !== 'undefined'`.
   const LexeraSettings: any;
+  // Plugin registry IIFE — accessed by bare name via `typeof
+  // LexeraPluginRegistry !== 'undefined'` in contentEnhancerRegistry.js.
+  const LexeraPluginRegistry: any;
 
   // Custom property the shell stashes on a side-dock header DOM
   // node so it can match the centre-tree overflow header lookup.
