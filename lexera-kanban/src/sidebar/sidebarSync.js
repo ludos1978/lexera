@@ -6,18 +6,45 @@
  *   - Sidebar lock toggle (editable vs read-only hierarchy)
  *   - Sidebar hierarchy burger menu (sync, lock, fold/unfold)
  *   - Debounced scroll-sync listener
- *
- * Dependencies injected via init():
- *   - getFocusedCardEl()                — returns the currently focused card element (or null)
- *   - getElColumnsContainer()           — returns the board's main columns container element
- *   - getElBoardList()                  — returns the sidebar board-list element
- *   - getSidebarTreeOwnerNode(el)       — returns the tree-node that owns a .tree-children container
- *   - renderBoardList()                 — re-renders the sidebar board list
- *   - buildSidebarHierarchyDisplayMenuItems() — optional legacy display menu items
- *   - formatMenuToggleLabel(on, label)  — formats a toggle menu label
- *   - showNativeMenu(items, x, y, id)  — shows a native context menu, returns Promise<string|null>
- *   - getActionRegistry()               — returns the ActionRegistry instance (or null)
  */
+
+/**
+ * @typedef {Object} LexeraSidebarSyncMenuItem
+ * @property {string} [id]
+ * @property {string} [label]
+ * @property {boolean} [separator]
+ */
+
+/**
+ * @typedef {Object} LexeraSidebarSyncActionRegistry
+ * @property {(scope: string, action: string, args: Record<string, unknown>) => void} dispatch
+ */
+
+/**
+ * @typedef {Object} LexeraSidebarSyncDeps
+ * @property {() => (HTMLElement | null)} getFocusedCardEl
+ * @property {() => (HTMLElement | null)} getElColumnsContainer
+ * @property {() => (HTMLElement | null)} getElBoardList
+ * @property {(el: Element | null) => (Element | null)} getSidebarTreeOwnerNode
+ * @property {() => void} renderBoardList
+ * @property {() => Array<LexeraSidebarSyncMenuItem>} [buildSidebarHierarchyDisplayMenuItems]
+ * @property {(on: boolean, label: string) => string} formatMenuToggleLabel
+ * @property {(items: Array<LexeraSidebarSyncMenuItem>, x: number, y: number, id: string) => Promise<string | null>} showNativeMenu
+ * @property {() => (LexeraSidebarSyncActionRegistry | null)} getActionRegistry
+ */
+
+/**
+ * @typedef {Object} LexeraSidebarSyncApi
+ * @property {(deps: LexeraSidebarSyncDeps) => void} init
+ * @property {() => void} syncSidebarToView
+ * @property {(selector: string) => void} highlightSidebarNode
+ * @property {() => void} toggleSidebarSync
+ * @property {() => void} toggleSidebarLock
+ * @property {(anchorEl: HTMLElement | null) => void} showSidebarHierarchyMenu
+ * @property {() => boolean} isSyncEnabled
+ * @property {() => boolean} isHierarchyLocked
+ */
+
 (function (root, factory) {
   var mod = factory();
   if (typeof root !== 'undefined') root.LexeraSidebarSync = mod;
@@ -26,6 +53,7 @@
 
   var Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
+  /** @type {Partial<LexeraSidebarSyncDeps>} */
   var _deps = {};
 
   var sidebarSyncEnabled = false;
@@ -180,6 +208,7 @@
     if (!anchorEl) return;
     var rect = anchorEl.getBoundingClientRect();
     var displayItems = getDisplayMenuItems();
+    /** @type {Array<LexeraSidebarSyncMenuItem>} */
     var items = [
       { id: 'toggle-sidebar-sync', label: fmtToggle(sidebarSyncEnabled, 'Sync with View') },
       { id: 'toggle-sidebar-lock', label: fmtToggle(!hierarchyLocked, 'Editable') }
@@ -259,7 +288,8 @@
 
   // ── Public API ────────────────────────────────────────────────────
 
-  return {
+  /** @type {LexeraSidebarSyncApi} */
+  var api = {
     init: init,
     syncSidebarToView: syncSidebarToView,
     highlightSidebarNode: highlightSidebarNode,
@@ -269,4 +299,5 @@
     isSyncEnabled: function () { return sidebarSyncEnabled; },
     isHierarchyLocked: function () { return hierarchyLocked; }
   };
+  return api;
 }));

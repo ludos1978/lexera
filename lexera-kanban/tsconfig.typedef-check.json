@@ -61,6 +61,7 @@
     "src/views/inspector/inspector.js",
     "src/views/log/log.js",
     "src/views/debug/debug.js",
-    "src/dropzone/dropZoneIndicators.js"
+    "src/dropzone/dropZoneIndicators.js",
+    "src/sidebar/sidebarSync.js"
   ]
 }

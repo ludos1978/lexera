@@ -876,6 +876,58 @@ interface LexeraDropZoneIndicatorsApi {
   highlightDropZoneIndicator(dragType: LexeraDropZoneDragType, mx: number, my: number): void;
 }
 
+/**
+ * Source: src/sidebar/sidebarSync.js (IIFE;
+ * window.LexeraSidebarSync = api). Owns the "sync sidebar with view"
+ * highlight + the editable / read-only hierarchy lock + the sidebar
+ * hierarchy burger menu. Two persisted prefs back the toggles
+ * (`sidebarSync` global, `hierarchyLocked` per-window).
+ */
+interface LexeraSidebarSyncMenuItem {
+  id?: string;
+  label?: string;
+  separator?: boolean;
+}
+
+interface LexeraSidebarSyncActionRegistry {
+  dispatch(scope: string, action: string, args: Record<string, unknown>): void;
+}
+
+interface LexeraSidebarSyncDeps {
+  getFocusedCardEl(): HTMLElement | null;
+  getElColumnsContainer(): HTMLElement | null;
+  getElBoardList(): HTMLElement | null;
+  getSidebarTreeOwnerNode(el: Element | null): Element | null;
+  renderBoardList(): void;
+  /** Optional legacy sidebar-display menu items, inserted before the
+   *  fold-all / unfold-all entries when present. */
+  buildSidebarHierarchyDisplayMenuItems?: () => Array<LexeraSidebarSyncMenuItem>;
+  formatMenuToggleLabel(on: boolean, label: string): string;
+  showNativeMenu(
+    items: Array<LexeraSidebarSyncMenuItem>,
+    x: number,
+    y: number,
+    id: string
+  ): Promise<string | null>;
+  getActionRegistry(): LexeraSidebarSyncActionRegistry | null;
+}
+
+interface LexeraSidebarSyncApi {
+  init(deps: LexeraSidebarSyncDeps): void;
+  /** Highlight the sidebar tree node that matches the current viewport
+   *  (focused card → first visible column). No-op when sync is off. */
+  syncSidebarToView(): void;
+  /** Highlight the node matching `selector`, expanding any collapsed
+   *  ancestor tree-children containers along the way. */
+  highlightSidebarNode(selector: string): void;
+  toggleSidebarSync(): void;
+  toggleSidebarLock(): void;
+  /** Pop the hierarchy burger menu anchored at the given button. */
+  showSidebarHierarchyMenu(anchorEl: HTMLElement | null): void;
+  isSyncEnabled(): boolean;
+  isHierarchyLocked(): boolean;
+}
+
 interface LexeraGeometryObserverApi {
   /** Build an instance bound to the supplied callback bag.
    *  `onTabsLayoutChanged(headerEl)` fires after each recompute so
@@ -2271,7 +2323,7 @@ declare global {
     LexeraColumnContextMenu: any;
     LexeraKeyboardNavigation: any;
     LexeraBoardList: any;
-    LexeraSidebarSync: any;
+    LexeraSidebarSync: LexeraSidebarSyncApi;
     LexeraSidebarTree: any;
     LexeraHierarchyController: any;
     LexeraFrontendTests: any;
@@ -2344,6 +2396,9 @@ declare global {
   // (loaded via plain <script> tag, doesn't carry `window.` prefix
   // at every call site).
   const ContextMenuBuilders: any;
+  // Settings store IIFE — loaded before sidebarSync.js, accessed by
+  // bare name via `typeof LexeraSettings !== 'undefined'`.
+  const LexeraSettings: any;
 
   // Custom property the shell stashes on a side-dock header DOM
   // node so it can match the centre-tree overflow header lookup.
