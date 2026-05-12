@@ -1816,6 +1816,23 @@ interface LexeraMenuContributorRegistryApi {
   buildMenu(scope: string, context: unknown): Array<LexeraMenuContributorItem>;
 }
 
+/**
+ * Source: src/canvas/canvasDom.js (IIFE;
+ * window.LexeraCanvasDom = api). Tiny helper that resolves the
+ * `.board-row-content` DOM node from a canvas drop-target descriptor.
+ */
+interface LexeraCanvasDomDropTarget {
+  node?: Element | null;
+  contentNode?: Element | null;
+}
+
+interface LexeraCanvasDomApi {
+  getCanvasRowContentNodeFromDropTarget(
+    target: LexeraCanvasDomDropTarget | null | undefined,
+    fallbackNode?: Element | null
+  ): Element | null;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3287,6 +3304,7 @@ declare global {
     LexeraDevtoolsTitle: LexeraDevtoolsTitleApi;
     LexeraBoardSettingRegistry: LexeraBoardSettingRegistryApi;
     LexeraMenuContributorRegistry: LexeraMenuContributorRegistryApi;
+    LexeraCanvasDom: LexeraCanvasDomApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;

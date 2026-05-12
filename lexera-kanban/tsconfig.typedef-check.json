@@ -79,6 +79,7 @@
     "src/devtools/devtoolsTitle.js",
     "src/boardSettingRegistry.js",
     "src/menuContributorRegistry.js",
-    "src/debug/debugApi.js"
+    "src/debug/debugApi.js",
+    "src/canvas/canvasDom.js"
   ]
 }
