@@ -87,6 +87,7 @@
     "src/diagramRegistry.js",
     "src/canvas/stackDrop.js",
     "src/utils/appUtils.js",
-    "src/utils/mediaCategory.js"
+    "src/utils/mediaCategory.js",
+    "src/canvas/canvasViewport.js"
   ]
 }

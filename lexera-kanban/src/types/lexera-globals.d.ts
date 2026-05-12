@@ -1998,6 +1998,63 @@ interface LexeraMediaCategoryApi {
   getInlineFileEmbedExtension(path: string | null | undefined): string;
 }
 
+/**
+ * Source: src/canvas/canvasViewport.js (IIFE;
+ * window.LexeraCanvasViewport = api). Pure geometry helpers for the
+ * canvas-mode focus / zoom-to-fit pipeline. `calculateCanvasFocusViewport`
+ * returns the zoom + pan offsets that fit a stack-bounds rectangle
+ * inside the visible viewport, respecting padding and min/max zoom.
+ */
+interface LexeraCanvasViewportRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width?: number;
+  height?: number;
+}
+
+interface LexeraCanvasViewportStackMetric {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface LexeraCanvasViewportFocusOptions {
+  padding?: number;
+  minZoom?: number;
+  maxZoom?: number;
+  surfaceOffsetX?: number;
+  surfaceOffsetY?: number;
+}
+
+interface LexeraCanvasViewportFocusResult {
+  zoom: number;
+  panX: number;
+  panY: number;
+  bounds: LexeraCanvasViewportRect;
+}
+
+interface LexeraCanvasViewportApi {
+  rectsIntersect(
+    a: LexeraCanvasViewportRect | null | undefined,
+    b: LexeraCanvasViewportRect | null | undefined
+  ): boolean;
+  hasAnyVisibleCanvasStack(
+    stackRects: Array<LexeraCanvasViewportRect> | null | undefined,
+    viewportRect: LexeraCanvasViewportRect | null | undefined
+  ): boolean;
+  getCanvasStackBounds(
+    stackMetrics: Array<LexeraCanvasViewportStackMetric> | null | undefined
+  ): LexeraCanvasViewportRect | null;
+  calculateCanvasFocusViewport(
+    stackMetrics: Array<LexeraCanvasViewportStackMetric> | null | undefined,
+    viewportSize: { width?: number; height?: number } | null | undefined,
+    options?: LexeraCanvasViewportFocusOptions
+  ): LexeraCanvasViewportFocusResult | null;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3475,6 +3532,7 @@ declare global {
     LexeraCanvasStackDrop: LexeraCanvasStackDropApi;
     LexeraAppUtils: LexeraAppUtilsApi;
     LexeraMediaCategory: LexeraMediaCategoryApi;
+    LexeraCanvasViewport: LexeraCanvasViewportApi;
     LexeraCardContentRenderer: any;
     LexeraDiagramDeps: LexeraAppUtilsDeps;
     ManagementUI: any;

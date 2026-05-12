@@ -1,12 +1,58 @@
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk.
+
+/**
+ * @typedef {Object} LexeraCanvasViewportRect
+ * @property {number} left
+ * @property {number} top
+ * @property {number} right
+ * @property {number} bottom
+ * @property {number} [width]
+ * @property {number} [height]
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasViewportStackMetric
+ * @property {number} x
+ * @property {number} y
+ * @property {number} w
+ * @property {number} h
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasViewportFocusOptions
+ * @property {number} [padding]
+ * @property {number} [minZoom]
+ * @property {number} [maxZoom]
+ * @property {number} [surfaceOffsetX]
+ * @property {number} [surfaceOffsetY]
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasViewportFocusResult
+ * @property {number} zoom
+ * @property {number} panX
+ * @property {number} panY
+ * @property {LexeraCanvasViewportRect} bounds
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasViewportApi
+ * @property {(a: LexeraCanvasViewportRect | null | undefined, b: LexeraCanvasViewportRect | null | undefined) => boolean} rectsIntersect
+ * @property {(stackRects: Array<LexeraCanvasViewportRect> | null | undefined, viewportRect: LexeraCanvasViewportRect | null | undefined) => boolean} hasAnyVisibleCanvasStack
+ * @property {(stackMetrics: Array<LexeraCanvasViewportStackMetric> | null | undefined) => (LexeraCanvasViewportRect | null)} getCanvasStackBounds
+ * @property {(stackMetrics: Array<LexeraCanvasViewportStackMetric> | null | undefined, viewportSize: { width?: number; height?: number } | null | undefined, options?: LexeraCanvasViewportFocusOptions) => (LexeraCanvasViewportFocusResult | null)} calculateCanvasFocusViewport
+ */
+
 (function (root, factory) {
   var api = factory();
   if (typeof module === 'object' && module.exports) {
     module.exports = api;
   }
-  root.LexeraCanvasViewport = api;
+  /** @type {any} */ (root).LexeraCanvasViewport = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  /** @param {LexeraCanvasViewportRect | null | undefined} rect */
   function normalizeRect(rect) {
     if (!rect) return null;
     var left = Number(rect.left);
@@ -113,10 +159,12 @@
     };
   }
 
-  return {
+  /** @type {LexeraCanvasViewportApi} */
+  var publicApi = {
     rectsIntersect: rectsIntersect,
     hasAnyVisibleCanvasStack: hasAnyVisibleCanvasStack,
     getCanvasStackBounds: getCanvasStackBounds,
     calculateCanvasFocusViewport: calculateCanvasFocusViewport
   };
+  return publicApi;
 }));
