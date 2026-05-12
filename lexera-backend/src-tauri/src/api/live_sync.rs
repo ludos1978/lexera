@@ -131,11 +131,28 @@ fn board_identity_stats(a: &KanbanBoard, b: &KanbanBoard) -> (usize, usize, usiz
     (a_ids.len(), b_ids.len(), overlap)
 }
 
-fn encode_vv(store: &CrdtStore) -> Result<Vec<u8>, String> {
-    store
-        .oplog_vv_result()
-        .map(|vv| vv.encode())
-        .map_err(|e| e.to_string())
+/// Typed error for live-sync session operations. Starts narrow with the
+/// version-vector encode failure path (`oplog_vv_result` returns
+/// `io::Result<_>`); future slices can extend it with variants for
+/// `apply_board` / `import_updates` / etc. without rewriting call sites.
+/// Display passes through the wrapped error's Display so `format!()` /
+/// `log!()` output remains byte-identical to the prior `Result<_, String>`.
+#[derive(Debug, thiserror::Error)]
+pub enum LiveSyncError {
+    #[error("{0}")]
+    CrdtVersionVector(#[from] std::io::Error),
+}
+
+// Keeps every existing `Result<_, String>` outer signature working
+// untouched at the `?` boundary — same pattern as Slices 5 / 7 / 8.
+impl From<LiveSyncError> for String {
+    fn from(err: LiveSyncError) -> String {
+        err.to_string()
+    }
+}
+
+fn encode_vv(store: &CrdtStore) -> Result<Vec<u8>, LiveSyncError> {
+    Ok(store.oplog_vv_result()?.encode())
 }
 
 fn session_peer_id(session_id: &Uuid) -> u64 {
@@ -573,6 +590,21 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_sync_error_display_passes_through_io_error() {
+        // The previous `.map_err(|e| e.to_string())` produced the io::Error
+        // Display verbatim. The typed enum's Display must do the same so
+        // the four match-callers (open_session / apply_board / import_updates
+        // / etc.) emit identical log text via `"... {}"` formatting.
+        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "vv read failed");
+        let typed: LiveSyncError = io_err.into();
+        assert_eq!(typed.to_string(), "vv read failed");
+
+        // From<LiveSyncError> for String preserves upstream `?` boundary.
+        let s: String = typed.into();
+        assert_eq!(s, "vv read failed");
+    }
 
     #[test]
     fn test_open_session_reuses_matching_snapshot_card_identities() {
