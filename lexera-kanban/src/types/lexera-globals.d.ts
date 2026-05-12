@@ -3875,19 +3875,17 @@ declare global {
   const LexeraControlsSettings: any;
   // Tag system IIFE — also accessed by bare name via `LexeraTagSystem.x`
   // from sidebarTree.js and other consumers loaded after tagSystem.js.
-  // (The Window-typed form is `LexeraTagSystemApi`; the bare-name const
-  // stays `any` because the bare-name reference doesn't always import
-  // the Window narrowing.)
-  const LexeraTagSystem: any;
+  // Pinned to `LexeraTagSystemApi` so bare-name access carries the same
+  // typing as `window.LexeraTagSystem`.
+  const LexeraTagSystem: LexeraTagSystemApi;
   // Hierarchy contract IIFE — accessed by bare name from sidebarTree.js
-  // for entity capability lookups. (The Window-typed form is
-  // `LexeraHierarchyContractApi`; this bare-name const stays `any`
-  // because the bare-name reference doesn't always pull the Window
-  // narrowing through.)
-  const LexeraHierarchyContract: any;
+  // for entity capability lookups. Pinned to `LexeraHierarchyContractApi`
+  // so bare-name access mirrors `window.LexeraHierarchyContract`.
+  const LexeraHierarchyContract: LexeraHierarchyContractApi;
   // SubApp IIFE — broadcast/listen sugar, accessed by bare name in
-  // some view bootstraps (`LexeraSubApp.broadcast(...)`).
-  const LexeraSubApp: any;
+  // some view bootstraps (`LexeraSubApp.broadcast(...)`). Pinned to
+  // `LexeraSubAppApi` so bare-name access mirrors `window.LexeraSubApp`.
+  const LexeraSubApp: LexeraSubAppApi;
   // (`LEXERA_THEMES`, `applyLexeraTheme`, `getLexeraCurrentThemeId`
   // live in src/themes.js as top-level `var`/`function` declarations;
   // since that file is in the typedef gate, tsc infers their types
