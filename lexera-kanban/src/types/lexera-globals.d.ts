@@ -1071,6 +1071,28 @@ interface LexeraCanvasLayoutApi {
   ): void;
 }
 
+/**
+ * Source: src/keyboard/appShellShortcuts.js (IIFE;
+ * window.LexeraAppShellShortcuts = api). Routes a handful of cmd/ctrl
+ * keyboard shortcuts to the workspace shell when one is present —
+ * close-active-tab, next/prev tab, toggle hierarchy/dashboard/files
+ * panel. Returns true when the event was handled so the caller knows
+ * to stop bubbling.
+ */
+interface LexeraAppShellShortcutsWorkspaceShell {
+  handleBoardAction(action: string): void;
+}
+
+interface LexeraAppShellShortcutsDeps {
+  workspaceShellEnabled: boolean;
+  WorkspaceShell: LexeraAppShellShortcutsWorkspaceShell | null | undefined;
+  isEditing: boolean;
+}
+
+interface LexeraAppShellShortcutsApi {
+  dispatchWorkspaceShellAction(event: KeyboardEvent, deps: LexeraAppShellShortcutsDeps): boolean;
+}
+
 interface LexeraGeometryObserverApi {
   /** Build an instance bound to the supplied callback bag.
    *  `onTabsLayoutChanged(headerEl)` fires after each recompute so
@@ -2466,6 +2488,7 @@ declare global {
     LexeraCanvasLayout: LexeraCanvasLayoutApi;
     LexeraColumnContextMenu: any;
     LexeraKeyboardNavigation: any;
+    LexeraAppShellShortcuts: LexeraAppShellShortcutsApi;
     LexeraBoardList: any;
     LexeraSidebarSync: LexeraSidebarSyncApi;
     LexeraSidebarTree: any;

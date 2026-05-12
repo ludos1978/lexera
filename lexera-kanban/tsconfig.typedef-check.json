@@ -65,6 +65,7 @@
     "src/sidebar/sidebarSync.js",
     "src/canvas/canvasMode.js",
     "src/canvas/canvasPan.js",
-    "src/canvas/canvasLayout.js"
+    "src/canvas/canvasLayout.js",
+    "src/keyboard/appShellShortcuts.js"
   ]
 }
