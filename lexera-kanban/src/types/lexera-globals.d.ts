@@ -1361,6 +1361,45 @@ interface LexeraSidebarTreeApi {
   ): Array<unknown>;
 }
 
+/**
+ * Source: src/app.js (the giant LexeraDashboard IIFE;
+ * `window.LexeraDashboard = api`). Exposes the legacy dashboard view
+ * controls + the mutation entrypoints the workspace shell delegates
+ * into when the user drags a hierarchy node onto the parent shell's
+ * sidebar — without those, mutations triggered from the parent's
+ * sidebar tree would land on a detached `fullBoardData` copy and be
+ * lost.
+ *
+ * Most parameter shapes pass through to internal mutation routines
+ * (`moveCard` / `moveStack` / `moveColumnWithinBoard` / etc.) whose
+ * source/target descriptors mix board-relative coordinates with
+ * stable ids. The shapes are typed loosely as `unknown` for now —
+ * a future slice can narrow each entrypoint when the consumer side
+ * is also brought into the typedef gate.
+ */
+interface LexeraDashboardApi {
+  poll(): unknown;
+  showElementContextMenu(...args: unknown[]): unknown;
+  getFullBoardData(): unknown;
+  getActiveBoardId(): string;
+  openDashboardSearch(...args: unknown[]): unknown;
+  openEditForHierarchyTarget(...args: unknown[]): unknown;
+  /** Mutation entrypoints — workspace shell delegates here. */
+  moveCard(source: unknown, target: unknown): unknown;
+  reorderRows(s: unknown, t: unknown, b?: unknown): unknown;
+  moveStack(fromRow: unknown, fromStack: unknown, toRow: unknown, toStack: unknown, boardId?: unknown): unknown;
+  moveColumnWithinBoard(
+    fromRow: unknown, fromStack: unknown, fromCol: unknown,
+    toRow: unknown, toStack: unknown, toCol: unknown,
+    boardId?: unknown
+  ): unknown;
+  moveColumnToExistingStack(
+    fromRow: unknown, fromStack: unknown, fromCol: unknown,
+    toRow: unknown, toStack: unknown
+  ): unknown;
+  commitHierarchyTreeEdit(boardId: string, boardData: unknown, options?: unknown): unknown;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -2826,7 +2865,7 @@ declare global {
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;
-    LexeraDashboard: any;
+    LexeraDashboard: LexeraDashboardApi;
     LexeraDebug: LexeraDebugApi;
     LexeraEmbedMenu: any;
     LexeraThemeBridge: LexeraThemeBridgeApi;
