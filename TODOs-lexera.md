@@ -16,7 +16,74 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-11):** ✓ 2865 frontend passed | 2 skipped (235 files via `npx vitest run` from `lexera-kanban/`); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-10). `--typedefs` gate: OK (30 files in gate after Stages 17j–17t).
+**Last run (2026-05-12):** ✓ 2898 frontend passed | 2 skipped (236 files via `npx vitest run` from `lexera-kanban/`); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`, last verified 2026-05-11); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-10). `--typedefs` gate: OK (30 files in gate after Stages 17j–17t). Drive-bys: re-pinned `nativeDialogGuardrailContract` to settingsRuntime.js line 234 (b27cec44 shifted the allow-listed line) and dropped stale `treeView.js` entry from `localStorageGuardrailContract`.
+
+## Current Open TODO Snapshot (2026-05-12)
+
+This snapshot consolidates the currently open work. The detailed task history remains below.
+
+### Cross-Window And Cross-View Drag Drop
+- [ ] Verify all cross-window and cross-view drag paths in the real app: rows, stacks, columns, cards, workspace tree to kanban, kanban to workspace tree, kanban to kanban, workspace board to workspace board.
+- [ ] Confirm empty columns are draggable from kanban views and can be dropped into any kanban in the workspace.
+- [ ] Confirm dropping a card on a column header or empty column area appends the card at the end of that column.
+- [ ] Profile cross-view drag hover/drop latency and remove remaining expensive reload, duplicate subscription, or full-workspace-refresh paths.
+- [ ] Fix any remaining first-drag failure where a cold destination board loads first and only the second drag succeeds.
+- [ ] Confirm workspace drop indicators appear on first hover without needing a release and second click.
+- [ ] Ensure board changes from cross-view drops refresh only the changed board subtree or affected webview, not the whole workspace.
+- [ ] Add an end-to-end/manual cross-window DnD checklist covering rows, stacks, columns, cards, cancel, cold target, same-board, cross-board, and multi-window cases.
+
+### Theme And Frontend Settings
+- [ ] Visually verify the default theme is the no-overwrite style and that the warm theme is a separate selectable theme.
+- [ ] Visually verify the hierarchy/frontend settings cleanup: drag handles always visible, burger menus always active, removed settings no longer shown, stale count/presence toggles handled correctly.
+- [x] (done) ~~Decide whether stale persisted keys (`lexera-sidebar-tree-display`, `lexera-sidebar-counts`, `lexera-sidebar-presence`) should be migrated, ignored forever, or purged.~~ Decision: **purged at boot**. The backing UI was removed when drag handles and burger menus became always-visible (per `feedback_views_in_menubar`), so the persisted values can never be read again. Added `LEGACY_KEYS` + `purgeLegacyKeys()` to `LexeraSettings` and auto-invoke at IIFE evaluation in [core/settingsStore.js](lexera-kanban/src/core/settingsStore.js); `localStorage` origin is shared across child webviews so all sub-apps see the keys gone after the main kanban window boots once. `removeItem` is idempotent. Pinned by 5 new cases in `settingsStore.test.js` (purge each key, leave unrelated keys, expose `LEGACY_KEYS` + `purgeLegacyKeys` for explicit invocation). Drive-by: dropped a stale `treeView.js` entry from `localStorageGuardrailContract.test.js`'s allowlist (file no longer touches `localStorage` — the guardrail's stale-entry assertion flagged it).
+
+### Real-App Verification
+- [ ] Fold the bottom log panel via the view-header fold button and verify the folded strip shows the expected status badges.
+- [ ] Open two windows on different workspaces, select boards in each, and confirm neither window hops to the other workspace.
+- [ ] Re-test the card edit scroll-left latch and confirm cards no longer jump horizontally after edit save/cancel.
+- [ ] Verify the shell boots once in `cargo tauri dev` and no ghost webviews remain after reload.
+- [ ] Verify the ghost-view regression is gone after moving, closing, and switching multiple boards/panels across docks.
+- [ ] Verify backend-status pill behavior during backend startup/reconnect.
+- [ ] Verify tightened Tauri capability allowlist does not break board/panel webviews.
+- [ ] Smoke-test `auth_service` and `config` RwLock changes under realistic load.
+- [ ] Smoke-test periodic Loro CRDT compaction during a long-lived board session.
+
+### Multiview And Shell Lifecycle
+- [ ] Investigate why `Developer Tools (All Views)` opens only one visible inspector even though Rust reports all inspectors opened.
+- [ ] Add OS-level placeholder pinning: either Rust `placeholder_dom_id` reporting or frontend zero-geometry parking for missing placeholders.
+- [ ] Encode tab/webview lifecycle as an explicit FSM (`created -> spawning -> ready -> destroying -> destroyed`).
+- [ ] Finish the workspaceShell narrow-by-kind typedef paydown so the remaining `LexeraLayoutTreeApi` `any` returns can become real tab unions.
+- [ ] Finish board-host extraction work: move frame-cache ownership, spawn/destroy, geometry push, visibility handling, and host lookup APIs into the host layer.
+- [ ] Add slot-map diffing so unchanged webview slots do not receive avoidable geometry work.
+- [ ] Finish panel lifecycle adoption so production code consumes `panel-ready` / `panel-teardown` instead of DOM discovery.
+- [ ] Retire remaining `LexeraSharedPanels` and `lexera-shared-panel-created` consumers after every panel view is fully hydrated.
+
+### View Feature Parity
+- [ ] Fix the embedded board empty-state regression where an active child board webview can still show "Select a board from the sidebar".
+- [ ] Restore docked dashboard parity: search, all/active scope, pinned queries, and grouped result sections.
+- [ ] Restore docked log parity: source filter, level dropdown, text search, reload/copy actions, connection status, and mirrored log state.
+- [ ] Port the frontend test runner implementation out of the shell-owned harness.
+- [ ] Stabilize the frontend auto-run harness so `./run-lexera-tests.sh` readiness and `pre-test-paint` stalls are actionable.
+- [ ] Extract a dedicated `src/views/board/` entry and retire the current `index.html?embedded=1...` board boot path.
+- [ ] Continue rich hierarchy view parity: stacks, columns, cards, drag/drop, inline rename, hierarchy-focus parity, and context menus.
+
+### Frontend Architecture
+- [ ] Initialize root NPM workspaces for `lexera-kanban`, `lexera-backend`, and `lexera-shared`.
+- [ ] Configure `esbuild` for `lexera-kanban` and replace the long `index.html` script chain with a bundled/module entry.
+- [ ] Convert core frontend runtime files (`moduleRuntime.js`, `api.js`, `pathUtils.js`) to ES modules.
+- [ ] Move vendor libraries into NPM dependencies where possible.
+- [ ] Split the large `lexera-kanban/src/app.js` into focused board, shell event, and app state modules.
+- [ ] Decide the path for `wysiwyg-editor.js`: revive archived source/build chain, reauthor a smaller editor, or defer until the esbuild migration.
+- [ ] Move `lexera-shared/` into a proper internal package such as `packages/shared-ui`.
+- [ ] Replace direct `window` assignments in plugin code with explicit module exports.
+
+### Backend And IPC
+- [ ] Decide whether `lexera-shared/backendDiscovery.js` is removed after IPC verification or kept as a backend-only discovery utility.
+- [ ] Move export logic into a `lexera-export` workspace crate.
+- [ ] Move collaboration logic into a `lexera-collab` workspace crate.
+- [ ] Pay down remaining non-command `Result<_, String>` paths in `lexera-backend` to typed errors.
+- [ ] Verify Windows peer-credential and ACL behavior for `lexera-local-ipc` on a real Windows host.
+- [ ] Run the `lexera-local-ipc` Windows test suite for `SetFileSecurityW` and `GetNamedPipeClientProcessId`.
 
 ## Open Tasks
 
@@ -334,5 +401,3 @@ Locked down by `lexera-kanban/tests/*.test.js` so future drift fails at test tim
 - `indexHtmlScriptTagsContract.test.js` (4 assertions) — every `<script src>` resolves, non-empty, non-duplicated
 - `managementLogViewerScriptTagContract.test.js` (12 assertions) — every host HTML loading `management.js` also loads `managementLogViewer.js` first
 - `rustErrorTypeBaselineContract.test.js` (23 assertions) — every Rust domain crate uses `thiserror = "2"`, no `anyhow` / `eyre` / `snafu` / `miette` ever sneaks in, and the 8 known domain error enums keep their `#[derive(thiserror::Error)]`
-
-## Open Tasks

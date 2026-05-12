@@ -48,7 +48,6 @@ const ALLOWED_LOCAL_STORAGE_FILES = [
   'tagcolors/tagColors.js',
   'test/autoRunBootstrap.js',
   'test/frontendTests.js',
-  'treeView.js',
   'views/_shared/settingsRuntime.js',
   'visualThemes.js',
   'workspace/multiviewWebview.js',

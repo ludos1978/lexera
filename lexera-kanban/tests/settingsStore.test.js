@@ -253,4 +253,67 @@ describe('SettingsStore', () => {
       expect(def.default).toBe(1);
     });
   });
+
+  describe('legacy key purge', () => {
+    // Boot-time cleanup for the sidebar count/presence/grip/menu toggle
+    // keys whose UI was removed (drag handles + burger menus are now
+    // always visible — see feedback_views_in_menubar in user memory).
+
+    function createSettingsWithSeed(seed) {
+      var store = Object.assign({}, seed || {});
+      var localStorageShim = {
+        getItem: function (k) { return store.hasOwnProperty(k) ? store[k] : null; },
+        setItem: function (k, v) { store[k] = String(v); },
+        removeItem: function (k) { delete store[k]; }
+      };
+      var runtimeSource = readFileSync(resolve(srcDir, 'core', 'moduleRuntime.js'), 'utf-8');
+      var settingsSource = readFileSync(resolve(srcDir, 'core', 'settingsStore.js'), 'utf-8');
+      var factory = new Function('localStorage', 'window', 'globalThis', 'URLSearchParams',
+        runtimeSource + '\n' + settingsSource + '\nreturn LexeraSettings;'
+      );
+      var Settings = factory(localStorageShim, { LexeraRuntime: null, location: { search: '' } }, globalThis, URLSearchParams);
+      return { Settings: Settings, store: store };
+    }
+
+    it('purges lexera-sidebar-tree-display at boot', () => {
+      var ctx = createSettingsWithSeed({
+        'lexera-sidebar-tree-display': JSON.stringify({ counts: true, grips: false })
+      });
+      expect(ctx.store['lexera-sidebar-tree-display']).toBeUndefined();
+    });
+
+    it('purges lexera-sidebar-counts at boot', () => {
+      var ctx = createSettingsWithSeed({ 'lexera-sidebar-counts': 'on' });
+      expect(ctx.store['lexera-sidebar-counts']).toBeUndefined();
+    });
+
+    it('purges lexera-sidebar-presence at boot', () => {
+      var ctx = createSettingsWithSeed({ 'lexera-sidebar-presence': 'off' });
+      expect(ctx.store['lexera-sidebar-presence']).toBeUndefined();
+    });
+
+    it('leaves unrelated keys untouched', () => {
+      var ctx = createSettingsWithSeed({
+        'lexera-sidebar-tree-display': '{}',
+        'lexera-visual-theme': 'no-style',
+        'lexera-ui-scale': '1.25'
+      });
+      expect(ctx.store['lexera-sidebar-tree-display']).toBeUndefined();
+      expect(ctx.store['lexera-visual-theme']).toBe('no-style');
+      expect(ctx.store['lexera-ui-scale']).toBe('1.25');
+    });
+
+    it('exposes LEGACY_KEYS and purgeLegacyKeys for explicit invocation', () => {
+      var ctx = createSettingsWithSeed({});
+      expect(Array.isArray(ctx.Settings.LEGACY_KEYS)).toBe(true);
+      expect(ctx.Settings.LEGACY_KEYS).toEqual([
+        'lexera-sidebar-tree-display',
+        'lexera-sidebar-counts',
+        'lexera-sidebar-presence'
+      ]);
+      ctx.store['lexera-sidebar-counts'] = 'on';
+      ctx.Settings.purgeLegacyKeys();
+      expect(ctx.store['lexera-sidebar-counts']).toBeUndefined();
+    });
+  });
 });

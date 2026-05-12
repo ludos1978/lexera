@@ -342,6 +342,31 @@ var LexeraSettings = (function () {
     return DEFS[name] || BOARD_DEFS[name] || SCOPED_DEFS[name] || WINDOW_DEFS[name] || null;
   }
 
+  // ── Legacy key purge ────────────────────────────────────────────
+  // Persisted localStorage keys whose backing UI was removed and whose
+  // values are never read again. Wiped on every main-window boot so
+  // users carrying old state from a previous build don't accumulate
+  // dead entries. localStorage origin is shared across webviews, so
+  // sub-app webviews (settings, files, …) see the keys as gone too.
+  //
+  // Why: the sidebar count / presence / grip / menu toggles were
+  // removed when drag handles + burger menus became always-visible
+  // (see `feedback_views_in_menubar` in user memory).
+  // `removeItem` is idempotent, safe to run repeatedly.
+  var LEGACY_KEYS = [
+    'lexera-sidebar-tree-display',
+    'lexera-sidebar-counts',
+    'lexera-sidebar-presence'
+  ];
+
+  function purgeLegacyKeys() {
+    for (var i = 0; i < LEGACY_KEYS.length; i++) {
+      try { localStorage.removeItem(LEGACY_KEYS[i]); } catch (_) { /* ignore */ }
+    }
+  }
+
+  purgeLegacyKeys();
+
   return {
     get: get,
     set: set,
@@ -357,6 +382,8 @@ var LexeraSettings = (function () {
     keyOf: keyOf,
     allKeys: allKeys,
     defOf: defOf,
+    purgeLegacyKeys: purgeLegacyKeys,
+    LEGACY_KEYS: LEGACY_KEYS,
     DEFS: DEFS,
     BOARD_DEFS: BOARD_DEFS,
     SCOPED_DEFS: SCOPED_DEFS,
