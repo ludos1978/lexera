@@ -1,5 +1,25 @@
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk.
+
+/**
+ * @typedef {Object} LexeraAppUtilsDeps
+ * @property {(s: string | null | undefined) => string} [escapeAttr]
+ * @property {(...args: unknown[]) => unknown} [handleDiagramAction]
+ * @property {(...args: unknown[]) => unknown} [requestRenderedPlantUmlSvg]
+ * @property {(s: string | null | undefined) => string} [escapeHtml]
+ */
+
+/**
+ * @typedef {Object} LexeraAppUtilsApi
+ * @property {(deps: LexeraAppUtilsDeps) => void} init
+ * @property {(lines: Array<unknown>, startIdx: number, boardId: string, renderState: unknown) => string} renderTable
+ * @property {() => void} flushPendingDiagramQueues
+ * @property {(str: string | null | undefined) => string} escapeRegex
+ * @property {(html: string | null | undefined, abbrDefs: { [k: string]: string } | null | undefined) => string} applyAbbreviationsToHtml
+ */
+
 var LexeraAppUtils = (function () {
   'use strict';
+  /** @type {LexeraAppUtilsDeps} */
   var _deps = {};
   var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
   var _Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
@@ -25,7 +45,7 @@ var LexeraAppUtils = (function () {
   // ═══════════════════════════════════════════════════════════════════════════
 
   function renderTable(lines, startIdx, boardId, renderState) {
-    var CCR = typeof window !== 'undefined' ? window.LexeraCardContentRenderer : null;
+    var CCR = /** @type {any} */ (typeof window !== 'undefined' ? window.LexeraCardContentRenderer : null);
     if (CCR) return CCR.renderTable(lines, startIdx, boardId, renderState);
     return '';
   }
@@ -66,12 +86,14 @@ var LexeraAppUtils = (function () {
   // Public API
   // ═══════════════════════════════════════════════════════════════════════════
 
-  return {
+  /** @type {LexeraAppUtilsApi} */
+  var api = {
     init: init,
     renderTable: renderTable,
     flushPendingDiagramQueues: flushPendingDiagramQueues,
     escapeRegex: escapeRegex,
     applyAbbreviationsToHtml: applyAbbreviationsToHtml
   };
+  return api;
 })();
 if (typeof window !== 'undefined') window.LexeraAppUtils = LexeraAppUtils;

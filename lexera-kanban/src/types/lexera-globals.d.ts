@@ -1947,6 +1947,32 @@ interface LexeraCanvasStackDropApi {
   ): { params?: { [k: string]: string } } | null;
 }
 
+/**
+ * Source: src/utils/appUtils.js (IIFE; window.LexeraAppUtils = api).
+ * Misc cross-module helpers — `renderTable` delegates to the card
+ * content renderer, `flushPendingDiagramQueues` to the diagram
+ * registry, plus pure `escapeRegex` and `applyAbbreviationsToHtml`
+ * (which walks rendered HTML and wraps abbreviation keys in `<abbr
+ * title>` spans without touching tag bodies).
+ */
+interface LexeraAppUtilsDeps {
+  escapeAttr?: (s: string | null | undefined) => string;
+  handleDiagramAction?: (...args: unknown[]) => unknown;
+  requestRenderedPlantUmlSvg?: (...args: unknown[]) => unknown;
+  escapeHtml?: (s: string | null | undefined) => string;
+}
+
+interface LexeraAppUtilsApi {
+  init(deps: LexeraAppUtilsDeps): void;
+  renderTable(lines: Array<unknown>, startIdx: number, boardId: string, renderState: unknown): string;
+  flushPendingDiagramQueues(): void;
+  escapeRegex(str: string | null | undefined): string;
+  applyAbbreviationsToHtml(
+    html: string | null | undefined,
+    abbrDefs: { [k: string]: string } | null | undefined
+  ): string;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3422,6 +3448,9 @@ declare global {
     LexeraViewState: LexeraViewStateApi;
     LexeraDiagramRegistry: LexeraDiagramRegistryApi;
     LexeraCanvasStackDrop: LexeraCanvasStackDropApi;
+    LexeraAppUtils: LexeraAppUtilsApi;
+    LexeraCardContentRenderer: any;
+    LexeraDiagramDeps: LexeraAppUtilsDeps;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;
