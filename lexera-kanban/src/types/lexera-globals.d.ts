@@ -1000,6 +1000,77 @@ interface LexeraCanvasPanApi {
   cancelPan(): void;
 }
 
+/**
+ * Source: src/canvas/canvasLayout.js (IIFE;
+ * window.LexeraCanvasLayout = api). Pure geometry helpers for canvas
+ * mode — anchor resolution on rectangular boxes, default connection
+ * sides, Bézier path generation, stack-direction / tag extraction,
+ * and per-column flex/width application based on `w:` params.
+ */
+interface LexeraCanvasBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+type LexeraCanvasSide = 'left' | 'right' | 'top' | 'bottom' | 'center';
+
+interface LexeraCanvasAnchor {
+  x: number;
+  y: number;
+  side: LexeraCanvasSide;
+}
+
+/** Pulled out so `resolveCanvasConnectionAnchor` can be called with
+ *  either source-side or target-side parameter keys. */
+interface LexeraCanvasAnchorKeys {
+  side: string;
+  aliasSide: string;
+  position: string;
+  x: string;
+  y: string;
+}
+
+interface LexeraCanvasLayoutDeps {
+  stripLayoutTags?: (text: string | null | undefined) => string;
+  getCanvasColumnWidthSpec?: (value: unknown) => { kind: 'percent' | 'px'; value: number } | null;
+}
+
+interface LexeraCanvasLayoutApi {
+  init(deps: LexeraCanvasLayoutDeps): void;
+  normalizeCanvasStackDirection(value: unknown): 'row' | 'column';
+  normalizeCanvasAnchorSide(value: unknown, fallback: LexeraCanvasSide): LexeraCanvasSide;
+  parseCanvasAnchorOffset(
+    value: unknown,
+    size: number,
+    start: number,
+    center: number,
+    end: number
+  ): number | null;
+  getDefaultCanvasConnectionSide(
+    sourceBox: LexeraCanvasBox,
+    targetBox: LexeraCanvasBox,
+    role: 'source' | 'target'
+  ): LexeraCanvasSide;
+  resolveCanvasConnectionAnchor(
+    box: LexeraCanvasBox,
+    params: { [key: string]: string },
+    keys: LexeraCanvasAnchorKeys,
+    fallbackSide?: LexeraCanvasSide
+  ): LexeraCanvasAnchor;
+  canvasSideToVector(side: LexeraCanvasSide | string): { x: number; y: number };
+  getCanvasConnectionPath(
+    sourceAnchor: LexeraCanvasAnchor,
+    targetAnchor: LexeraCanvasAnchor
+  ): string;
+  extractCanvasStackTags(title: string | null | undefined): string[];
+  applyCanvasColumnLayout(
+    colEl: HTMLElement | null,
+    col: { params?: { [key: string]: string } } | null | undefined
+  ): void;
+}
+
 interface LexeraGeometryObserverApi {
   /** Build an instance bound to the supplied callback bag.
    *  `onTabsLayoutChanged(headerEl)` fires after each recompute so
@@ -2392,7 +2463,7 @@ declare global {
     LexeraCanvasMode: LexeraCanvasModeApi;
     LexeraCanvasPan: LexeraCanvasPanApi;
     LexeraControlsDispatcher: any;
-    LexeraCanvasLayout: any;
+    LexeraCanvasLayout: LexeraCanvasLayoutApi;
     LexeraColumnContextMenu: any;
     LexeraKeyboardNavigation: any;
     LexeraBoardList: any;

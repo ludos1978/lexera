@@ -1,6 +1,55 @@
+/**
+ * @typedef {Object} LexeraCanvasBox
+ * @property {number} x
+ * @property {number} y
+ * @property {number} w
+ * @property {number} h
+ */
+
+/**
+ * @typedef {'left' | 'right' | 'top' | 'bottom' | 'center'} LexeraCanvasSide
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasAnchor
+ * @property {number} x
+ * @property {number} y
+ * @property {LexeraCanvasSide} side
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasAnchorKeys
+ * @property {string} side
+ * @property {string} aliasSide
+ * @property {string} position
+ * @property {string} x
+ * @property {string} y
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasLayoutDeps
+ * @property {(text: string | null | undefined) => string} [stripLayoutTags]
+ * @property {(value: unknown) => ({ kind: 'percent' | 'px'; value: number } | null)} [getCanvasColumnWidthSpec]
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasLayoutApi
+ * @property {(deps: LexeraCanvasLayoutDeps) => void} init
+ * @property {(value: unknown) => ('row' | 'column')} normalizeCanvasStackDirection
+ * @property {(value: unknown, fallback: LexeraCanvasSide) => LexeraCanvasSide} normalizeCanvasAnchorSide
+ * @property {(value: unknown, size: number, start: number, center: number, end: number) => (number | null)} parseCanvasAnchorOffset
+ * @property {(sourceBox: LexeraCanvasBox, targetBox: LexeraCanvasBox, role: 'source' | 'target') => LexeraCanvasSide} getDefaultCanvasConnectionSide
+ * @property {(box: LexeraCanvasBox, params: { [key: string]: string }, keys: LexeraCanvasAnchorKeys, fallbackSide?: LexeraCanvasSide) => LexeraCanvasAnchor} resolveCanvasConnectionAnchor
+ * @property {(side: LexeraCanvasSide | string) => { x: number; y: number }} canvasSideToVector
+ * @property {(sourceAnchor: LexeraCanvasAnchor, targetAnchor: LexeraCanvasAnchor) => string} getCanvasConnectionPath
+ * @property {(title: string | null | undefined) => string[]} extractCanvasStackTags
+ * @property {(colEl: HTMLElement | null, col: { params?: { [key: string]: string } } | null | undefined) => void} applyCanvasColumnLayout
+ */
+
 var LexeraCanvasLayout = (function () {
   'use strict';
 
+  /** @type {Partial<LexeraCanvasLayoutDeps>} */
   var _deps = {};
   var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
 
@@ -147,7 +196,8 @@ var LexeraCanvasLayout = (function () {
     colEl.setAttribute('data-canvas-width-mode', 'fixed');
   }
 
-  return {
+  /** @type {LexeraCanvasLayoutApi} */
+  var api = {
     init: init,
     normalizeCanvasStackDirection: normalizeCanvasStackDirection,
     normalizeCanvasAnchorSide: normalizeCanvasAnchorSide,
@@ -159,5 +209,6 @@ var LexeraCanvasLayout = (function () {
     extractCanvasStackTags: extractCanvasStackTags,
     applyCanvasColumnLayout: applyCanvasColumnLayout
   };
+  return api;
 })();
 window.LexeraCanvasLayout = LexeraCanvasLayout;
