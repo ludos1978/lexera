@@ -328,24 +328,22 @@ async fn run_external_embed_probe(url: &str, parent_origin: Option<&str>) -> Pro
     }
 }
 
-async fn probe_headers(url: &str) -> Result<reqwest::Response, String> {
+// Returns the underlying `reqwest::Error` directly. The sole caller
+// formats it into the user-facing reason via `format!("Header probe
+// failed: {}", err)` — `reqwest::Error: Display` produces the same
+// string the old `.to_string()` stringification did, so behaviour is
+// preserved while the typed error stays visible to future callers
+// (slice 2 of the `Result<_, String>` paydown — TODO line 84).
+async fn probe_headers(url: &str) -> Result<reqwest::Response, reqwest::Error> {
     match EXTERNAL_EMBED_HTTP_CLIENT.head(url).send().await {
         Ok(response) => {
             if needs_get_fallback(response.status()) {
-                EXTERNAL_EMBED_HTTP_CLIENT
-                    .get(url)
-                    .send()
-                    .await
-                    .map_err(|err| err.to_string())
+                EXTERNAL_EMBED_HTTP_CLIENT.get(url).send().await
             } else {
                 Ok(response)
             }
         }
-        Err(_) => EXTERNAL_EMBED_HTTP_CLIENT
-            .get(url)
-            .send()
-            .await
-            .map_err(|err| err.to_string()),
+        Err(_) => EXTERNAL_EMBED_HTTP_CLIENT.get(url).send().await,
     }
 }
 
