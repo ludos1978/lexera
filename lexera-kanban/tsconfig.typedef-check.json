@@ -83,6 +83,7 @@
     "src/canvas/canvasDom.js",
     "src/themes.js",
     "src/plugins/pluginLoader.js",
-    "src/core/viewStateStore.js"
+    "src/core/viewStateStore.js",
+    "src/diagramRegistry.js"
   ]
 }

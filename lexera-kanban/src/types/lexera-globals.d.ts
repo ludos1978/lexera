@@ -1869,6 +1869,34 @@ interface LexeraViewStateApi {
   KEYS: LexeraViewStateKeyDefaults;
 }
 
+/**
+ * Source: src/diagramRegistry.js (IIFE;
+ * window.LexeraDiagramRegistry = api). Facade over
+ * `LexeraPluginRegistry` for diagram-rendering plugins (mermaid,
+ * plantuml, etc.). The `flush()` helper batches enqueued render
+ * requests by pluginId, lazily inits the plugin if needed, and runs
+ * each `render(...)` promise.
+ */
+interface LexeraDiagramPlugin {
+  id: string;
+  languages: Array<string>;
+  render(elementId: string, code: string, boardId?: string | null): Promise<string>;
+  isReady(): boolean;
+  init(): Promise<unknown>;
+  kind?: string;
+  metadata?: { id: string; name: string; version: string };
+}
+
+interface LexeraDiagramRegistryApi {
+  register(plugin: LexeraDiagramPlugin): void;
+  getById(id: string): LexeraDiagramPlugin | null;
+  findByLanguage(lang: string): LexeraDiagramPlugin | null;
+  getAll(): Array<LexeraDiagramPlugin>;
+  nextId(prefix: string): string;
+  enqueue(pluginId: string, elementId: string, code: string, boardId?: string | null): void;
+  flush(): void;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3342,6 +3370,7 @@ declare global {
     LexeraMenuContributorRegistry: LexeraMenuContributorRegistryApi;
     LexeraCanvasDom: LexeraCanvasDomApi;
     LexeraViewState: LexeraViewStateApi;
+    LexeraDiagramRegistry: LexeraDiagramRegistryApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;

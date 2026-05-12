@@ -1,5 +1,38 @@
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk.
+
+/**
+ * @typedef {Object} LexeraDiagramPlugin
+ * @property {string} id
+ * @property {Array<string>} languages
+ * @property {(elementId: string, code: string, boardId?: string | null) => Promise<string>} render
+ * @property {() => boolean} isReady
+ * @property {() => Promise<unknown>} init
+ * @property {string} [kind]
+ * @property {{ id: string; name: string; version: string }} [metadata]
+ */
+
+/**
+ * @typedef {Object} LexeraDiagramQueueItem
+ * @property {string} pluginId
+ * @property {string} elementId
+ * @property {string} code
+ * @property {string | null | undefined} [boardId]
+ */
+
+/**
+ * @typedef {Object} LexeraDiagramRegistryApi
+ * @property {(plugin: LexeraDiagramPlugin) => void} register
+ * @property {(id: string) => (LexeraDiagramPlugin | null)} getById
+ * @property {(lang: string) => (LexeraDiagramPlugin | null)} findByLanguage
+ * @property {() => Array<LexeraDiagramPlugin>} getAll
+ * @property {(prefix: string) => string} nextId
+ * @property {(pluginId: string, elementId: string, code: string, boardId?: string | null) => void} enqueue
+ * @property {() => void} flush
+ */
+
 (function () {
   var KIND = 'diagram';
+  /** @type {Array<LexeraDiagramQueueItem>} */
   var queue = [];
   var idCounter = 0;
   var processing = false;
@@ -8,6 +41,7 @@
     return typeof LexeraPluginRegistry !== 'undefined' ? LexeraPluginRegistry : null;
   }
 
+  /** @type {LexeraDiagramRegistryApi} */
   var DiagramRegistry = {
     register: function (plugin) {
       var reg = getRegistry();
@@ -55,6 +89,7 @@
       var batch = queue.slice();
       queue = [];
 
+      /** @type {{ [pluginId: string]: Array<LexeraDiagramQueueItem> }} */
       var groups = {};
       batch.forEach(function (item) {
         if (!groups[item.pluginId]) groups[item.pluginId] = [];
