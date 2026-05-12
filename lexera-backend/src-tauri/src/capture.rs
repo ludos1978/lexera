@@ -264,14 +264,33 @@ fn capture_window(app: &AppHandle) -> Result<(tauri::WebviewWindow, f64), String
     Ok((window, scale))
 }
 
+/// Typed error for the two capture-window geometry helpers (`monitor_rect`,
+/// `detect_side`). Display impls reproduce the prior stringified shapes
+/// (`tauri::Error::to_string()` for `Tauri`; the bare `"No monitor"` literal
+/// for `NoMonitor`) so the `From<CaptureGeometryError> for String` boundary
+/// at the existing `?` call sites in the surrounding Tauri commands stays
+/// byte-identical to the previous `Result<_, String>` implementation.
+#[derive(Debug, thiserror::Error)]
+pub(super) enum CaptureGeometryError {
+    #[error("{0}")]
+    Tauri(#[from] tauri::Error),
+    #[error("No monitor")]
+    NoMonitor,
+}
+
+impl From<CaptureGeometryError> for String {
+    fn from(err: CaptureGeometryError) -> String {
+        err.to_string()
+    }
+}
+
 /// Get current monitor position and size for a window.
 fn monitor_rect(
     window: &tauri::WebviewWindow,
-) -> Result<(tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>), String> {
+) -> Result<(tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>), CaptureGeometryError> {
     let monitor = window
-        .current_monitor()
-        .map_err(|e| e.to_string())?
-        .ok_or("No monitor")?;
+        .current_monitor()?
+        .ok_or(CaptureGeometryError::NoMonitor)?;
     Ok((*monitor.position(), *monitor.size()))
 }
 
@@ -456,8 +475,8 @@ pub fn start_monitor_watcher(app: AppHandle) {
 }
 
 /// Determine which screen edge the window is closest to ("left" or "right").
-fn detect_side(window: &tauri::WebviewWindow) -> Result<String, String> {
-    let pos = window.outer_position().map_err(|e| e.to_string())?;
+fn detect_side(window: &tauri::WebviewWindow) -> Result<String, CaptureGeometryError> {
+    let pos = window.outer_position()?;
     let (monitor_pos, monitor_size) = monitor_rect(window)?;
     let mid_x = monitor_pos.x + monitor_size.width as i32 / 2;
     Ok(if pos.x < mid_x { "left" } else { "right" }.to_string())
@@ -721,6 +740,37 @@ pub fn close_capture(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capture_geometry_error_no_monitor_preserves_string_format() {
+        // Prior `Result<_, String>` produced exactly "No monitor" for the
+        // missing-monitor sentinel. The typed Display + From<_> for String
+        // path must yield the same byte sequence so any `?` against an
+        // outer `Result<_, String>` (8 call sites in capture.rs) reads
+        // unchanged.
+        let err = CaptureGeometryError::NoMonitor;
+        assert_eq!(err.to_string(), "No monitor");
+        let s: String = err.into();
+        assert_eq!(s, "No monitor");
+    }
+
+    #[test]
+    fn capture_geometry_error_distinct_variants() {
+        // Pin that future refactors don't collapse the two variants into
+        // a single string-bag — variant identity is what makes pattern
+        // matching at call sites (when they migrate) possible.
+        let no_mon = CaptureGeometryError::NoMonitor;
+        assert!(matches!(no_mon, CaptureGeometryError::NoMonitor));
+        // The Tauri variant carries the wrapped error verbatim; we don't
+        // construct a tauri::Error in tests (no public constructor), but
+        // we can prove the enum has the variant via the matches! arm.
+        fn _shape_check(e: CaptureGeometryError) {
+            match e {
+                CaptureGeometryError::Tauri(_) => {}
+                CaptureGeometryError::NoMonitor => {}
+            }
+        }
+    }
 
     fn monitor(x: i32, y: i32, width: u32, height: u32) -> MonitorRect {
         MonitorRect {
