@@ -1833,6 +1833,18 @@ interface LexeraCanvasDomApi {
   ): Element | null;
 }
 
+/**
+ * Source: src/themes.js. Built-in palette object exposed as the
+ * top-level `LEXERA_THEMES` array (no IIFE; the `var LEXERA_THEMES =
+ * [...]` literal becomes a window-scope global at script-top).
+ */
+interface LexeraBaseTheme {
+  id: string;
+  name: string;
+  light: { [cssVar: string]: string };
+  dark: { [cssVar: string]: string };
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3391,6 +3403,10 @@ declare global {
   // SubApp IIFE — broadcast/listen sugar, accessed by bare name in
   // some view bootstraps (`LexeraSubApp.broadcast(...)`).
   const LexeraSubApp: any;
+  // (`LEXERA_THEMES`, `applyLexeraTheme`, `getLexeraCurrentThemeId`
+  // live in src/themes.js as top-level `var`/`function` declarations;
+  // since that file is in the typedef gate, tsc infers their types
+  // directly from the .js literals — no .d.ts re-declaration here.)
 
   // Custom property the shell stashes on a side-dock header DOM
   // node so it can match the centre-tree overflow header lookup.
