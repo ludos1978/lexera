@@ -1782,6 +1782,40 @@ interface LexeraBoardSettingRegistryApi {
   buildMenuItems(id: string, currentValue: unknown): Array<LexeraBoardSettingMenuItem>;
 }
 
+/**
+ * Source: src/menuContributorRegistry.js (IIFE;
+ * window.LexeraMenuContributorRegistry = api). Facade over
+ * `LexeraPluginRegistry` for menu contributors — each contributor
+ * declares `scopes` it applies to, an optional `section` for
+ * separator placement, and a `build(scope, context)` callback that
+ * returns the items to splice into the menu.
+ */
+interface LexeraMenuContributorItem {
+  id?: string;
+  label?: string;
+  separator?: boolean;
+}
+
+interface LexeraMenuContributor {
+  id?: string;
+  name?: string;
+  version?: string;
+  priority?: number;
+  /** Used by `buildMenu` to insert separators between sections. */
+  section?: string;
+  scopes?: Array<string>;
+  build(scope: string, context: unknown): Array<LexeraMenuContributorItem>;
+  kind?: string;
+  metadata?: { id: string; name: string; version: string; priority: number };
+}
+
+interface LexeraMenuContributorRegistryApi {
+  register(contributor: LexeraMenuContributor): void;
+  getForScope(scope: string): Array<LexeraMenuContributor>;
+  remove(id: string): void;
+  buildMenu(scope: string, context: unknown): Array<LexeraMenuContributorItem>;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3252,6 +3286,7 @@ declare global {
     LexeraDashboardTestApi: LexeraDashboardTestApi;
     LexeraDevtoolsTitle: LexeraDevtoolsTitleApi;
     LexeraBoardSettingRegistry: LexeraBoardSettingRegistryApi;
+    LexeraMenuContributorRegistry: LexeraMenuContributorRegistryApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;

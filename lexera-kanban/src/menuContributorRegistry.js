@@ -1,3 +1,34 @@
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk
+// on the first @typedef block in the file.
+
+/**
+ * @typedef {Object} LexeraMenuContributorItem
+ * @property {string} [id]
+ * @property {string} [label]
+ * @property {boolean} [separator]
+ */
+
+/**
+ * @typedef {Object} LexeraMenuContributor
+ * @property {string} [id]
+ * @property {string} [name]
+ * @property {string} [version]
+ * @property {number} [priority]
+ * @property {string} [section]
+ * @property {Array<string>} [scopes]
+ * @property {(scope: string, context: unknown) => Array<LexeraMenuContributorItem>} build
+ * @property {string} [kind]
+ * @property {{ id: string; name: string; version: string; priority: number }} [metadata]
+ */
+
+/**
+ * @typedef {Object} LexeraMenuContributorRegistryApi
+ * @property {(contributor: LexeraMenuContributor) => void} register
+ * @property {(scope: string) => Array<LexeraMenuContributor>} getForScope
+ * @property {(id: string) => void} remove
+ * @property {(scope: string, context: unknown) => Array<LexeraMenuContributorItem>} buildMenu
+ */
+
 (function () {
   var KIND = 'menuContributor';
   var autoIdCounter = 0;
@@ -6,6 +37,7 @@
     return typeof LexeraPluginRegistry !== 'undefined' ? LexeraPluginRegistry : null;
   }
 
+  /** @type {LexeraMenuContributorRegistryApi} */
   var MenuContributorRegistry = {
     register: function (contributor) {
       var reg = getRegistry();

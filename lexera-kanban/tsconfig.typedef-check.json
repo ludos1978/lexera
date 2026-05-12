@@ -77,6 +77,7 @@
     "src/views/frontendSettings/frontendSettings.js",
     "src/views/dashboard/dashboard.js",
     "src/devtools/devtoolsTitle.js",
-    "src/boardSettingRegistry.js"
+    "src/boardSettingRegistry.js",
+    "src/menuContributorRegistry.js"
   ]
 }
