@@ -84,6 +84,7 @@
     "src/themes.js",
     "src/plugins/pluginLoader.js",
     "src/core/viewStateStore.js",
-    "src/diagramRegistry.js"
+    "src/diagramRegistry.js",
+    "src/canvas/stackDrop.js"
   ]
 }

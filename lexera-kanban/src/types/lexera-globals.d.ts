@@ -1897,6 +1897,56 @@ interface LexeraDiagramRegistryApi {
   flush(): void;
 }
 
+/**
+ * Source: src/canvas/stackDrop.js (IIFE;
+ * window.LexeraCanvasStackDrop = api). Resolves a canvas-mode
+ * stack-drop target (row + 2D position) from a pointer (`clientX`,
+ * `clientY`) using injected DOM accessors; `applyCanvasDropPositionToStack`
+ * writes the resolved coordinates onto the stack's `params.x` /
+ * `params.y` so the persistence layer carries them through.
+ */
+interface LexeraCanvasStackDropApi {
+  resolveCanvasStackDropTarget(
+    options: Partial<{
+      isCanvasLayout: boolean;
+      activeBoardId: string;
+      clientX: number;
+      clientY: number;
+      grabOffsetX: number;
+      grabOffsetY: number;
+      fallbackRowContent: Element | null;
+      resolveCanvasRowContentDropTarget(
+        clientX: number,
+        clientY: number
+      ): { boardId: string; indexMode: string; rowIndex: number } | null;
+      getCanvasRowContentNodeFromDropTarget(
+        target: { boardId: string; indexMode: string; rowIndex: number },
+        fallback?: Element | null
+      ): Element | null;
+      getCanvasDropPositionInRowContent(
+        rowContent: Element,
+        clientX: number,
+        clientY: number,
+        grabOffsetX?: number,
+        grabOffsetY?: number
+      ): { x: number; y: number } | null;
+    }> | null | undefined
+  ): {
+    kind: 'row';
+    boardId: string;
+    rowIndex: number;
+    indexMode: 'display';
+    canvasPosition: { x: number; y: number };
+  } | null;
+  applyCanvasDropPositionToStack(
+    targetBoardId: string,
+    activeBoardId: string,
+    isCanvasLayout: boolean,
+    target: { canvasPosition?: { x: number; y: number } } | null | undefined,
+    stack: { params?: { [k: string]: string } } | null
+  ): { params?: { [k: string]: string } } | null;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3371,6 +3421,7 @@ declare global {
     LexeraCanvasDom: LexeraCanvasDomApi;
     LexeraViewState: LexeraViewStateApi;
     LexeraDiagramRegistry: LexeraDiagramRegistryApi;
+    LexeraCanvasStackDrop: LexeraCanvasStackDropApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;
