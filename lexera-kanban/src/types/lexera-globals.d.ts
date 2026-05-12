@@ -1512,6 +1512,98 @@ interface LexeraTagSystemApi {
   clearRemovableTags(headerText: string | null | undefined): string;
 }
 
+/**
+ * Source: src/workspace/multiviewWebview.js (IIFE;
+ * window.LexeraMultiviewWebview = api). Manages the lifecycle of
+ * native Tauri child webviews (board + panel tabs) on top of the
+ * shell DOM — `ensure`/`destroy` spawn-or-reuse, geometry sync,
+ * health-status dots, and the cursor → label hit-test used by the
+ * cross-Tauri-webview drag router.
+ *
+ * Internal `_test_*` seams are typed loosely (the gate already covers
+ * the file's body; the test seams are exposed for Vitest to drive the
+ * Phase 4.1 placeholder observer and the slot-map diff cache without
+ * a real shell mount).
+ */
+interface LexeraMultiviewWebviewHealth {
+  status?: string;
+  message?: string;
+  [k: string]: unknown;
+}
+
+interface LexeraMultiviewWebviewGeometry {
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  [k: string]: unknown;
+}
+
+interface LexeraMultiviewWebviewRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+interface LexeraMultiviewWebviewHostGeometryContext {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  ready: boolean;
+}
+
+interface LexeraMultiviewWebviewSetupDeps {
+  getPlaceholder(tabId: string): HTMLElement | null;
+  [k: string]: unknown;
+}
+
+interface LexeraMultiviewWebviewApi {
+  setup(deps: LexeraMultiviewWebviewSetupDeps): void;
+  ensure(tab: { id: string; [k: string]: unknown }, placeholderEl: HTMLElement | null, desiredSrc?: string): void;
+  destroy(tabId: string): void;
+  cleanupLocalState(tabId: string): void;
+  refreshAllGeometry(): void;
+  /** Cursor → spawned-webview-label hit-test (top-window coords). */
+  getWebviewLabelAtTopPoint(topX: number, topY: number): string | null;
+  /** Top-window rect for a given spawned webview, or null when not
+   *  ready / not laid out. */
+  getWebviewRect(label: string): LexeraMultiviewWebviewRect | null;
+  setAllVisible(visible: boolean): void;
+  isAllVisibleSuppressed(): boolean;
+  computeNativeGeometry(label: string, placeholderEl: HTMLElement | null): LexeraMultiviewWebviewGeometry | null;
+  getNativeGeometryConfig(): Record<string, unknown>;
+  getHostGeometryContext(): LexeraMultiviewWebviewHostGeometryContext;
+  refreshHostGeometryContext(force?: boolean): Promise<LexeraMultiviewWebviewHostGeometryContext>;
+  getDebugGeometryOverride(label: string): { x: number; y: number; width: number; height: number };
+  applyHealth(tabId: string, health: LexeraMultiviewWebviewHealth | null | undefined): void;
+  reapplyAllHealthDots(): void;
+  labelForTab(tab: { id: string; [k: string]: unknown }): string;
+  labelForTabId(tabId: string): string;
+  tabIdFromLabel(label: string): string;
+  spawnedLabel(tabId: string): string;
+  destroyAll(): void;
+  noteLocalDestroy(label: string): void;
+  // Internal test seams — typed loosely (consumed only by Vitest).
+  _test_installPhaseFourPlaceholderObserver: (...args: unknown[]) => unknown;
+  _test_phaseFourCollectRemovedTabIds: (...args: unknown[]) => unknown;
+  _test_phaseFourCheckPending: (...args: unknown[]) => unknown;
+  _test_phaseFourPendingState(): Record<string, number>;
+  _test_phaseFourResetState(): void;
+  _test_pushGeometryForLabel(label: string, placeholderEl: HTMLElement | null): void;
+  _test_lastPushedGeometryByLabel(): Record<string, { x: number; y: number; width: number; height: number }>;
+  _test_leakReport(): {
+    spawnedTabs: number;
+    spawnedDetail: Record<string, unknown>;
+    spawnedTabIds: string[];
+    geometryObservers: number;
+    spawnRetryWatchers: number;
+    spawnLocks: number;
+  };
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -2927,7 +3019,7 @@ declare global {
     LexeraLifecycleReconciler: LexeraLifecycleReconcilerApi;
     LexeraBoardHost: LexeraBoardHostApi;
     LexeraPanelHost: LexeraPanelHostApi;
-    LexeraMultiviewWebview: any;
+    LexeraMultiviewWebview: LexeraMultiviewWebviewApi;
     LexeraMultiview: LexeraMultiviewApi;
     LexeraMessageBridge: LexeraMessageBridgeApi;
     LexeraLayoutPersistence: LexeraLayoutPersistenceApi;

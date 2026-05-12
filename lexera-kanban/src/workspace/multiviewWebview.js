@@ -1460,6 +1460,7 @@
     // Read-only snapshot of the slot-map diff cache so tests can verify
     // that unchanged-slot suppression doesn't run debug emit + IPC.
     _test_lastPushedGeometryByLabel: function () {
+      /** @type {{ [k: string]: { x: number; y: number; width: number; height: number } }} */
       var out = {};
       var keys = Object.keys(lastPushedGeometryByLabel);
       for (var i = 0; i < keys.length; i++) {
@@ -1472,6 +1473,7 @@
     // the workspace shell's view-lifecycle audit (toggled via
     // `localStorage.LEXERA_VIEW_LEAK_AUDIT`) and by Vitest contracts.
     _test_leakReport: function () {
+      /** @type {{ [k: string]: unknown }} */
       var spawnedDetail = {};
       var keys = Object.keys(multiviewSpawnedTabs);
       for (var i = 0; i < keys.length; i++) {
