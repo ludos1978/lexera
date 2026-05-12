@@ -2259,6 +2259,35 @@ interface LexeraHierarchyContractApi {
   ): boolean;
 }
 
+/**
+ * Source: src/render/markdownRenderer.js (IIFE;
+ * window.LexeraMarkdownRenderer = api). Configured `markdown-it`
+ * instance factory with all Lexera custom plugins (wiki-links / tag
+ * / task-checkbox / temporal-tag / etc.) sourced from
+ * `LexeraPluginRegistry` of kind `'markdown'`. Caches the configured
+ * instance keyed by an options fingerprint so subsequent renders
+ * skip plugin re-application.
+ */
+interface LexeraMarkdownRendererInstance {
+  render(content: string): string;
+  renderInline(content: string): string;
+}
+
+interface LexeraMarkdownRendererOptions {
+  htmlCommentMode?: string;
+  htmlContentMode?: string;
+  typographer?: boolean;
+  scope?: string;
+}
+
+interface LexeraMarkdownRendererApi {
+  getInstance(options?: LexeraMarkdownRendererOptions): LexeraMarkdownRendererInstance;
+  render(content: string | null | undefined, options?: LexeraMarkdownRendererOptions): string;
+  renderInline(content: string | null | undefined, options?: LexeraMarkdownRendererOptions): string;
+  invalidate(): void;
+  isReady(): boolean;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3740,6 +3769,10 @@ declare global {
     LexeraFoldState: LexeraFoldStateApi;
     LexeraScrollBehavior: LexeraScrollBehaviorApi;
     LexeraHierarchyContract: LexeraHierarchyContractApi;
+    LexeraMarkdownRenderer: LexeraMarkdownRendererApi;
+    LexeraTagColors: any;
+    tagColors: any;
+    markdownit: any;
     LexeraControlsSettings: any;
     LexeraCardContentRenderer: any;
     LexeraDiagramDeps: LexeraAppUtilsDeps;

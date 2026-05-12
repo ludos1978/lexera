@@ -91,6 +91,7 @@
     "src/canvas/canvasViewport.js",
     "src/fold/foldState.js",
     "src/interaction/scrollBehavior.js",
-    "src/hierarchy/hierarchyContract.js"
+    "src/hierarchy/hierarchyContract.js",
+    "src/render/markdownRenderer.js"
   ]
 }

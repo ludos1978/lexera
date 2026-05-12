@@ -17,10 +17,37 @@
  *   renderInline(content, options) -> HTML string (no outer <p>)
  *   invalidate() -> clears the cached instance
  */
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk.
+
+/**
+ * @typedef {Object} LexeraMarkdownRendererInstance
+ * @property {(content: string) => string} render
+ * @property {(content: string) => string} renderInline
+ */
+
+/**
+ * @typedef {Object} LexeraMarkdownRendererOptions
+ * @property {string} [htmlCommentMode]
+ * @property {string} [htmlContentMode]
+ * @property {boolean} [typographer]
+ * @property {string} [scope]
+ */
+
+/**
+ * @typedef {Object} LexeraMarkdownRendererApi
+ * @property {(options?: LexeraMarkdownRendererOptions) => LexeraMarkdownRendererInstance} getInstance
+ * @property {(content: string | null | undefined, options?: LexeraMarkdownRendererOptions) => string} render
+ * @property {(content: string | null | undefined, options?: LexeraMarkdownRendererOptions) => string} renderInline
+ * @property {() => void} invalidate
+ * @property {() => boolean} isReady
+ */
+
 (function (root) {
     'use strict';
 
+    /** @type {LexeraMarkdownRendererInstance | null} */
     var cachedInstance = null;
+    /** @type {string | null} */
     var cachedFingerprint = null;
 
     function normalizeHtmlMode(value, fallback) {
@@ -62,8 +89,9 @@
             htmlContentMode: htmlContentMode,
             resolveTagColors: resolveTagColors
         };
-        if (root.LexeraPluginRegistry) {
-            var entries = root.LexeraPluginRegistry.getByKind('markdown');
+        var registry = /** @type {any} */ (root).LexeraPluginRegistry;
+        if (registry) {
+            var entries = registry.getByKind('markdown');
             entries.sort(function (a, b) {
                 var pa = (a.metadata && typeof a.metadata.priority === 'number') ? a.metadata.priority : 0;
                 var pb = (b.metadata && typeof b.metadata.priority === 'number') ? b.metadata.priority : 0;
@@ -124,11 +152,13 @@
         return typeof root.markdownit === 'function';
     }
 
-    root.LexeraMarkdownRenderer = {
+    /** @type {LexeraMarkdownRendererApi} */
+    var publicApi = {
         getInstance: getInstance,
         render: render,
         renderInline: renderInline,
         invalidate: invalidate,
         isReady: isReady
     };
+    /** @type {any} */ (root).LexeraMarkdownRenderer = publicApi;
 }(typeof globalThis !== 'undefined' ? globalThis : this));
