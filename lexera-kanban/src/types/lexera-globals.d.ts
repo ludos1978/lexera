@@ -1189,6 +1189,45 @@ interface LexeraFilesTestApi {
   triggerManagementRefresh(section?: string): boolean;
 }
 
+/**
+ * Source: src/views/_shared/calendarRuntime.js (IIFE;
+ * window.LexeraCalendarRuntime = api). Renders the week / month
+ * calendar grids and task list for sub-app webviews — backend-fetched
+ * task data via `LexeraApi.getCalendarTasks`, polled with a
+ * configurable interval, also re-fetches on `management-board-mutation`
+ * events.
+ */
+interface LexeraCalendarTask {
+  due: string;
+  title: string;
+  boardId: string;
+  boardName: string;
+  cardId: string;
+}
+
+interface LexeraCalendarMountOptions {
+  /** Grid kind — 'week' renders 7-day; 'month' renders a calendar
+   *  grid. Anything else falls back to 'week'. */
+  kind?: 'week' | 'month';
+  /** Re-fetch interval in milliseconds. Default 30000; pass 0 to
+   *  disable polling. */
+  pollMs?: number;
+  [k: string]: unknown;
+}
+
+interface LexeraCalendarRuntimeApi {
+  /** Format `Date` as YYYY-MM-DD. */
+  ymd(date: Date): string;
+  startOfWeek(date: Date): Date;
+  startOfMonth(date: Date): Date;
+  renderWeekGrid(host: HTMLElement | null, tasks: Array<LexeraCalendarTask>, refDate?: Date): void;
+  renderMonthGrid(host: HTMLElement | null, tasks: Array<LexeraCalendarTask>, refDate?: Date): void;
+  renderTaskList(host: HTMLElement | null, tasks: Array<LexeraCalendarTask>): void;
+  normalizeTasks(arr: unknown): Array<LexeraCalendarTask>;
+  fetchCalendarTasks(opts?: Record<string, unknown>): Promise<Array<LexeraCalendarTask>>;
+  mount(panelEl: HTMLElement | null, opts?: LexeraCalendarMountOptions): void;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -2622,7 +2661,7 @@ declare global {
     // modules' IIFE assignments.
     LexeraTestApi: any;
     LexeraApi: any;
-    LexeraCalendarRuntime: any;
+    LexeraCalendarRuntime: LexeraCalendarRuntimeApi;
     LEXERA_VISUAL_THEMES: any;
     getLexeraCurrentVisualThemeId: any;
     applyLexeraVisualTheme: any;
