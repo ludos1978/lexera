@@ -1,12 +1,52 @@
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk.
+
+/**
+ * @typedef {Object} LexeraFoldStateStorage
+ * @property {(key: string) => (string | null)} getItem
+ * @property {(key: string, value: string) => void} setItem
+ */
+
+/**
+ * @typedef {Object} LexeraFoldStateSaveOptions
+ * @property {LexeraFoldStateStorage} [storage]
+ * @property {Element | null} [container]
+ */
+
+/**
+ * @typedef {Object} LexeraFoldStateToggleOptions
+ * @property {string} [boardId]
+ * @property {boolean | (() => boolean)} [isCanvasBoardLayout]
+ * @property {(el: Element, expand: boolean) => void} [setColumnChildrenFoldState]
+ * @property {(boardId?: string) => void} [saveCardCollapseState]
+ * @property {(boardId?: string) => void} [saveFoldState]
+ * @property {() => void} [refreshBoardHeaderActionStates]
+ * @property {LexeraFoldStateStorage} [storage]
+ * @property {Element | null} [container]
+ */
+
+/**
+ * @typedef {Object} LexeraFoldStateApi
+ * @property {(values: unknown) => Array<string>} normalizeFoldStorageList
+ * @property {(row: { id?: unknown } | null | undefined, rowIdx: number) => string} getRowFoldKey
+ * @property {(stack: { id?: unknown } | null | undefined, rowIdx: number, stackIdx: number) => string} getStackFoldKey
+ * @property {(col: { id?: unknown; index?: number } | null | undefined, rowIdx: number, stackIdx: number, colLocalIdx: number, colFullIdx?: number) => string} getColumnFoldKey
+ * @property {(savedValues: Array<string> | null | undefined, foldKey: string, legacyValue?: string | null) => boolean} hasSavedFoldMatch
+ * @property {(boardId: string, storage: LexeraFoldStateStorage | null | undefined) => Array<string>} getFoldedColumns
+ * @property {(boardId: string, kind: string, storage: LexeraFoldStateStorage | null | undefined) => Array<string>} getFoldedItems
+ * @property {(boardId: string, options: LexeraFoldStateSaveOptions) => void} saveFoldState
+ * @property {(columnEl: Element | null, childrenOnly: boolean, options: LexeraFoldStateToggleOptions) => boolean} toggleColumnFoldElement
+ */
+
 (function (root, factory) {
   var api = factory();
   if (typeof module === 'object' && module.exports) {
     module.exports = api;
   }
-  root.LexeraFoldState = api;
+  /** @type {any} */ (root).LexeraFoldState = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  /** @param {unknown} value */
   function safeIndex(value) {
     return typeof value === 'number' && isFinite(value) ? value : -1;
   }
@@ -15,9 +55,12 @@
     return obj && obj.id != null ? String(obj.id || '').trim() : '';
   }
 
+  /** @param {unknown} values */
   function normalizeFoldStorageList(values) {
-    var list = Array.isArray(values) ? values : [];
+    var list = /** @type {Array<unknown>} */ (Array.isArray(values) ? values : []);
+    /** @type {Array<string>} */
     var out = [];
+    /** @type {{ [k: string]: boolean }} */
     var seen = {};
     for (var i = 0; i < list.length; i++) {
       if (list[i] == null) continue;
@@ -86,8 +129,13 @@
     try { return normalizeFoldStorageList(JSON.parse(saved)); } catch (e) { return []; }
   }
 
+  /**
+   * @param {Element | null} container
+   * @param {string} selector
+   */
   function collectFoldedKeys(container, selector) {
     if (!container || typeof container.querySelectorAll !== 'function') return [];
+    /** @type {Array<string>} */
     var folded = [];
     var items = container.querySelectorAll(selector);
     for (var i = 0; i < items.length; i++) {
@@ -141,7 +189,8 @@
     return true;
   }
 
-  return {
+  /** @type {LexeraFoldStateApi} */
+  var publicApi = {
     normalizeFoldStorageList: normalizeFoldStorageList,
     getRowFoldKey: getRowFoldKey,
     getStackFoldKey: getStackFoldKey,
@@ -152,4 +201,5 @@
     saveFoldState: saveFoldState,
     toggleColumnFoldElement: toggleColumnFoldElement
   };
+  return publicApi;
 }));

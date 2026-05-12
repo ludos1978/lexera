@@ -2055,6 +2055,64 @@ interface LexeraCanvasViewportApi {
   ): LexeraCanvasViewportFocusResult | null;
 }
 
+/**
+ * Source: src/fold/foldState.js (IIFE;
+ * window.LexeraFoldState = api). Manages per-board folded-element
+ * state (rows / stacks / columns / cards) — stable fold keys derived
+ * from entity id or display path, persisted to localStorage via the
+ * `lexera-{row,stack,col}-fold:<boardId>` keys.
+ */
+interface LexeraFoldStateStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+interface LexeraFoldStateSaveOptions {
+  storage?: LexeraFoldStateStorage;
+  container?: Element | null;
+}
+
+interface LexeraFoldStateToggleOptions {
+  boardId?: string;
+  isCanvasBoardLayout?: boolean | (() => boolean);
+  setColumnChildrenFoldState?: (el: Element, expand: boolean) => void;
+  saveCardCollapseState?: (boardId?: string) => void;
+  saveFoldState?: (boardId?: string) => void;
+  refreshBoardHeaderActionStates?: () => void;
+  storage?: LexeraFoldStateStorage;
+  container?: Element | null;
+}
+
+interface LexeraFoldStateApi {
+  normalizeFoldStorageList(values: unknown): Array<string>;
+  getRowFoldKey(row: { id?: unknown } | null | undefined, rowIdx: number): string;
+  getStackFoldKey(
+    stack: { id?: unknown } | null | undefined,
+    rowIdx: number,
+    stackIdx: number
+  ): string;
+  getColumnFoldKey(
+    col: { id?: unknown; index?: number } | null | undefined,
+    rowIdx: number,
+    stackIdx: number,
+    colLocalIdx: number,
+    colFullIdx?: number
+  ): string;
+  hasSavedFoldMatch(
+    savedValues: Array<string> | null | undefined,
+    foldKey: string,
+    legacyValue?: string | null
+  ): boolean;
+  getFoldedColumns(boardId: string, storage: LexeraFoldStateStorage | null | undefined): Array<string>;
+  getFoldedItems(boardId: string, kind: string, storage: LexeraFoldStateStorage | null | undefined): Array<string>;
+  saveFoldState(boardId: string, options: LexeraFoldStateSaveOptions): void;
+  toggleColumnFoldElement(
+    columnEl: Element | null,
+    childrenOnly: boolean,
+    options: LexeraFoldStateToggleOptions
+  ): boolean;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3533,6 +3591,7 @@ declare global {
     LexeraAppUtils: LexeraAppUtilsApi;
     LexeraMediaCategory: LexeraMediaCategoryApi;
     LexeraCanvasViewport: LexeraCanvasViewportApi;
+    LexeraFoldState: LexeraFoldStateApi;
     LexeraCardContentRenderer: any;
     LexeraDiagramDeps: LexeraAppUtilsDeps;
     ManagementUI: any;
