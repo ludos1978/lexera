@@ -1260,6 +1260,43 @@ interface LexeraDebugWindowTestApi {
   _test_copyProfileAsJson(): void;
 }
 
+/**
+ * Source: src/views/_shared/settingsRuntime.js (IIFE;
+ * window.LexeraSettingsRuntime = api). Shared scaffolding for the
+ * frontend / backend / files / etc. settings sub-app webviews —
+ * exposes a `buildFrontendSettingsOptions()` shape compatible with
+ * the legacy `frontendSettings.init()` deps bag, a backend API
+ * adapter (delegates to `LexeraApi.request`), a callback bag for
+ * `ManagementUI.init`, plus localStorage get/set + multiview
+ * broadcast primitives.
+ */
+interface LexeraSettingsRuntimeBackendApiAdapter {
+  get(path: string, options?: unknown): Promise<unknown>;
+  post(path: string, body?: unknown): Promise<unknown>;
+  put(path: string, body?: unknown): Promise<unknown>;
+  delete(path: string): Promise<unknown>;
+}
+
+interface LexeraSettingsRuntimeApi {
+  /** Options bag compatible with `frontendSettings.init` — visual
+   *  theme, UI scale, scroll/zoom speed, tag visibility, html-comment /
+   *  html-content modes, editor toggles, and the legacy menu hooks. */
+  buildFrontendSettingsOptions(): Record<string, unknown>;
+  /** Adapter that funnels HTTP-shaped calls (`get`/`post`/`put`/
+   *  `delete`) through `LexeraApi.request`. Throws when LexeraApi
+   *  isn't on the window yet. */
+  buildBackendApiAdapter(): LexeraSettingsRuntimeBackendApiAdapter;
+  /** Callback bag for `ManagementUI.init` — notification, confirm
+   *  modal, board mutation broadcasts, server restart, etc. */
+  buildBackendCallbacks(): Record<string, unknown>;
+  /** Multiview event broadcast helper. */
+  broadcast(event: string, payload?: Record<string, unknown>): void;
+  /** localStorage `getItem` with default-fallback. */
+  getLs(key: string, fallback: string): string;
+  /** localStorage `setItem` with stringification + try/catch. */
+  setLs(key: string, value: unknown): void;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -2723,7 +2760,7 @@ declare global {
     LexeraFrontendTests: any;
     LexeraFilesTestApi: LexeraFilesTestApi;
     ManagementUI: any;
-    LexeraSettingsRuntime: any;
+    LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;
     LexeraDashboard: any;
     LexeraDebug: LexeraDebugApi;
