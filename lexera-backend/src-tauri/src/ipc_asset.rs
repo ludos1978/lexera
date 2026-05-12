@@ -123,13 +123,13 @@ pub async fn handle_asset_request(
 ) -> Result<(), IpcError> {
     let relative_path = match resolve_relative_path(state, &req.board_id, &req.kind) {
         Ok(p) => p,
-        Err(msg) => {
+        Err(err) => {
             return write_frame(
                 write_half,
                 &ServerFrame::Error {
                     correlation_id: Some(correlation_id),
                     code: "not_found".into(),
-                    message: msg,
+                    message: err.to_string(),
                 },
             )
             .await;
@@ -167,6 +167,15 @@ pub async fn handle_asset_request(
     .await
 }
 
+/// Typed error for `resolve_relative_path`. Display impl preserves the
+/// prior `format!("Board not found: {}", board_id)` wire shape so the
+/// client-facing `ServerFrame::Error.message` reads identical text.
+#[derive(Debug, thiserror::Error)]
+pub(super) enum ResolveRelativePathError {
+    #[error("Board not found: {0}")]
+    BoardNotFound(String),
+}
+
 /// Translate an [`AssetKind`] into the path string accepted by
 /// `resolve_board_file`. `Media` looks up the board's filename stem and
 /// prefixes it; `File` passes the path through unchanged.
@@ -174,13 +183,13 @@ fn resolve_relative_path(
     state: &AppState,
     board_id: &str,
     kind: &AssetKind,
-) -> Result<String, String> {
+) -> Result<String, ResolveRelativePathError> {
     match kind {
         AssetKind::Media { filename } => {
             let board_path = state
                 .storage
                 .get_board_path(board_id)
-                .ok_or_else(|| format!("Board not found: {}", board_id))?;
+                .ok_or_else(|| ResolveRelativePathError::BoardNotFound(board_id.to_string()))?;
             let stem = board_path
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -469,6 +478,15 @@ fn etag_for(meta: &std::fs::Metadata) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolve_relative_path_error_display_preserves_string_format() {
+        // ServerFrame::Error.message used to receive `format!("Board not found: {}", board_id)`
+        // directly. The typed-error Display must produce the EXACT same string so any
+        // client UI that pattern-matches on the wire message keeps working.
+        let err = ResolveRelativePathError::BoardNotFound("board-abc-123".into());
+        assert_eq!(err.to_string(), "Board not found: board-abc-123");
+    }
 
     #[test]
     fn parse_range_no_header_is_full() {
