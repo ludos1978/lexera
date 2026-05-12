@@ -1,5 +1,28 @@
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk.
+
+/**
+ * @typedef {Object} LexeraMediaCategoryDeps
+ * @property {(url: string | null | undefined) => boolean} isExternalHttpUrl
+ * @property {(path: string | null | undefined) => string} normalizeFilePathForDetection
+ * @property {(path: string) => string} getFileNameFromPath
+ */
+
+/**
+ * @typedef {'image' | 'video' | 'audio' | 'document' | 'unknown' | ''} LexeraMediaCategoryKind
+ */
+
+/**
+ * @typedef {Object} LexeraMediaCategoryApi
+ * @property {(deps: LexeraMediaCategoryDeps) => void} init
+ * @property {(ext: string | null | undefined) => LexeraMediaCategoryKind} getMediaCategory
+ * @property {(url: string | null | undefined) => LexeraMediaCategoryKind} inferExternalMediaCategoryFromUrl
+ * @property {(path: string | null | undefined) => string} getFileExtension
+ * @property {(path: string | null | undefined) => string} getInlineFileEmbedExtension
+ */
+
 var LexeraMediaCategory = (function () {
   'use strict';
+  /** @type {Partial<LexeraMediaCategoryDeps>} */
   var _deps = {};
   var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
 
@@ -12,9 +35,14 @@ var LexeraMediaCategory = (function () {
     }
   }
 
+  /**
+   * @param {string | null | undefined} ext
+   * @returns {LexeraMediaCategoryKind}
+   */
   function getMediaCategory(ext) {
     if (!ext) return 'unknown';
     ext = ext.toLowerCase();
+    /** @type {{ [k: string]: Array<string> }} */
     var cats = {
       image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif'],
       video: ['mp4', 'webm', 'mov', 'avi', 'mkv'],
@@ -22,13 +50,17 @@ var LexeraMediaCategory = (function () {
       document: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ods', 'ppt', 'pptx', 'txt', 'md', 'csv', 'json', 'epub'],
     };
     for (var cat in cats) {
-      if (cats[cat].indexOf(ext) !== -1) return cat;
+      if (cats[cat].indexOf(ext) !== -1) return /** @type {LexeraMediaCategoryKind} */ (cat);
     }
     return 'unknown';
   }
 
+  /**
+   * @param {string | null | undefined} url
+   * @returns {LexeraMediaCategoryKind}
+   */
   function inferExternalMediaCategoryFromUrl(url) {
-    if (!_deps.isExternalHttpUrl(url)) return '';
+    if (!_deps.isExternalHttpUrl || !_deps.isExternalHttpUrl(url)) return '';
     try {
       var parsed = new URL(String(url || ''));
       var host = (parsed.hostname || '').toLowerCase();
@@ -52,7 +84,12 @@ var LexeraMediaCategory = (function () {
     return '';
   }
 
+  /**
+   * @param {string | null | undefined} path
+   * @returns {string}
+   */
   function getFileExtension(path) {
+    if (!_deps.normalizeFilePathForDetection || !_deps.getFileNameFromPath) return '';
     var value = _deps.normalizeFilePathForDetection(path);
     if (!value) return '';
     var fileName = _deps.getFileNameFromPath(value);
@@ -61,6 +98,7 @@ var LexeraMediaCategory = (function () {
     return fileName.substring(dot + 1).toLowerCase();
   }
 
+  /** @type {{ [k: string]: boolean }} */
   var INLINE_FILE_EMBED_EXTENSIONS = {
     md: true,
     markdown: true,
@@ -85,13 +123,15 @@ var LexeraMediaCategory = (function () {
     return INLINE_FILE_EMBED_EXTENSIONS[ext] ? ext : '';
   }
 
-  return {
+  /** @type {LexeraMediaCategoryApi} */
+  var api = {
     init: init,
     getMediaCategory: getMediaCategory,
     inferExternalMediaCategoryFromUrl: inferExternalMediaCategoryFromUrl,
     getFileExtension: getFileExtension,
     getInlineFileEmbedExtension: getInlineFileEmbedExtension
   };
+  return api;
 })();
 if (typeof globalThis !== 'undefined') globalThis.LexeraMediaCategory = LexeraMediaCategory;
 if (typeof window !== 'undefined') window.LexeraMediaCategory = LexeraMediaCategory;

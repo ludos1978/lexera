@@ -86,6 +86,7 @@
     "src/core/viewStateStore.js",
     "src/diagramRegistry.js",
     "src/canvas/stackDrop.js",
-    "src/utils/appUtils.js"
+    "src/utils/appUtils.js",
+    "src/utils/mediaCategory.js"
   ]
 }

@@ -1973,6 +1973,31 @@ interface LexeraAppUtilsApi {
   ): string;
 }
 
+/**
+ * Source: src/utils/mediaCategory.js (IIFE;
+ * window.LexeraMediaCategory = api). Classifies file extensions into
+ * media buckets (image / video / audio / document / unknown) +
+ * detects safe inline-embed extensions (.md / .csv / .json / etc.).
+ * External URL inference covers `googleusercontent.com` /
+ * `ggpht.com` / `ytimg.com` (treated as images) + format/fm/mime
+ * query params.
+ */
+type LexeraMediaCategoryKind = 'image' | 'video' | 'audio' | 'document' | 'unknown' | '';
+
+interface LexeraMediaCategoryDeps {
+  isExternalHttpUrl(url: string | null | undefined): boolean;
+  normalizeFilePathForDetection(path: string | null | undefined): string;
+  getFileNameFromPath(path: string): string;
+}
+
+interface LexeraMediaCategoryApi {
+  init(deps: LexeraMediaCategoryDeps): void;
+  getMediaCategory(ext: string | null | undefined): LexeraMediaCategoryKind;
+  inferExternalMediaCategoryFromUrl(url: string | null | undefined): LexeraMediaCategoryKind;
+  getFileExtension(path: string | null | undefined): string;
+  getInlineFileEmbedExtension(path: string | null | undefined): string;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3449,6 +3474,7 @@ declare global {
     LexeraDiagramRegistry: LexeraDiagramRegistryApi;
     LexeraCanvasStackDrop: LexeraCanvasStackDropApi;
     LexeraAppUtils: LexeraAppUtilsApi;
+    LexeraMediaCategory: LexeraMediaCategoryApi;
     LexeraCardContentRenderer: any;
     LexeraDiagramDeps: LexeraAppUtilsDeps;
     ManagementUI: any;
