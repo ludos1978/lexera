@@ -1400,6 +1400,49 @@ interface LexeraDashboardApi {
   commitHierarchyTreeEdit(boardId: string, boardData: unknown, options?: unknown): unknown;
 }
 
+/**
+ * Source: src/hierarchy/hierarchyController.js (IIFE;
+ * window.LexeraHierarchyController = api). Binds click / context-menu
+ * / dblclick / keyboard handlers to a tree element. Each handler is
+ * opt-in via the options bag; capabilities (drag / menu / activate /
+ * edit) are validated against the hierarchy contract before firing.
+ */
+interface LexeraHierarchyControllerHelpers {
+  toggleNode(node: Element, event?: Event): void;
+  [k: string]: unknown;
+}
+
+interface LexeraHierarchyControllerOptions {
+  HierarchyContract?: unknown;
+  menuSelector?: string;
+  toggleSelector?: string;
+  gripSelector?: string;
+  onGripClick?: (node: Element | null, event: Event, helpers: LexeraHierarchyControllerHelpers) => void;
+  onNodeMenu?: (node: Element | null, event: Event, helpers: LexeraHierarchyControllerHelpers) => void;
+  onNodeActivate?: (node: Element | null, event: Event, helpers: LexeraHierarchyControllerHelpers) => void;
+  onNodeContextMenu?: (node: Element | null, event: Event, helpers: LexeraHierarchyControllerHelpers) => void;
+  onNodeEdit?: (node: Element | null, event: Event, helpers: LexeraHierarchyControllerHelpers) => void;
+  [k: string]: unknown;
+}
+
+interface LexeraHierarchyControllerInlineEditHandle {
+  node: Element;
+  labelEl: Element | null;
+  input: HTMLInputElement | HTMLTextAreaElement | null;
+  cancel(): void;
+  commit(): void;
+}
+
+interface LexeraHierarchyControllerApi {
+  bindTreeInteractions(targetEl: Element | null, options?: LexeraHierarchyControllerOptions): Element | null;
+  findTreeNode(target: EventTarget | null, container?: Element | null): Element | null;
+  closestWithin(target: EventTarget | null, selector: string, container?: Element | null): Element | null;
+  beginInlineLabelEdit(
+    node: Element | null,
+    options?: Record<string, unknown>
+  ): LexeraHierarchyControllerInlineEditHandle | null;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -2859,7 +2902,7 @@ declare global {
     LexeraBoardList: any;
     LexeraSidebarSync: LexeraSidebarSyncApi;
     LexeraSidebarTree: LexeraSidebarTreeApi;
-    LexeraHierarchyController: any;
+    LexeraHierarchyController: LexeraHierarchyControllerApi;
     LexeraFrontendTests: any;
     LexeraFilesTestApi: LexeraFilesTestApi;
     ManagementUI: any;
