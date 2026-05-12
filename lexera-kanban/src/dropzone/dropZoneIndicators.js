@@ -10,13 +10,53 @@
  *   - getElColumnsContainer()  — returns the board's main columns container element
  *   - isHorizontalCanvasStack(stackEl) — returns true when the stack uses horizontal layout
  */
+
+/**
+ * Drag kinds the indicator module recognises. The `tree-*` variants are
+ * issued by the workspace-tree sub-app webviews so cross-view drags
+ * paint the same indicators as in-view drags.
+ * @typedef {'card' | 'tree-card' | 'board-row' | 'tree-row' | 'board-stack' | 'tree-stack' | 'column' | 'tree-column'} LexeraDropZoneDragType
+ */
+
+/**
+ * @typedef {Object} LexeraDropZoneIndicatorsDeps
+ * @property {() => (HTMLElement | null)} getElColumnsContainer
+ * @property {(stackEl: Element | null) => boolean} isHorizontalCanvasStack
+ */
+
+/**
+ * @typedef {Object} LexeraDropZoneIndicatorsApi
+ * @property {(deps: LexeraDropZoneIndicatorsDeps) => void} init
+ * @property {() => void} insertStackDropZones
+ * @property {() => void} removeStackDropZones
+ * @property {(dragType: LexeraDropZoneDragType) => void} insertDropZoneIndicators
+ * @property {() => void} removeDropZoneIndicators
+ * @property {() => void} clearDropZoneIndicatorHighlights
+ * @property {(dragType: LexeraDropZoneDragType, mx: number, my: number) => void} highlightDropZoneIndicator
+ */
+
 (function (root, factory) {
   var mod = factory();
   if (typeof root !== 'undefined') root.LexeraDropZoneIndicators = mod;
 }(typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : this), function () {
   'use strict';
 
+  /** @type {Partial<LexeraDropZoneIndicatorsDeps>} */
   var _deps = {};
+
+  /**
+   * `querySelectorAll` returns `NodeListOf<Element>`; we need
+   * `NodeListOf<HTMLElement>` so `.offsetLeft`/`.offsetTop`/`.style`
+   * are typed. Every selector in this module targets a known
+   * HTMLElement-shaped descendant (`.column`, `.board-stack`,
+   * `.drop-zone-indicator`, …) so the cast is sound.
+   * @param {ParentNode} root
+   * @param {string} sel
+   * @returns {NodeListOf<HTMLElement>}
+   */
+  function qsAllH(root, sel) {
+    return /** @type {NodeListOf<HTMLElement>} */ (root.querySelectorAll(sel));
+  }
 
   function getContainer() {
     return _deps.getElColumnsContainer ? _deps.getElColumnsContainer() : null;
@@ -31,12 +71,12 @@
   function insertStackDropZones() {
     var container = getContainer();
     if (!container) return;
-    var rowContents = container.querySelectorAll('.board-row-content');
+    var rowContents = qsAllH(container, '.board-row-content');
     for (var r = 0; r < rowContents.length; r++) {
       var rowContent = rowContents[r];
       var rowEl = rowContent.closest('.board-row');
       var rowIdx = rowEl.getAttribute('data-row-index');
-      var stacks = rowContent.querySelectorAll(':scope > .board-stack');
+      var stacks = qsAllH(rowContent, ':scope > .board-stack');
       if (stacks.length === 0) {
         var emptyZone = document.createElement('div');
         emptyZone.className = 'stack-drop-zone';
@@ -78,15 +118,16 @@
 
   // ── Visual Drop Zone Indicators (cosmetic lines) ───────────────────
 
+  /** @param {LexeraDropZoneDragType} dragType */
   function insertDropZoneIndicators(dragType) {
     removeDropZoneIndicators();
     var container = getContainer();
     if (!container) return;
     if (dragType === 'card' || dragType === 'tree-card') {
-      var stackContents = container.querySelectorAll('.board-stack-content');
+      var stackContents = qsAllH(container, '.board-stack-content');
       for (var s = 0; s < stackContents.length; s++) {
         var stackContent = stackContents[s];
-        var cols = stackContent.querySelectorAll(':scope > .column:not(.dragging)');
+        var cols = qsAllH(stackContent, ':scope > .column:not(.dragging)');
         if (cols.length === 0) continue;
         if (getComputedStyle(stackContent).position === 'static') {
           stackContent.style.position = 'relative';
@@ -107,7 +148,7 @@
         }
       }
     } else if (dragType === 'board-row' || dragType === 'tree-row') {
-      var rows = container.querySelectorAll('.board-row');
+      var rows = qsAllH(container, '.board-row');
       if (rows.length === 0) return;
       if (getComputedStyle(container).position === 'static') {
         container.style.position = 'relative';
@@ -127,10 +168,10 @@
         container.appendChild(ind);
       }
     } else if (dragType === 'board-stack' || dragType === 'tree-stack') {
-      var rowContents = container.querySelectorAll('.board-row-content');
+      var rowContents = qsAllH(container, '.board-row-content');
       for (var rc = 0; rc < rowContents.length; rc++) {
         var rowContent = rowContents[rc];
-        var stacks = rowContent.querySelectorAll(':scope > .board-stack');
+        var stacks = qsAllH(rowContent, ':scope > .board-stack');
         if (stacks.length === 0) continue;
         if (getComputedStyle(rowContent).position === 'static') {
           rowContent.style.position = 'relative';
@@ -151,10 +192,10 @@
         }
       }
     } else if (dragType === 'column' || dragType === 'tree-column') {
-      var stackContents = container.querySelectorAll('.board-stack-content');
+      var stackContents = qsAllH(container, '.board-stack-content');
       for (var s = 0; s < stackContents.length; s++) {
         var stackContent = stackContents[s];
-        var cols = stackContent.querySelectorAll(':scope > .column:not(.dragging)');
+        var cols = qsAllH(stackContent, ':scope > .column:not(.dragging)');
         if (cols.length === 0) continue;
         if (getComputedStyle(stackContent).position === 'static') {
           stackContent.style.position = 'relative';
@@ -199,6 +240,11 @@
     for (var i = 0; i < indicators.length; i++) indicators[i].classList.remove('active');
   }
 
+  /**
+   * @param {LexeraDropZoneDragType} dragType
+   * @param {number} mx
+   * @param {number} my
+   */
   function highlightDropZoneIndicator(dragType, mx, my) {
     clearDropZoneIndicatorHighlights();
     var container = getContainer();
@@ -211,7 +257,7 @@
       if (!column) return;
       var stackContent = column.closest('.board-stack-content');
       if (!stackContent) return;
-      var cols = stackContent.querySelectorAll(':scope > .column:not(.dragging)');
+      var cols = qsAllH(stackContent, ':scope > .column:not(.dragging)');
       var colIdx = Array.prototype.indexOf.call(cols, column);
       if (colIdx < 0) return;
       var indicators = stackContent.querySelectorAll('.drop-zone-indicator[data-drop-zone-type="card-column"]');
@@ -224,7 +270,7 @@
     } else if (dragType === 'board-row' || dragType === 'tree-row') {
       var topRow = container.querySelector('.board-row.drag-over-top');
       var bottomRow = container.querySelector('.board-row.drag-over-bottom');
-      var rows = container.querySelectorAll('.board-row');
+      var rows = qsAllH(container, '.board-row');
       var indicators = container.querySelectorAll('.drop-zone-indicator[data-drop-zone-type="row"]');
       if (topRow) {
         var idx = Array.prototype.indexOf.call(rows, topRow);
@@ -239,7 +285,7 @@
       if (leftStack) {
         var rowContent = leftStack.closest('.board-row-content');
         if (rowContent) {
-          var stacks = rowContent.querySelectorAll(':scope > .board-stack');
+          var stacks = qsAllH(rowContent, ':scope > .board-stack');
           var indicators = rowContent.querySelectorAll('.drop-zone-indicator[data-drop-zone-type="stack"]');
           var idx = Array.prototype.indexOf.call(stacks, leftStack);
           if (idx >= 0 && idx < indicators.length) indicators[idx].classList.add('active');
@@ -247,7 +293,7 @@
       } else if (rightStack) {
         var rowContent = rightStack.closest('.board-row-content');
         if (rowContent) {
-          var stacks = rowContent.querySelectorAll(':scope > .board-stack');
+          var stacks = qsAllH(rowContent, ':scope > .board-stack');
           var indicators = rowContent.querySelectorAll('.drop-zone-indicator[data-drop-zone-type="stack"]');
           var idx = Array.prototype.indexOf.call(stacks, rightStack);
           if (idx >= 0 && idx + 1 < indicators.length) indicators[idx + 1].classList.add('active');
@@ -277,7 +323,7 @@
       } else if (topCol) {
         var stackContent = topCol.closest('.board-stack-content');
         if (stackContent) {
-          var cols = stackContent.querySelectorAll(':scope > .column:not(.dragging)');
+          var cols = qsAllH(stackContent, ':scope > .column:not(.dragging)');
           var indicators = stackContent.querySelectorAll('.drop-zone-indicator[data-drop-zone-type="column"]');
           var idx = Array.prototype.indexOf.call(cols, topCol);
           if (idx >= 0 && idx < indicators.length) indicators[idx].classList.add('active');
@@ -285,7 +331,7 @@
       } else if (bottomCol) {
         var stackContent = bottomCol.closest('.board-stack-content');
         if (stackContent) {
-          var cols = stackContent.querySelectorAll(':scope > .column:not(.dragging)');
+          var cols = qsAllH(stackContent, ':scope > .column:not(.dragging)');
           var indicators = stackContent.querySelectorAll('.drop-zone-indicator[data-drop-zone-type="column"]');
           var idx = Array.prototype.indexOf.call(cols, bottomCol);
           if (idx >= 0 && idx + 1 < indicators.length) indicators[idx + 1].classList.add('active');
@@ -294,9 +340,10 @@
     }
   }
 
-  return {
+  /** @type {LexeraDropZoneIndicatorsApi} */
+  var api = {
     init: function (deps) {
-      _deps = deps || {};
+      _deps = /** @type {LexeraDropZoneIndicatorsDeps} */ (deps || {});
     },
     insertStackDropZones: insertStackDropZones,
     removeStackDropZones: removeStackDropZones,
@@ -305,4 +352,5 @@
     clearDropZoneIndicatorHighlights: clearDropZoneIndicatorHighlights,
     highlightDropZoneIndicator: highlightDropZoneIndicator
   };
+  return api;
 }));

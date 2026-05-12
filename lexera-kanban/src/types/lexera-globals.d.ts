@@ -841,6 +841,41 @@ interface LexeraGeometryObserverInstance {
   _test_pendingRafId(): number;
 }
 
+/**
+ * Source: src/dropzone/dropZoneIndicators.js (IIFE;
+ * window.LexeraDropZoneIndicators = api). Builds the cosmetic
+ * vertical/horizontal lines that paint between rows / stacks /
+ * columns / cards during a drag, and activates the indicator nearest
+ * the cursor as it moves. The `tree-*` drag-type variants are issued
+ * by workspace-tree sub-apps so cross-view drags paint the same
+ * indicators as in-view drags.
+ */
+type LexeraDropZoneDragType =
+  | 'card' | 'tree-card'
+  | 'board-row' | 'tree-row'
+  | 'board-stack' | 'tree-stack'
+  | 'column' | 'tree-column';
+
+interface LexeraDropZoneIndicatorsDeps {
+  /** Returns the board's main columns container element. */
+  getElColumnsContainer(): HTMLElement | null;
+  /** Returns true when the stack uses horizontal column layout. */
+  isHorizontalCanvasStack(stackEl: Element | null): boolean;
+}
+
+interface LexeraDropZoneIndicatorsApi {
+  init(deps: LexeraDropZoneIndicatorsDeps): void;
+  /** Hit-target zones between stacks (used during stack drag). */
+  insertStackDropZones(): void;
+  removeStackDropZones(): void;
+  /** Cosmetic line elements between siblings of the matching kind. */
+  insertDropZoneIndicators(dragType: LexeraDropZoneDragType): void;
+  removeDropZoneIndicators(): void;
+  clearDropZoneIndicatorHighlights(): void;
+  /** Highlight the indicator nearest the cursor at (mx, my). */
+  highlightDropZoneIndicator(dragType: LexeraDropZoneDragType, mx: number, my: number): void;
+}
+
 interface LexeraGeometryObserverApi {
   /** Build an instance bound to the supplied callback bag.
    *  `onTabsLayoutChanged(headerEl)` fires after each recompute so
@@ -2228,7 +2263,7 @@ declare global {
     LexeraActionRegistry: any;
     LexeraContentEnhancerRegistry: any;
     LexeraTagSystem: any;
-    LexeraDropZoneIndicators: any;
+    LexeraDropZoneIndicators: LexeraDropZoneIndicatorsApi;
     LexeraPollingService: any;
     LexeraCanvasMode: any;
     LexeraCanvasPan: any;

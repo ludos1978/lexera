@@ -60,6 +60,7 @@
     "src/views/_shared/settingsRuntime.js",
     "src/views/inspector/inspector.js",
     "src/views/log/log.js",
-    "src/views/debug/debug.js"
+    "src/views/debug/debug.js",
+    "src/dropzone/dropZoneIndicators.js"
   ]
 }
