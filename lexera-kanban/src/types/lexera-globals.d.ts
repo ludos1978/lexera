@@ -1664,6 +1664,38 @@ interface LexeraBackendSettingsTestApi {
   triggerManagementRefresh(section?: string): boolean;
 }
 
+/**
+ * Source: src/settings/frontendSettings.js (IIFE;
+ * window.LexeraFrontendSettings = api). Initializes / re-renders the
+ * frontend settings panel from a `LexeraSettingsRuntime`-built
+ * options bag. The settings sub-app bootstrap calls `init` once and
+ * `render` on subsequent visual-theme registry changes.
+ */
+interface LexeraFrontendSettingsApi {
+  init(options: Record<string, unknown>, panel: Element | null): void;
+  render(options: Record<string, unknown>, panel: Element | null): void;
+  open(...args: unknown[]): unknown;
+}
+
+/**
+ * Source: src/views/frontendSettings/frontendSettings.js. Test seam
+ * published as window.LexeraFrontendSettingsTestApi when the sub-app
+ * boots — surfaces mount status + error state + a hook that
+ * dispatches `lexera-visual-themes-changed` so tests can drive the
+ * re-render path.
+ */
+interface LexeraFrontendSettingsTestApiState {
+  booted: boolean;
+  hasError: boolean;
+  errorText: string;
+  lastError: string;
+}
+
+interface LexeraFrontendSettingsTestApi {
+  collectState(): LexeraFrontendSettingsTestApiState;
+  triggerVisualThemesChanged(): boolean;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3129,6 +3161,8 @@ declare global {
     LexeraRenderAppsTestApi: LexeraRenderAppsTestApi;
     LexeraRenderAppsSettings: LexeraRenderAppsSettingsApi;
     LexeraBackendSettingsTestApi: LexeraBackendSettingsTestApi;
+    LexeraFrontendSettings: LexeraFrontendSettingsApi;
+    LexeraFrontendSettingsTestApi: LexeraFrontendSettingsTestApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;
