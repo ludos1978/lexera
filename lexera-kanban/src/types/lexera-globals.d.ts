@@ -1845,6 +1845,30 @@ interface LexeraBaseTheme {
   dark: { [cssVar: string]: string };
 }
 
+/**
+ * Source: src/core/viewStateStore.js (IIFE;
+ * window.LexeraViewState = api). Thin observable wrapper over
+ * LexeraRuntime's state store. Registers a handful of well-known
+ * UI-state keys (searchMode / isEditing / connected / embeddedMode /
+ * headerSearchExpanded / addCardColumn) so any module can read,
+ * write, and subscribe without ad-hoc closure variables.
+ */
+interface LexeraViewStateKeyDefaults {
+  searchMode: boolean;
+  isEditing: boolean;
+  connected: boolean;
+  embeddedMode: boolean;
+  headerSearchExpanded: boolean;
+  addCardColumn: string | null;
+}
+
+interface LexeraViewStateApi {
+  get(key: string): unknown;
+  set(key: string, value: unknown): void;
+  on(key: string, fn: (value: unknown, oldValue: unknown) => void): () => void;
+  KEYS: LexeraViewStateKeyDefaults;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3317,6 +3341,7 @@ declare global {
     LexeraBoardSettingRegistry: LexeraBoardSettingRegistryApi;
     LexeraMenuContributorRegistry: LexeraMenuContributorRegistryApi;
     LexeraCanvasDom: LexeraCanvasDomApi;
+    LexeraViewState: LexeraViewStateApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;

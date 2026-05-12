@@ -11,12 +11,33 @@
  *   var active = vs.get('searchMode');
  *   var unsub = vs.on('searchMode', function(val, old) { ... });
  */
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk.
+
+/**
+ * @typedef {Object} LexeraViewStateKeyDefaults
+ * @property {boolean} searchMode
+ * @property {boolean} isEditing
+ * @property {boolean} connected
+ * @property {boolean} embeddedMode
+ * @property {boolean} headerSearchExpanded
+ * @property {string | null} addCardColumn
+ */
+
+/**
+ * @typedef {Object} LexeraViewStateApi
+ * @property {(key: string) => unknown} get
+ * @property {(key: string, value: unknown) => void} set
+ * @property {(key: string, fn: (value: unknown, oldValue: unknown) => void) => (() => void)} on
+ * @property {LexeraViewStateKeyDefaults} KEYS
+ */
+
 var LexeraViewState = (function () {
   'use strict';
 
   var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
 
   // All view-state keys with their default values
+  /** @type {LexeraViewStateKeyDefaults} */
   var KEYS = {
     searchMode: false,
     isEditing: false,
@@ -28,7 +49,7 @@ var LexeraViewState = (function () {
 
   // Register every key with the runtime state store
   if (_rt) {
-    var keyNames = Object.keys(KEYS);
+    var keyNames = /** @type {Array<keyof LexeraViewStateKeyDefaults>} */ (Object.keys(KEYS));
     for (var i = 0; i < keyNames.length; i++) {
       _rt.defineState(keyNames[i], KEYS[keyNames[i]]);
     }
@@ -40,7 +61,7 @@ var LexeraViewState = (function () {
    * @returns {*}
    */
   function get(key) {
-    return _rt ? _rt.getState(key) : KEYS[key];
+    return _rt ? _rt.getState(key) : /** @type {any} */ (KEYS)[key];
   }
 
   /**
@@ -55,19 +76,21 @@ var LexeraViewState = (function () {
   /**
    * Subscribe to changes on a view-state key.
    * @param {string} key
-   * @param {function} fn - Called with (newValue, oldValue)
-   * @returns {function} Unsubscribe function
+   * @param {(value: unknown, oldValue: unknown) => void} fn - Called with (newValue, oldValue)
+   * @returns {() => void} Unsubscribe function
    */
   function on(key, fn) {
     return _rt ? _rt.onStateChange(key, fn) : function () {};
   }
 
-  return {
+  /** @type {LexeraViewStateApi} */
+  var api = {
     get: get,
     set: set,
     on: on,
     KEYS: KEYS
   };
+  return api;
 })();
 if (typeof globalThis !== 'undefined') globalThis.LexeraViewState = LexeraViewState;
 if (typeof window !== 'undefined') window.LexeraViewState = LexeraViewState;
