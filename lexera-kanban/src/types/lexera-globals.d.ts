@@ -1746,6 +1746,42 @@ interface LexeraDevtoolsTitleApi {
   ): string;
 }
 
+/**
+ * Source: src/boardSettingRegistry.js (IIFE;
+ * window.LexeraBoardSettingRegistry = api). Per-board-setting
+ * descriptor registry — each descriptor declares an `id`, an
+ * `actionPrefix` for menu-action routing, and an `options` list (or
+ * factory returning one). The registry's `buildMenuItems` helper
+ * assembles a native context-menu items array decorated with a ✓
+ * checkmark for the current value.
+ */
+interface LexeraBoardSettingOption {
+  value?: unknown;
+  label?: string;
+  separator?: boolean;
+}
+
+interface LexeraBoardSettingDescriptor {
+  id: string;
+  category?: string;
+  actionPrefix: string;
+  options?: Array<LexeraBoardSettingOption> | (() => Array<LexeraBoardSettingOption>) | null;
+}
+
+interface LexeraBoardSettingMenuItem {
+  id?: string;
+  label?: string;
+  separator?: boolean;
+}
+
+interface LexeraBoardSettingRegistryApi {
+  register(desc: LexeraBoardSettingDescriptor): void;
+  get(id: string): LexeraBoardSettingDescriptor | null;
+  getAll(): Array<LexeraBoardSettingDescriptor>;
+  getByCategory(category: string): Array<LexeraBoardSettingDescriptor>;
+  buildMenuItems(id: string, currentValue: unknown): Array<LexeraBoardSettingMenuItem>;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3215,6 +3251,7 @@ declare global {
     LexeraFrontendSettingsTestApi: LexeraFrontendSettingsTestApi;
     LexeraDashboardTestApi: LexeraDashboardTestApi;
     LexeraDevtoolsTitle: LexeraDevtoolsTitleApi;
+    LexeraBoardSettingRegistry: LexeraBoardSettingRegistryApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;
