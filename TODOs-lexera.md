@@ -59,7 +59,7 @@ This snapshot consolidates the currently open work. The detailed task history re
 - [ ] Retire remaining `LexeraSharedPanels` and `lexera-shared-panel-created` consumers after every panel view is fully hydrated.
 
 ### View Feature Parity
-- [ ] Fix the embedded board empty-state regression where an active child board webview can still show "Select a board from the sidebar".
+- [x] (done) ~~Fix the embedded board empty-state regression where an active child board webview can still show "Select a board from the sidebar".~~ Embedded child webviews are spawned with a specific `?board=` and have no sidebar — the legacy message was nonsense in that context. `renderMainView`'s empty-state branch in [app.js](lexera-kanban/src/app.js#L4080) now routes through a three-way `emptyMsg` switch: `!connected → "Waiting for server..."`, `embeddedMode → "Loading board…"`, otherwise the legacy shell-mode copy. Single-write contract keeps future fixes from missing the embedded branch. Pinned by 5 source-level assertions in `embeddedEmptyStateContract.test.js` (the three copy strings, the `embeddedMode` discriminator, the single `emptyMsg` render path).
 - [ ] Restore docked dashboard parity: search, all/active scope, pinned queries, and grouped result sections.
 - [ ] Restore docked log parity: source filter, level dropdown, text search, reload/copy actions, connection status, and mirrored log state.
 - [ ] Port the frontend test runner implementation out of the shell-owned harness.

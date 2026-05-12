@@ -4082,9 +4082,18 @@ var LexeraDashboard = (function () {
       getElBoardHeader().classList.add('hidden');
       getElColumnsContainer().classList.add('hidden');
       getElEmptyState().classList.remove('hidden');
+      // Embedded child webviews are spawned with a specific ?board= and
+      // have no sidebar. "Select a board from the sidebar" was nonsense
+      // there — show "Loading board…" instead so the message reflects
+      // what's actually happening (loadBoard is in flight, or the
+      // initial URL board id failed to resolve).
+      var emptyMsg;
+      if (!connected) emptyMsg = 'Waiting for server...';
+      else if (embeddedMode) emptyMsg = 'Loading board…';
+      else emptyMsg = 'Select a board from the sidebar';
       getElEmptyState().innerHTML =
         '<div class="empty-state-icon">&#9776;</div>' +
-        '<div>' + (connected ? 'Select a board from the sidebar' : 'Waiting for server...') + '</div>';
+        '<div>' + emptyMsg + '</div>';
       return;
     }
 
