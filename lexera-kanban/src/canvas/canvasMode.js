@@ -1,5 +1,31 @@
+/**
+ * @typedef {Object} LexeraCanvasParamMap
+ * @typedef {{ targetTag: string; params: { [key: string]: string } }} LexeraCanvasConnectionSpec
+ * @typedef {{ kind: 'percent' | 'px'; value: number }} LexeraCanvasWidthSpec
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasModeHelpersDeps
+ * @property {(text: string) => string} [stripHtmlComments]
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasModeHelpers
+ * @property {(value: unknown) => ('canvas' | 'kanban')} normalizeBoardLayoutValue
+ * @property {(value: unknown) => string} normalizeCanvasGridValue
+ * @property {(raw: string | null | undefined) => { [key: string]: string }} parseCanvasParamMap
+ * @property {(title: string | null | undefined) => Array<LexeraCanvasConnectionSpec>} extractCanvasConnectionSpecs
+ * @property {(value: unknown) => (LexeraCanvasWidthSpec | null)} getCanvasColumnWidthSpec
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasModeApi
+ * @property {(deps?: LexeraCanvasModeHelpersDeps) => LexeraCanvasModeHelpers} createCanvasModeHelpers
+ */
+
 var LexeraCanvasMode = (function () {
   'use strict';
+  /** @param {string | null | undefined} text */
   function defaultStripHtmlComments(text) {
     return String(text || '')
       .replace(/<!--[\s\S]*?-->/g, ' ')
@@ -10,12 +36,20 @@ var LexeraCanvasMode = (function () {
       .trim();
   }
 
+  /**
+   * @param {LexeraCanvasModeHelpersDeps} [deps]
+   * @returns {LexeraCanvasModeHelpers}
+   */
   function createCanvasModeHelpers(deps) {
     deps = deps || {};
     var stripHtmlComments = typeof deps.stripHtmlComments === 'function'
       ? deps.stripHtmlComments
       : defaultStripHtmlComments;
 
+    /**
+     * @param {unknown} value
+     * @returns {'canvas' | 'kanban'}
+     */
     function normalizeBoardLayoutValue(value) {
       var normalized = String(value == null ? '' : value).trim().toLowerCase();
       if (normalized === 'canvas') return 'canvas';
@@ -34,7 +68,12 @@ var LexeraCanvasMode = (function () {
       return String(Math.round(parsed));
     }
 
+    /**
+     * @param {string | null | undefined} raw
+     * @returns {{ [key: string]: string }}
+     */
     function parseCanvasParamMap(raw) {
+      /** @type {{ [key: string]: string }} */
       var out = {};
       var text = String(raw || '').trim();
       if (!text) return out;
@@ -52,7 +91,12 @@ var LexeraCanvasMode = (function () {
       return out;
     }
 
+    /**
+     * @param {string | null | undefined} title
+     * @returns {Array<LexeraCanvasConnectionSpec>}
+     */
     function extractCanvasConnectionSpecs(title) {
+      /** @type {Array<LexeraCanvasConnectionSpec>} */
       var out = [];
       var text = stripHtmlComments(String(title || ''));
       var connectionRe = /\[(#[^\]\s]+)\]\u007B([^\u007D]+)\u007D/gi;
@@ -66,6 +110,10 @@ var LexeraCanvasMode = (function () {
       return out;
     }
 
+    /**
+     * @param {unknown} value
+     * @returns {LexeraCanvasWidthSpec | null}
+     */
     function getCanvasColumnWidthSpec(value) {
       var raw = String(value == null ? '' : value).trim().toLowerCase();
       if (!raw) return null;
@@ -96,8 +144,10 @@ var LexeraCanvasMode = (function () {
     };
   }
 
-  return {
+  /** @type {LexeraCanvasModeApi} */
+  var api = {
     createCanvasModeHelpers: createCanvasModeHelpers
   };
+  return api;
 })();
 if (typeof window !== 'undefined') window.LexeraCanvasMode = LexeraCanvasMode;

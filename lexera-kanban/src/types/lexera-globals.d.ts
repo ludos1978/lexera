@@ -928,6 +928,52 @@ interface LexeraSidebarSyncApi {
   isHierarchyLocked(): boolean;
 }
 
+/**
+ * Source: src/canvas/canvasMode.js (IIFE;
+ * window.LexeraCanvasMode = api). Pure helpers consumed by canvas-mode
+ * boards (free-form spatial layout) to parse the various title/param
+ * micro-syntaxes: board-layout discrimination, grid-size normalisation,
+ * `[#tag]{param:value, …}` connection specs, and the
+ * percent/px column-width spec used by `width:` cells.
+ */
+interface LexeraCanvasConnectionSpec {
+  targetTag: string;
+  params: { [key: string]: string };
+}
+
+interface LexeraCanvasWidthSpec {
+  kind: 'percent' | 'px';
+  value: number;
+}
+
+interface LexeraCanvasModeHelpersDeps {
+  /** Strip <!-- … --> comments before pattern matching. Defaults to a
+   *  built-in implementation when omitted. */
+  stripHtmlComments?: (text: string) => string;
+}
+
+interface LexeraCanvasModeHelpers {
+  /** Normalise board-layout flag to either `'canvas'` or the fallback
+   *  `'kanban'`. */
+  normalizeBoardLayoutValue(value: unknown): 'canvas' | 'kanban';
+  /** Normalise grid-size to one of `'off' | '16' | '32' | '64' |
+   *  'largest' | <number-string>`. */
+  normalizeCanvasGridValue(value: unknown): string;
+  /** Parse `key1:val1, key2:val2` into a plain map. */
+  parseCanvasParamMap(raw: string | null | undefined): { [key: string]: string };
+  /** Pull every `[#tag]{params}` connection block out of a card title. */
+  extractCanvasConnectionSpecs(
+    title: string | null | undefined
+  ): Array<LexeraCanvasConnectionSpec>;
+  /** Parse `width:` cell values (fractions, percents, px). Returns
+   *  `null` when the value isn't parseable. */
+  getCanvasColumnWidthSpec(value: unknown): LexeraCanvasWidthSpec | null;
+}
+
+interface LexeraCanvasModeApi {
+  createCanvasModeHelpers(deps?: LexeraCanvasModeHelpersDeps): LexeraCanvasModeHelpers;
+}
+
 interface LexeraGeometryObserverApi {
   /** Build an instance bound to the supplied callback bag.
    *  `onTabsLayoutChanged(headerEl)` fires after each recompute so
@@ -2317,7 +2363,7 @@ declare global {
     LexeraTagSystem: any;
     LexeraDropZoneIndicators: LexeraDropZoneIndicatorsApi;
     LexeraPollingService: any;
-    LexeraCanvasMode: any;
+    LexeraCanvasMode: LexeraCanvasModeApi;
     LexeraCanvasPan: any;
     LexeraCanvasLayout: any;
     LexeraColumnContextMenu: any;
