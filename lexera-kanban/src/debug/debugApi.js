@@ -37,6 +37,10 @@
     return (typeof window !== 'undefined' && window.LexeraWorkspaceShell) || null;
   }
 
+  /**
+   * @param {boolean} hide
+   * @returns {{ ok: true; hidden: boolean } | { ok: false; reason: string }}
+   */
   function hideAllOverlays(hide) {
     var mv = getMultiview();
     if (!mv || typeof mv.setAllVisible !== 'function') {
@@ -60,8 +64,12 @@
     return shell._test_inspectDock(String(dockId || 'bottom'));
   }
 
-  window.LexeraDebug = window.LexeraDebug || {};
-  window.LexeraDebug.hideAllOverlays = hideAllOverlays;
-  window.LexeraDebug.isOverlaysHidden = isOverlaysHidden;
-  window.LexeraDebug.dockSnapshot = dockSnapshot;
+  // Single-assignment shape — TS can't narrow an incrementally-built
+  // `window.LexeraDebug = {}; .x = …; .y = …` against the strict
+  // `LexeraDebugApi` literal-discriminator return types.
+  window.LexeraDebug = {
+    hideAllOverlays: hideAllOverlays,
+    isOverlaysHidden: isOverlaysHidden,
+    dockSnapshot: dockSnapshot
+  };
 })();

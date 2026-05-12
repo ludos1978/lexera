@@ -78,6 +78,7 @@
     "src/views/dashboard/dashboard.js",
     "src/devtools/devtoolsTitle.js",
     "src/boardSettingRegistry.js",
-    "src/menuContributorRegistry.js"
+    "src/menuContributorRegistry.js",
+    "src/debug/debugApi.js"
   ]
 }
