@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-12):** ✓ 2904 frontend passed | 2 skipped (237 files via `npx vitest run` from `lexera-kanban/`); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`, last verified 2026-05-11); ✓ 786 lexera-core passed (`cargo test -p lexera-core --lib`); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`). `--typedefs` gate: OK (54 files in gate after this iteration's `devtoolsTitle`, `boardSettingRegistry`, `menuContributorRegistry`, `debugApi`, `canvasDom`, `themes`, `pluginLoader` additions — gate has tripled from its 17-file baseline before this session).
+**Last run (2026-05-12):** ✓ 2904 frontend passed | 2 skipped (237 files via `npx vitest run` from `lexera-kanban/`); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`, last verified 2026-05-11); ✓ 786 lexera-core passed (`cargo test -p lexera-core --lib`); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`). `--typedefs` gate: OK (57 files — adds `core/viewStateStore`, `diagramRegistry`, `canvas/stackDrop` on top of the prior iterations).
 
 ## Current Open TODO Snapshot (2026-05-12)
 
