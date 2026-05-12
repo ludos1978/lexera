@@ -306,17 +306,29 @@ fn remote_board_id_from_local(local_board_id: &str) -> String {
         .to_string()
 }
 
+/// Typed error for the two persist-remote-connection helpers. The Display
+/// impl preserves the prior `format!("config lock poisoned: {}", e)` and
+/// `format!("failed to save config: {}", e)` wire strings so the surrounding
+/// `log::error!("... {}", error)` call sites keep emitting identical text.
+#[derive(Debug, thiserror::Error)]
+enum PersistRemoteConnectionError {
+    #[error("config lock poisoned: {0}")]
+    ConfigLockPoisoned(String),
+    #[error("failed to save config: {0}")]
+    SaveConfig(#[from] std::io::Error),
+}
+
 fn persist_remote_connection(
     state: &AppState,
     server_url: &str,
     local_board_id: &str,
     invite_token: Option<String>,
     auth_token: Option<String>,
-) -> std::result::Result<(), String> {
+) -> std::result::Result<(), PersistRemoteConnectionError> {
     let mut cfg = state
         .config
         .write()
-        .map_err(|e| format!("config lock poisoned: {}", e))?;
+        .map_err(|e| PersistRemoteConnectionError::ConfigLockPoisoned(e.to_string()))?;
     let remote_board_id = remote_board_id_from_local(local_board_id);
     cfg.remote_connections
         .retain(|entry| entry.local_board_id != local_board_id);
@@ -329,25 +341,24 @@ fn persist_remote_connection(
             enabled: true,
             auth_token,
         });
-    crate::config::save_config(&state.config_path, &cfg)
-        .map_err(|e| format!("failed to save config: {}", e))
+    crate::config::save_config(&state.config_path, &cfg)?;
+    Ok(())
 }
 
 fn remove_persisted_remote_connection(
     state: &AppState,
     local_board_id: &str,
-) -> std::result::Result<bool, String> {
+) -> std::result::Result<bool, PersistRemoteConnectionError> {
     let mut cfg = state
         .config
         .write()
-        .map_err(|e| format!("config lock poisoned: {}", e))?;
+        .map_err(|e| PersistRemoteConnectionError::ConfigLockPoisoned(e.to_string()))?;
     let before = cfg.remote_connections.len();
     cfg.remote_connections
         .retain(|entry| entry.local_board_id != local_board_id);
     let changed = cfg.remote_connections.len() != before;
     if changed {
-        crate::config::save_config(&state.config_path, &cfg)
-            .map_err(|e| format!("failed to save config: {}", e))?;
+        crate::config::save_config(&state.config_path, &cfg)?;
     }
     Ok(changed)
 }
@@ -1438,6 +1449,26 @@ mod tests {
 
     use crate::state::AppState;
     use crate::test_helpers::{body_json, test_state};
+
+    use super::PersistRemoteConnectionError;
+
+    #[test]
+    fn persist_remote_connection_error_display_preserves_wire_format() {
+        // The two surrounding log::error! call sites format the error
+        // via `{}`. Display must produce the same byte sequence as the
+        // prior `format!()` strings so log output is unchanged.
+        let lock_err = PersistRemoteConnectionError::ConfigLockPoisoned(
+            "PoisonError { .. }".into(),
+        );
+        assert_eq!(
+            lock_err.to_string(),
+            "config lock poisoned: PoisonError { .. }"
+        );
+
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let save_err: PersistRemoteConnectionError = io_err.into();
+        assert_eq!(save_err.to_string(), "failed to save config: denied");
+    }
 
     fn test_router(state: AppState) -> Router {
         super::collab_router().with_state(state)
