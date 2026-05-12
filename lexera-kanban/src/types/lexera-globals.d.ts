@@ -1228,6 +1228,38 @@ interface LexeraCalendarRuntimeApi {
   mount(panelEl: HTMLElement | null, opts?: LexeraCalendarMountOptions): void;
 }
 
+/**
+ * Source: src/views/debug/debug.js. Test seam published as
+ * window.LexeraDebugWindow when the `--debug` window boots — lets
+ * Vitest drive the controller (overlays toggle, snapshot refresh,
+ * frontend-tests open, render-profile start/stop, JSON copy)
+ * without simulating raw clicks. Internal state + helper functions
+ * exposed via `_test_*` prefixed properties.
+ */
+interface LexeraDebugWindowState {
+  overlaysHidden: boolean;
+}
+
+interface LexeraDebugWindowProfileState {
+  running: boolean;
+  lastPayload: unknown;
+}
+
+interface LexeraDebugWindowTestApi {
+  _test_emit(eventName: string, payload?: unknown): Promise<unknown>;
+  _test_listen(eventName: string, handler: (...args: unknown[]) => void): Promise<() => void>;
+  _test_state: LexeraDebugWindowState;
+  _test_toggleOverlays(): void;
+  _test_refreshSnapshots(): void;
+  _test_openFrontendTests(): void;
+  _test_setOverlayStatusUi(hidden: boolean): void;
+  _test_startRenderProfile(): void;
+  _test_stopRenderProfile(): void;
+  _test_profileState: LexeraDebugWindowProfileState;
+  _test_readProfileDurationMs(): number;
+  _test_copyProfileAsJson(): void;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -2668,7 +2700,7 @@ declare global {
     ContextMenuBuilders: any;
     LexeraInspectorTestApi: LexeraInspectorTestApi;
     LexeraLogTestApi: LexeraLogTestApi;
-    LexeraDebugWindow: any;
+    LexeraDebugWindow: LexeraDebugWindowTestApi;
     LexeraDragDropHandlers: any;
     LexeraOrderHelpers: any;
     LexeraRowStackMenu: any;
