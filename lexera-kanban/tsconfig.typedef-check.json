@@ -69,6 +69,8 @@
     "src/keyboard/appShellShortcuts.js",
     "src/actionRegistry.js",
     "src/contentEnhancerRegistry.js",
-    "src/sidebar/sidebarTree.js"
+    "src/sidebar/sidebarTree.js",
+    "src/views/monthCalendar/monthCalendar.js",
+    "src/views/weekCalendar/weekCalendar.js"
   ]
 }

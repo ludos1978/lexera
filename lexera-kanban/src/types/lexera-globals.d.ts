@@ -1215,6 +1215,10 @@ interface LexeraCalendarMountOptions {
   [k: string]: unknown;
 }
 
+interface LexeraCalendarMountInstance {
+  refresh(): void;
+}
+
 interface LexeraCalendarRuntimeApi {
   /** Format `Date` as YYYY-MM-DD. */
   ymd(date: Date): string;
@@ -1225,7 +1229,7 @@ interface LexeraCalendarRuntimeApi {
   renderTaskList(host: HTMLElement | null, tasks: Array<LexeraCalendarTask>): void;
   normalizeTasks(arr: unknown): Array<LexeraCalendarTask>;
   fetchCalendarTasks(opts?: Record<string, unknown>): Promise<Array<LexeraCalendarTask>>;
-  mount(panelEl: HTMLElement | null, opts?: LexeraCalendarMountOptions): void;
+  mount(panelEl: Element | null, opts?: LexeraCalendarMountOptions): LexeraCalendarMountInstance;
 }
 
 /**
