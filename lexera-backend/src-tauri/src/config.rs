@@ -295,13 +295,57 @@ pub fn load_config(path: &PathBuf) -> SyncConfig {
     }
 }
 
-/// Save config to path. Creates parent dirs if needed.
+/// Save config to path atomically. Creates parent dirs if needed.
+///
+/// Durability sequence: write JSON to `<path>.tmp` -> fsync the tmp file ->
+/// rename to `<path>` -> fsync the parent directory. A crash at any point
+/// leaves either the previous valid `sync.json` or no change at all; the
+/// target file is never observed half-written. The directory fsync ensures
+/// the rename is durable across power loss on POSIX filesystems; on Windows
+/// the directory-open step is a no-op (best effort) and rename is already
+/// atomic on NTFS via the same-volume MoveFileEx semantics.
 pub fn save_config(path: &PathBuf, config: &SyncConfig) -> Result<(), std::io::Error> {
+    use std::io::Write;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let json = serde_json::to_string_pretty(config).map_err(std::io::Error::other)?;
-    fs::write(path, json)
+
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let tmp_path = {
+        let mut p = path.clone();
+        let mut name = path
+            .file_name()
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| std::ffi::OsString::from("sync.json"));
+        name.push(".tmp");
+        p.set_file_name(name);
+        p
+    };
+
+    // Best-effort cleanup of any stale temp from a previous crash so we
+    // never attempt to truncate over a file with funky permissions.
+    let _ = fs::remove_file(&tmp_path);
+
+    {
+        let mut tmp_file = fs::File::create(&tmp_path)?;
+        tmp_file.write_all(json.as_bytes())?;
+        tmp_file.sync_all()?;
+    }
+
+    if let Err(rename_err) = fs::rename(&tmp_path, path) {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(rename_err);
+    }
+
+    // Parent-directory fsync makes the rename durable. fs::File::open on a
+    // directory works on Unix; on Windows it errors with PermissionDenied,
+    // which we swallow because NTFS doesn't expose a portable equivalent.
+    if let Ok(dir_file) = fs::File::open(parent) {
+        let _ = dir_file.sync_all();
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -435,6 +479,87 @@ mod tests {
         assert_eq!(parsed.boards[0].file, "test.md");
         assert!(parsed.incoming.is_some());
         assert_eq!(parsed.incoming.unwrap().column, 2);
+    }
+
+    #[test]
+    fn save_config_uses_atomic_tmp_rename_and_leaves_no_residue() {
+        // Durability contract: save_config must write through a `.tmp`
+        // sibling, fsync it, then rename onto the target so a mid-write
+        // crash can't leave sync.json half-written. After success no
+        // `.tmp` residue is left behind.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("sync.json");
+        let tmp_path = dir.path().join("sync.json.tmp");
+
+        let cfg = SyncConfig {
+            port: 8080,
+            ..SyncConfig::default()
+        };
+        save_config(&path.to_path_buf(), &cfg).unwrap();
+
+        assert!(path.exists(), "target file must exist after save");
+        assert!(
+            !tmp_path.exists(),
+            "tmp sibling must be cleaned up after successful rename"
+        );
+
+        // Content must be intact valid JSON — no partial-write residue.
+        let parsed: SyncConfig =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(parsed.port, 8080);
+    }
+
+    #[test]
+    fn save_config_overwrites_existing_in_place_with_valid_content() {
+        // Two consecutive saves: the second must atomically replace the
+        // first without leaving a `.tmp` and without ever exposing an
+        // intermediate truncated state. The rename is the only mutation
+        // visible on the target inode.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("sync.json");
+
+        let v1 = SyncConfig {
+            port: 1001,
+            ..SyncConfig::default()
+        };
+        save_config(&path.to_path_buf(), &v1).unwrap();
+
+        let v2 = SyncConfig {
+            port: 2002,
+            ..SyncConfig::default()
+        };
+        save_config(&path.to_path_buf(), &v2).unwrap();
+
+        assert!(!dir.path().join("sync.json.tmp").exists());
+        let parsed: SyncConfig =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(parsed.port, 2002, "second save must replace first");
+    }
+
+    #[test]
+    fn save_config_recovers_when_stale_tmp_exists() {
+        // A crash during a previous save can leave a stale .tmp file.
+        // save_config must not fail — it should overwrite the stale tmp
+        // and complete the rename normally.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("sync.json");
+        let tmp_path = dir.path().join("sync.json.tmp");
+        fs::write(&tmp_path, "STALE GARBAGE FROM PRIOR CRASH").unwrap();
+
+        let cfg = SyncConfig {
+            port: 7777,
+            ..SyncConfig::default()
+        };
+        save_config(&path.to_path_buf(), &cfg).unwrap();
+
+        assert!(path.exists());
+        assert!(
+            !tmp_path.exists(),
+            "stale tmp must be replaced and renamed away, not left behind"
+        );
+        let parsed: SyncConfig =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(parsed.port, 7777);
     }
 
     // --- Config round-trip ---
