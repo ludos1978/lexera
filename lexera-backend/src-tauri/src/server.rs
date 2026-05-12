@@ -20,6 +20,21 @@ const FALLBACK_PORTS: &[u16] = &[13080, 12080, 14080, 11080, 15080];
 /// Milliseconds to wait after shutting down the old server before rebinding.
 const RESTART_REBIND_DELAY_MS: u64 = 200;
 
+/// Typed errors for the server-restart path. Replaces the previous
+/// `Result<u16, String>` so callers can match on the specific failure
+/// rather than parsing log strings. Display impls preserve the prior
+/// `format!("{}", err)` shape so existing log + HTTP-error formatting
+/// keeps working unchanged.
+#[derive(Debug, thiserror::Error)]
+pub enum RestartServerError {
+    #[error("server shutdown mutex poisoned: {0}")]
+    ShutdownMutexPoisoned(String),
+    #[error("live-port mutex poisoned: {0}")]
+    LivePortMutexPoisoned(String),
+    #[error("All ports exhausted ({0:?})")]
+    AllPortsExhausted(Vec<u16>),
+}
+
 fn is_allowed_app_origin(origin_str: &str) -> bool {
     if origin_str == "tauri://localhost" {
         return true;
@@ -223,10 +238,13 @@ pub async fn restart_server(
     state: AppState,
     new_bind: String,
     new_port: u16,
-) -> Result<u16, String> {
+) -> Result<u16, RestartServerError> {
     // Shut down the old server (scope ensures MutexGuard is dropped before await)
     {
-        let old_tx = state.server_shutdown.lock().map_err(|e| e.to_string())?;
+        let old_tx = state
+            .server_shutdown
+            .lock()
+            .map_err(|e| RestartServerError::ShutdownMutexPoisoned(e.to_string()))?;
         if let Some(tx) = old_tx.as_ref() {
             let _ = tx.send(true);
         }
@@ -251,8 +269,8 @@ pub async fn restart_server(
         }
     }
 
-    let (listener, actual_port) =
-        listener_and_port.ok_or_else(|| format!("All ports exhausted ({:?})", candidates))?;
+    let (listener, actual_port) = listener_and_port
+        .ok_or_else(|| RestartServerError::AllPortsExhausted(candidates.clone()))?;
 
     log::info!("[server] Restarted on http://{}:{}", new_bind, actual_port);
 
@@ -267,13 +285,19 @@ pub async fn restart_server(
 
     // Store new shutdown handle (short lock, no await after)
     {
-        let mut old_tx = state.server_shutdown.lock().map_err(|e| e.to_string())?;
+        let mut old_tx = state
+            .server_shutdown
+            .lock()
+            .map_err(|e| RestartServerError::ShutdownMutexPoisoned(e.to_string()))?;
         *old_tx = Some(shutdown_tx);
     }
 
     // Update live port (short lock, no await after)
     {
-        let mut live = state.live_port.lock().map_err(|e| e.to_string())?;
+        let mut live = state
+            .live_port
+            .lock()
+            .map_err(|e| RestartServerError::LivePortMutexPoisoned(e.to_string()))?;
         *live = actual_port;
     }
 
@@ -282,7 +306,43 @@ pub async fn restart_server(
 
 #[cfg(test)]
 mod tests {
-    use super::is_allowed_app_origin;
+    use super::{is_allowed_app_origin, RestartServerError};
+
+    #[test]
+    fn restart_server_error_display_preserves_prior_string_format() {
+        // The previous `Result<u16, String>` signature formatted the
+        // exhausted-ports failure as `format!("All ports exhausted ({:?})", candidates)`.
+        // Display impl must produce the SAME string so existing callers
+        // (collab_api.rs:1330 logs the error via `{}`) read identical text.
+        let err = RestartServerError::AllPortsExhausted(vec![13080, 12080, 14080]);
+        assert_eq!(
+            err.to_string(),
+            "All ports exhausted ([13080, 12080, 14080])"
+        );
+    }
+
+    #[test]
+    fn restart_server_error_display_includes_mutex_poison_reason() {
+        let err = RestartServerError::ShutdownMutexPoisoned("inner: PoisonError".into());
+        assert_eq!(
+            err.to_string(),
+            "server shutdown mutex poisoned: inner: PoisonError"
+        );
+        let err2 = RestartServerError::LivePortMutexPoisoned("p2".into());
+        assert_eq!(err2.to_string(), "live-port mutex poisoned: p2");
+    }
+
+    #[test]
+    fn restart_server_error_variants_are_distinct() {
+        // Pin that the three variants are not collapsed by a future
+        // refactor (e.g. someone replacing them with a single string).
+        let a = RestartServerError::ShutdownMutexPoisoned("x".into());
+        let b = RestartServerError::LivePortMutexPoisoned("x".into());
+        let c = RestartServerError::AllPortsExhausted(vec![1]);
+        assert!(matches!(a, RestartServerError::ShutdownMutexPoisoned(_)));
+        assert!(matches!(b, RestartServerError::LivePortMutexPoisoned(_)));
+        assert!(matches!(c, RestartServerError::AllPortsExhausted(_)));
+    }
 
     #[test]
     fn allows_tauri_window_origins() {
