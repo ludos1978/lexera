@@ -89,6 +89,7 @@
     "src/utils/appUtils.js",
     "src/utils/mediaCategory.js",
     "src/canvas/canvasViewport.js",
-    "src/fold/foldState.js"
+    "src/fold/foldState.js",
+    "src/interaction/scrollBehavior.js"
   ]
 }

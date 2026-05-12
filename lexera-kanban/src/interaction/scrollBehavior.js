@@ -1,12 +1,50 @@
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk.
+
+/**
+ * @typedef {{ boardSettings?: { [k: string]: unknown }; [k: string]: unknown } | ((key: string, fallback: string) => unknown) | string | null | undefined} LexeraScrollBehaviorSource
+ */
+
+/**
+ * @typedef {Object} LexeraScrollBehaviorScaleOptions
+ * @property {string | null} [fallback]
+ * @property {number} [precision]
+ */
+
+/**
+ * @typedef {Object} LexeraScrollBehaviorWheelOptions
+ * @property {Window | null} [window]
+ * @property {number} [viewportHeight]
+ * @property {Document | null} [document]
+ * @property {(el: Element) => CSSStyleDeclaration} [getComputedStyle]
+ */
+
+/**
+ * @typedef {Object} LexeraScrollBehaviorApi
+ * @property {(rawValue: unknown) => string} normalizeBoardScrollSpeedValue
+ * @property {(source: LexeraScrollBehaviorSource, fallback?: string | null) => number} getBoardScrollSpeedMultiplier
+ * @property {(rawValue: unknown) => string} normalizeBoardZoomSpeedValue
+ * @property {(source: LexeraScrollBehaviorSource, fallback?: string | null) => number} getBoardZoomSpeedMultiplier
+ * @property {(baseDelta: number, source: LexeraScrollBehaviorSource, options?: LexeraScrollBehaviorScaleOptions) => number} scaleZoomDelta
+ * @property {(delta: number, deltaMode: number, options?: LexeraScrollBehaviorWheelOptions) => number} normalizeWheelDeltaToPixels
+ * @property {(target: Element | null | undefined, button: number, altKey: boolean) => boolean} canStartCanvasPointerPan
+ * @property {(el: Element | null | undefined, axis: 'x' | 'y', delta: number, options?: LexeraScrollBehaviorWheelOptions) => boolean} canScrollableElementConsumeWheelDelta
+ * @property {(target: Element | null | undefined, container: Element | null | undefined, deltaX: number, deltaY: number, options?: LexeraScrollBehaviorWheelOptions) => boolean} shouldHandleBoardViewportWheelEvent
+ */
+
 (function (root, factory) {
   var api = factory();
   if (typeof module === 'object' && module.exports) {
     module.exports = api;
   }
-  root.LexeraScrollBehavior = api;
+  /** @type {any} */ (root).LexeraScrollBehavior = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  /**
+   * @param {unknown} rawValue
+   * @param {number} minValue
+   * @param {number} maxValue
+   */
   function normalizeSpeedMultiplierValue(rawValue, minValue, maxValue) {
     var text = String(rawValue == null ? '' : rawValue).trim().toLowerCase();
     if (!text || text === 'default' || text === 'normal') return '1';
@@ -18,16 +56,24 @@
     return String(Math.round(parsed * 100) / 100);
   }
 
+  /**
+   * @param {LexeraScrollBehaviorSource} source
+   * @param {string} key
+   * @param {string | null | undefined} fallback
+   * @param {(rawValue: unknown) => string} normalizer
+   */
   function getSpeedMultiplier(source, key, fallback, normalizer) {
+    /** @type {unknown} */
     var rawValue = null;
     var resolvedFallback = fallback == null ? '1' : fallback;
     if (typeof source === 'function') {
       rawValue = source(key, resolvedFallback);
     } else if (source && typeof source === 'object') {
-      if (source.boardSettings && typeof source.boardSettings === 'object') {
-        rawValue = source.boardSettings[key];
+      var sourceObj = /** @type {{ boardSettings?: { [k: string]: unknown }; [k: string]: unknown }} */ (source);
+      if (sourceObj.boardSettings && typeof sourceObj.boardSettings === 'object') {
+        rawValue = sourceObj.boardSettings[key];
       } else {
-        rawValue = source[key];
+        rawValue = sourceObj[key];
       }
     } else if (source != null) {
       rawValue = source;
@@ -146,7 +192,8 @@
     return true;
   }
 
-  return {
+  /** @type {LexeraScrollBehaviorApi} */
+  var publicApi = {
     normalizeBoardScrollSpeedValue: normalizeBoardScrollSpeedValue,
     getBoardScrollSpeedMultiplier: getBoardScrollSpeedMultiplier,
     normalizeBoardZoomSpeedValue: normalizeBoardZoomSpeedValue,
@@ -157,4 +204,5 @@
     canScrollableElementConsumeWheelDelta: canScrollableElementConsumeWheelDelta,
     shouldHandleBoardViewportWheelEvent: shouldHandleBoardViewportWheelEvent
   };
+  return publicApi;
 }));

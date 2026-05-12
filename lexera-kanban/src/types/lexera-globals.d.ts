@@ -2113,6 +2113,67 @@ interface LexeraFoldStateApi {
   ): boolean;
 }
 
+/**
+ * Source: src/interaction/scrollBehavior.js (IIFE;
+ * window.LexeraScrollBehavior = api). Pure helpers for scroll +
+ * zoom + canvas-pan input: speed-multiplier normalization,
+ * wheel-delta → pixel conversion, can-this-element-consume-the-delta
+ * gating that drives the parent board's wheel event handler.
+ */
+type LexeraScrollBehaviorSource =
+  | { boardSettings?: { [k: string]: unknown }; [k: string]: unknown }
+  | ((key: string, fallback: string) => unknown)
+  | string
+  | null
+  | undefined;
+
+interface LexeraScrollBehaviorScaleOptions {
+  fallback?: string | null;
+  precision?: number;
+}
+
+interface LexeraScrollBehaviorWheelOptions {
+  window?: Window | null;
+  viewportHeight?: number;
+  document?: Document | null;
+  getComputedStyle?: (el: Element) => CSSStyleDeclaration;
+}
+
+interface LexeraScrollBehaviorApi {
+  normalizeBoardScrollSpeedValue(rawValue: unknown): string;
+  getBoardScrollSpeedMultiplier(source: LexeraScrollBehaviorSource, fallback?: string | null): number;
+  normalizeBoardZoomSpeedValue(rawValue: unknown): string;
+  getBoardZoomSpeedMultiplier(source: LexeraScrollBehaviorSource, fallback?: string | null): number;
+  scaleZoomDelta(
+    baseDelta: number,
+    source: LexeraScrollBehaviorSource,
+    options?: LexeraScrollBehaviorScaleOptions
+  ): number;
+  normalizeWheelDeltaToPixels(
+    delta: number,
+    deltaMode: number,
+    options?: LexeraScrollBehaviorWheelOptions
+  ): number;
+  canStartCanvasPointerPan(
+    target: Element | null | undefined,
+    button: number,
+    altKey: boolean
+  ): boolean;
+  canScrollableElementConsumeWheelDelta(
+    el: Element | null | undefined,
+    axis: 'x' | 'y',
+    delta: number,
+    options?: LexeraScrollBehaviorWheelOptions
+  ): boolean;
+  shouldHandleBoardViewportWheelEvent(
+    target: Element | null | undefined,
+    container: Element | null | undefined,
+    deltaX: number,
+    deltaY: number,
+    options?: LexeraScrollBehaviorWheelOptions
+  ): boolean;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3592,6 +3653,8 @@ declare global {
     LexeraMediaCategory: LexeraMediaCategoryApi;
     LexeraCanvasViewport: LexeraCanvasViewportApi;
     LexeraFoldState: LexeraFoldStateApi;
+    LexeraScrollBehavior: LexeraScrollBehaviorApi;
+    LexeraControlsSettings: any;
     LexeraCardContentRenderer: any;
     LexeraDiagramDeps: LexeraAppUtilsDeps;
     ManagementUI: any;
@@ -3668,6 +3731,9 @@ declare global {
   // Plugin registry IIFE — accessed by bare name via `typeof
   // LexeraPluginRegistry !== 'undefined'` in contentEnhancerRegistry.js.
   const LexeraPluginRegistry: any;
+  // ControlsSettings IIFE — accessed by bare name in scrollBehavior.js
+  // via `typeof LexeraControlsSettings !== 'undefined'`.
+  const LexeraControlsSettings: any;
   // Tag system IIFE — also accessed by bare name via `LexeraTagSystem.x`
   // from sidebarTree.js and other consumers loaded after tagSystem.js.
   // (The Window-typed form is `LexeraTagSystemApi`; the bare-name const
