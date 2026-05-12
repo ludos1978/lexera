@@ -5582,8 +5582,10 @@ kanban-plugin: board
 
     #[test]
     fn test_add_board_accepts_presentation_fixture() {
+        // CARGO_MANIFEST_DIR for lexera-core is <repo>/lexera-core, so the
+        // fixture sits one level up — not two — relative to it.
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/kanban-presentation-tests/kanban-presentation.md");
+            .join("../tests/kanban-presentation-tests/kanban-presentation.md");
         assert!(fixture.exists(), "missing fixture: {}", fixture.display());
 
         let storage = LocalStorage::new();

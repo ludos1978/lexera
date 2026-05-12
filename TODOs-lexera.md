@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run (2026-05-12):** ✓ 2898 frontend passed | 2 skipped (236 files via `npx vitest run` from `lexera-kanban/`); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`, last verified 2026-05-11); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-10). `--typedefs` gate: OK (30 files in gate after Stages 17j–17t). Drive-bys: re-pinned `nativeDialogGuardrailContract` to settingsRuntime.js line 234 (b27cec44 shifted the allow-listed line) and dropped stale `treeView.js` entry from `localStorageGuardrailContract`.
+**Last run (2026-05-12):** ✓ 2904 frontend passed | 2 skipped (237 files via `npx vitest run` from `lexera-kanban/`); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`, last verified 2026-05-11); ✓ 786 lexera-core passed (`cargo test -p lexera-core --lib`, two pre-existing fixture-path failures fixed); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-10). `--typedefs` gate: OK (30 files in gate after Stages 17j–17t).
 
 ## Current Open TODO Snapshot (2026-05-12)
 

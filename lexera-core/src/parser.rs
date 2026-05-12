@@ -992,9 +992,16 @@ kanban-plugin: board
     /// Find the shared-fixtures/parser directory relative to the workspace.
     fn fixtures_dir() -> std::path::PathBuf {
         // The test is compiled from lexera-core; Cargo sets
-        // CARGO_MANIFEST_DIR to that crate directory.
+        // CARGO_MANIFEST_DIR to that crate directory. The fixtures live
+        // at `<workspace-root>/packages/shared-fixtures/parser/` — both
+        // Rust and JS sides consume the same files.
         let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest.parent().unwrap().join("shared-fixtures").join("parser")
+        manifest
+            .parent()
+            .unwrap()
+            .join("packages")
+            .join("shared-fixtures")
+            .join("parser")
     }
 
     #[test]
