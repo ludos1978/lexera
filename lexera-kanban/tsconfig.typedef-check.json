@@ -63,6 +63,7 @@
     "src/views/debug/debug.js",
     "src/dropzone/dropZoneIndicators.js",
     "src/sidebar/sidebarSync.js",
-    "src/canvas/canvasMode.js"
+    "src/canvas/canvasMode.js",
+    "src/canvas/canvasPan.js"
   ]
 }

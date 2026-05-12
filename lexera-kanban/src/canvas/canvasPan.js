@@ -4,24 +4,69 @@
  * Registers a `canvas.move` drag handler with LexeraControlsDispatcher.
  * The dispatcher owns the event wiring and the (mode, action) match;
  * this module only owns the pan state and the apply-pan side effect.
- *
- * Dependencies injected via init().
  */
+
+/**
+ * @typedef {Object} LexeraCanvasPanDeps
+ * @property {() => unknown} getActiveBoardData
+ * @property {() => boolean} isCanvasBoardLayout
+ * @property {(target: EventTarget | null, button: number, altKey: boolean) => boolean} canStartCanvasPointerPan
+ * @property {() => (HTMLElement | null)} getElColumnsContainer
+ * @property {() => number} getCanvasPanX
+ * @property {() => number} getCanvasPanY
+ * @property {(panX: number, panY: number) => void} applyCanvasPan
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasPanDragContext
+ * @property {EventTarget | null} target
+ * @property {HTMLElement | null} container
+ * @property {{ button: number; altKey: boolean }} event
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasPanState
+ * @property {HTMLElement | null} container
+ * @property {number} startPanX
+ * @property {number} startPanY
+ */
+
+/**
+ * @typedef {Object} LexeraCanvasPanApi
+ * @property {(deps: LexeraCanvasPanDeps) => void} init
+ * @property {() => void} detach
+ * @property {() => boolean} isPanning
+ * @property {() => void} cancelPan
+ */
+
 var LexeraCanvasPan = (function () {
   'use strict';
 
+  /** @type {Partial<LexeraCanvasPanDeps>} */
   var _deps = {};
   var _registered = false;
+  /** @type {LexeraCanvasPanState | null} */
   var _panState = null;
   var _scrollSuppressionAttached = false;
 
-  function getActiveBoardData() { return _deps.getActiveBoardData(); }
-  function isCanvasBoardLayout() { return _deps.isCanvasBoardLayout(); }
-  function canStartCanvasPointerPan(target, button, altKey) { return _deps.canStartCanvasPointerPan(target, button, altKey); }
-  function getElColumnsContainer() { return _deps.getElColumnsContainer(); }
-  function getCanvasPanX() { return _deps.getCanvasPanX(); }
-  function getCanvasPanY() { return _deps.getCanvasPanY(); }
-  function applyCanvasPan(panX, panY) { _deps.applyCanvasPan(panX, panY); }
+  function getActiveBoardData() { return _deps.getActiveBoardData ? _deps.getActiveBoardData() : null; }
+  function isCanvasBoardLayout() { return !!(_deps.isCanvasBoardLayout && _deps.isCanvasBoardLayout()); }
+  /**
+   * @param {EventTarget | null} target
+   * @param {number} button
+   * @param {boolean} altKey
+   */
+  function canStartCanvasPointerPan(target, button, altKey) {
+    return !!(_deps.canStartCanvasPointerPan && _deps.canStartCanvasPointerPan(target, button, altKey));
+  }
+  function getElColumnsContainer() { return _deps.getElColumnsContainer ? _deps.getElColumnsContainer() : null; }
+  function getCanvasPanX() { return _deps.getCanvasPanX ? _deps.getCanvasPanX() : 0; }
+  function getCanvasPanY() { return _deps.getCanvasPanY ? _deps.getCanvasPanY() : 0; }
+  /**
+   * @param {number} panX
+   * @param {number} panY
+   */
+  function applyCanvasPan(panX, panY) { if (_deps.applyCanvasPan) _deps.applyCanvasPan(panX, panY); }
 
   var dragHandler = {
     canStart: function (ctx) {
@@ -107,11 +152,13 @@ var LexeraCanvasPan = (function () {
     detachScrollSuppression();
   }
 
-  return {
+  /** @type {LexeraCanvasPanApi} */
+  var api = {
     init: init,
     detach: detach,
     isPanning: isPanning,
     cancelPan: cancelPan
   };
+  return api;
 })();
 window.LexeraCanvasPan = LexeraCanvasPan;

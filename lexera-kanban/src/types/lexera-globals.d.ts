@@ -974,6 +974,32 @@ interface LexeraCanvasModeApi {
   createCanvasModeHelpers(deps?: LexeraCanvasModeHelpersDeps): LexeraCanvasModeHelpers;
 }
 
+/**
+ * Source: src/canvas/canvasPan.js (IIFE;
+ * window.LexeraCanvasPan = api). Registers a `canvas.move` drag handler
+ * with LexeraControlsDispatcher — the dispatcher owns event wiring and
+ * the (mode, action) match; this module owns only the pan state + the
+ * apply-pan side effect, plus a scroll-suppression listener on the
+ * document so accidental browser scroll never moves canvas content
+ * (canvas mode uses pan-transform, not native scroll).
+ */
+interface LexeraCanvasPanDeps {
+  getActiveBoardData(): unknown;
+  isCanvasBoardLayout(): boolean;
+  canStartCanvasPointerPan(target: EventTarget | null, button: number, altKey: boolean): boolean;
+  getElColumnsContainer(): HTMLElement | null;
+  getCanvasPanX(): number;
+  getCanvasPanY(): number;
+  applyCanvasPan(panX: number, panY: number): void;
+}
+
+interface LexeraCanvasPanApi {
+  init(deps: LexeraCanvasPanDeps): void;
+  detach(): void;
+  isPanning(): boolean;
+  cancelPan(): void;
+}
+
 interface LexeraGeometryObserverApi {
   /** Build an instance bound to the supplied callback bag.
    *  `onTabsLayoutChanged(headerEl)` fires after each recompute so
@@ -2364,7 +2390,8 @@ declare global {
     LexeraDropZoneIndicators: LexeraDropZoneIndicatorsApi;
     LexeraPollingService: any;
     LexeraCanvasMode: LexeraCanvasModeApi;
-    LexeraCanvasPan: any;
+    LexeraCanvasPan: LexeraCanvasPanApi;
+    LexeraControlsDispatcher: any;
     LexeraCanvasLayout: any;
     LexeraColumnContextMenu: any;
     LexeraKeyboardNavigation: any;
