@@ -1,12 +1,85 @@
+// Leading line comment to dodge slice-13 checkJs duplicate-id quirk.
+
+/**
+ * @typedef {Object} LexeraHierarchyDescriptor
+ * @property {string | null} surface
+ * @property {string | null} kind
+ * @property {string | null} entityId
+ * @property {Array<string>} capabilities
+ * @property {boolean} selectable
+ */
+
+/**
+ * @typedef {Object} LexeraHierarchyDescriptorInput
+ * @property {unknown} [surface]
+ * @property {unknown} [kind]
+ * @property {unknown} [entityId]
+ * @property {unknown} [capabilities]
+ * @property {unknown} [selectable]
+ */
+
+/**
+ * @typedef {{ [k: string]: unknown }} LexeraHierarchyAttrs
+ */
+
+/**
+ * @typedef {Object} LexeraHierarchyNodeDefinition
+ * @property {unknown} [id]
+ * @property {unknown} [label]
+ * @property {unknown} [count]
+ * @property {unknown} [type]
+ * @property {unknown} [structuralRole]
+ * @property {Array<unknown> | null | undefined} [children]
+ * @property {unknown} [expanded]
+ * @property {unknown} [hasToggle]
+ * @property {unknown} [grip]
+ * @property {unknown} [menu]
+ * @property {LexeraHierarchyAttrs | null | undefined} [attrs]
+ * @property {unknown} [gripTitle]
+ * @property {LexeraHierarchyDescriptorInput | null | undefined} [hierarchy]
+ */
+
+/**
+ * @typedef {Object} LexeraHierarchyNode
+ * @property {unknown} id
+ * @property {string} label
+ * @property {unknown} count
+ * @property {string | null} type
+ * @property {string | null} structuralRole
+ * @property {Array<unknown> | null | undefined} children
+ * @property {boolean} expanded
+ * @property {unknown} hasToggle
+ * @property {boolean} grip
+ * @property {boolean} menu
+ * @property {LexeraHierarchyAttrs} attrs
+ * @property {string} [gripTitle]
+ * @property {LexeraHierarchyDescriptor} [hierarchy]
+ */
+
+/**
+ * @typedef {Object} LexeraHierarchyContractApi
+ * @property {(value: unknown) => Array<string>} normalizeCapabilities
+ * @property {(descriptor: LexeraHierarchyDescriptorInput | null | undefined) => LexeraHierarchyDescriptor} normalizeDescriptor
+ * @property {(value: unknown) => (string | null)} normalizeStructuralRole
+ * @property {(attrs: LexeraHierarchyAttrs | null | undefined, descriptor: LexeraHierarchyDescriptorInput | null | undefined) => LexeraHierarchyAttrs} applyDescriptorToAttrs
+ * @property {(baseType: unknown, modifiers: { [k: string]: unknown } | null | undefined) => string} composeNodeType
+ * @property {(definition: LexeraHierarchyNodeDefinition | null | undefined) => LexeraHierarchyNode} createNode
+ * @property {(definition: LexeraHierarchyNodeDefinition | null | undefined) => LexeraHierarchyNode} createHierarchyNode
+ * @property {(node: Element | null | undefined) => (LexeraHierarchyDescriptor | null)} readDescriptorFromNode
+ * @property {(node: Element | null | undefined) => (string | null)} readStructuralRoleFromNode
+ * @property {(nodeOrDescriptor: Element | LexeraHierarchyDescriptor | null | undefined, capability: unknown) => boolean} nodeSupportsCapability
+ */
+
 (function (root, factory) {
   var api = factory();
   if (typeof module === 'object' && module.exports) {
     module.exports = api;
   }
-  root.LexeraHierarchyContract = api;
+  /** @type {any} */ (root).LexeraHierarchyContract = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  /** @param {unknown} value */
   function normalizeString(value) {
     var text = String(value == null ? '' : value).trim();
     return text || null;
@@ -17,14 +90,18 @@
     return text ? text.toLowerCase() : null;
   }
 
+  /** @param {unknown} value */
   function normalizeCapabilities(value) {
+    /** @type {Array<unknown>} */
     var raw = [];
     if (Array.isArray(value)) {
       raw = value.slice();
     } else if (value != null && value !== '') {
       raw = String(value).split(/[\s,]+/);
     }
+    /** @type {Record<string, boolean>} */
     var seen = Object.create(null);
+    /** @type {Array<string>} */
     var normalized = [];
     for (var i = 0; i < raw.length; i++) {
       var token = normalizeString(raw[i]);
@@ -37,7 +114,9 @@
     return normalized;
   }
 
+  /** @param {LexeraHierarchyAttrs | null | undefined} attrs */
   function copyAttrs(attrs) {
+    /** @type {LexeraHierarchyAttrs} */
     var result = {};
     var source = attrs && typeof attrs === 'object' ? attrs : null;
     if (!source) return result;
@@ -75,7 +154,12 @@
     return nextAttrs;
   }
 
+  /**
+   * @param {unknown} baseType
+   * @param {{ [k: string]: unknown } | null | undefined} modifiers
+   */
   function composeNodeType(baseType, modifiers) {
+    /** @type {Array<string>} */
     var tokens = [];
     var normalizedBase = normalizeString(baseType);
     if (normalizedBase) tokens.push(normalizedBase);
@@ -145,7 +229,8 @@
     return capabilities.indexOf(normalizedCapability.toLowerCase()) !== -1;
   }
 
-  return {
+  /** @type {LexeraHierarchyContractApi} */
+  var publicApi = {
     normalizeCapabilities: normalizeCapabilities,
     normalizeDescriptor: normalizeDescriptor,
     normalizeStructuralRole: normalizeStructuralRole,
@@ -157,4 +242,5 @@
     readStructuralRoleFromNode: readStructuralRoleFromNode,
     nodeSupportsCapability: nodeSupportsCapability
   };
+  return publicApi;
 }));

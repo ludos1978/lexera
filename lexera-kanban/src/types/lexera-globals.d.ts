@@ -2174,6 +2174,91 @@ interface LexeraScrollBehaviorApi {
   ): boolean;
 }
 
+/**
+ * Source: src/hierarchy/hierarchyContract.js (IIFE;
+ * window.LexeraHierarchyContract = api). Normalizes hierarchy
+ * descriptors (surface / kind / entityId / capabilities), reads them
+ * back from `data-hierarchy-*` DOM attributes, and gates capability
+ * checks against the descriptor's `capabilities` set.
+ */
+interface LexeraHierarchyDescriptor {
+  surface: string | null;
+  kind: string | null;
+  entityId: string | null;
+  capabilities: Array<string>;
+  selectable: boolean;
+}
+
+interface LexeraHierarchyDescriptorInput {
+  surface?: unknown;
+  kind?: unknown;
+  entityId?: unknown;
+  capabilities?: unknown;
+  selectable?: unknown;
+}
+
+interface LexeraHierarchyNodeDefinition {
+  id?: unknown;
+  label?: unknown;
+  count?: unknown;
+  type?: unknown;
+  structuralRole?: unknown;
+  children?: Array<unknown> | null | undefined;
+  expanded?: unknown;
+  hasToggle?: unknown;
+  grip?: unknown;
+  menu?: unknown;
+  attrs?: { [k: string]: unknown } | null;
+  gripTitle?: unknown;
+  hierarchy?: LexeraHierarchyDescriptorInput | null;
+}
+
+interface LexeraHierarchyNode {
+  id: unknown;
+  label: string;
+  count: unknown;
+  type: string | null;
+  structuralRole: string | null;
+  children: Array<unknown> | null | undefined;
+  expanded: boolean;
+  hasToggle: unknown;
+  grip: boolean;
+  menu: boolean;
+  attrs: { [k: string]: unknown };
+  gripTitle?: string;
+  hierarchy?: LexeraHierarchyDescriptor;
+}
+
+interface LexeraHierarchyContractApi {
+  normalizeCapabilities(value: unknown): Array<string>;
+  normalizeDescriptor(
+    descriptor: LexeraHierarchyDescriptorInput | null | undefined
+  ): LexeraHierarchyDescriptor;
+  normalizeStructuralRole(value: unknown): string | null;
+  applyDescriptorToAttrs(
+    attrs: { [k: string]: unknown } | null | undefined,
+    descriptor: LexeraHierarchyDescriptorInput | null | undefined
+  ): { [k: string]: unknown };
+  composeNodeType(
+    baseType: unknown,
+    modifiers: { [k: string]: unknown } | null | undefined
+  ): string;
+  createNode(
+    definition: LexeraHierarchyNodeDefinition | null | undefined
+  ): LexeraHierarchyNode;
+  createHierarchyNode(
+    definition: LexeraHierarchyNodeDefinition | null | undefined
+  ): LexeraHierarchyNode;
+  readDescriptorFromNode(
+    node: Element | null | undefined
+  ): LexeraHierarchyDescriptor | null;
+  readStructuralRoleFromNode(node: Element | null | undefined): string | null;
+  nodeSupportsCapability(
+    nodeOrDescriptor: Element | LexeraHierarchyDescriptor | null | undefined,
+    capability: unknown
+  ): boolean;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3654,6 +3739,7 @@ declare global {
     LexeraCanvasViewport: LexeraCanvasViewportApi;
     LexeraFoldState: LexeraFoldStateApi;
     LexeraScrollBehavior: LexeraScrollBehaviorApi;
+    LexeraHierarchyContract: LexeraHierarchyContractApi;
     LexeraControlsSettings: any;
     LexeraCardContentRenderer: any;
     LexeraDiagramDeps: LexeraAppUtilsDeps;
@@ -3741,7 +3827,10 @@ declare global {
   // the Window narrowing.)
   const LexeraTagSystem: any;
   // Hierarchy contract IIFE — accessed by bare name from sidebarTree.js
-  // for entity capability lookups.
+  // for entity capability lookups. (The Window-typed form is
+  // `LexeraHierarchyContractApi`; this bare-name const stays `any`
+  // because the bare-name reference doesn't always pull the Window
+  // narrowing through.)
   const LexeraHierarchyContract: any;
   // SubApp IIFE — broadcast/listen sugar, accessed by bare name in
   // some view bootstraps (`LexeraSubApp.broadcast(...)`).
