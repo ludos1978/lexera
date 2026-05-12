@@ -111,6 +111,20 @@
   var ensureCallTimestamps = {};
   var debugGeometryOverrides = {};
   var lastDebugGeometryPayloads = {};
+  // Slot-map: label → {x, y, width, height} actually pushed via
+  // `pushGeometryForLabel`. When a refresh produces an update identical
+  // to the previously-pushed one for the same label, skip the downstream
+  // emit + IPC entirely. `pushGeomDeferred` already dedupes at the IPC
+  // layer, but the debug-geometry emit + placeholder annotation here
+  // fire on every call. `refreshAllGeometry` can run dozens of times per
+  // second during a dock-divider drag — slot-map diffing eliminates the
+  // hot loop's redundant work for slots whose geometry hasn't shifted.
+  //
+  // Invalidated when the slot is forcibly moved out-of-band:
+  //   - parkWebviewOffscreen (the slot's actual position no longer
+  //     matches the cached on-screen value)
+  //   - destroy / cleanupLocalState (the label may be re-spawned later)
+  var lastPushedGeometryByLabel = {};
   var hostGeometryContext = {
     x: 0,
     y: 0,
@@ -492,6 +506,22 @@
       if (label && placeholderEl) parkWebviewOffscreen(label);
       return;
     }
+    // Slot-map diff: if this slot's geometry is unchanged since the last
+    // push, skip the debug emit + IPC entirely. See
+    // `lastPushedGeometryByLabel` comment at module scope for the
+    // rationale + invalidation rules.
+    var prev = lastPushedGeometryByLabel[label];
+    if (prev
+        && prev.x === update.x
+        && prev.y === update.y
+        && prev.width === update.width
+        && prev.height === update.height) {
+      return;
+    }
+    lastPushedGeometryByLabel[label] = {
+      x: update.x, y: update.y,
+      width: update.width, height: update.height
+    };
     updatePlaceholderDebugGeometry(label, placeholderEl, update);
     emitChildDebugGeometry(label, placeholderEl, update);
     if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
@@ -664,6 +694,11 @@
   }
 
   function parkWebviewOffscreen(label) {
+    // Invalidate the slot-map cache: parking moves the webview out-of-
+    // band relative to the on-screen geometry we cached, so the next
+    // valid on-screen pushGeometryForLabel must re-emit rather than diff
+    // against a stale value.
+    if (label) delete lastPushedGeometryByLabel[label];
     var update = { label: label, x: -50000, y: -50000, width: 1, height: 1 };
     if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
       // `immediate: true` bypasses the rAF batcher so the webview moves
@@ -1048,6 +1083,7 @@
     // Fallback to the board prefix only if no entry exists — matches
     // legacy behavior for orphan-cleanup paths.
     var label = (entry && entry.label) || labelForTabId(tabId);
+    if (label) delete lastPushedGeometryByLabel[label];
     if (multiviewGeometryObservers[tabId]) {
       try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
       delete multiviewGeometryObservers[tabId];
@@ -1083,6 +1119,8 @@
   // (LRU eviction or external destroy via the `multiview-destroyed`
   // event). Distinct from destroy() which initiates the destroy.
   function cleanupLocalState(tabId) {
+    var entry = multiviewSpawnedTabs[tabId];
+    if (entry && entry.label) delete lastPushedGeometryByLabel[entry.label];
     if (multiviewGeometryObservers[tabId]) {
       try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
       delete multiviewGeometryObservers[tabId];
@@ -1412,6 +1450,17 @@
     // its previous position (which would cover whatever now occupies the
     // shell-DOM area, e.g. the fold strip when a dock collapses).
     _test_pushGeometryForLabel: pushGeometryForLabel,
+    // Read-only snapshot of the slot-map diff cache so tests can verify
+    // that unchanged-slot suppression doesn't run debug emit + IPC.
+    _test_lastPushedGeometryByLabel: function () {
+      var out = {};
+      var keys = Object.keys(lastPushedGeometryByLabel);
+      for (var i = 0; i < keys.length; i++) {
+        var v = lastPushedGeometryByLabel[keys[i]];
+        out[keys[i]] = { x: v.x, y: v.y, width: v.width, height: v.height };
+      }
+      return out;
+    },
     // Diagnostic snapshot of webview lifecycle state. Read-only. Used by
     // the workspace shell's view-lifecycle audit (toggled via
     // `localStorage.LEXERA_VIEW_LEAK_AUDIT`) and by Vitest contracts.

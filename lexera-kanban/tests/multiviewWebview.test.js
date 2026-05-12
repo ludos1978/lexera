@@ -273,6 +273,124 @@ describe('LexeraMultiviewWebview.pushGeometryForLabel — hidden-placeholder han
   });
 });
 
+// Reason: refreshAllGeometry() iterates every spawned tab and calls
+// pushGeometryForLabel; during a dock-divider drag that fires per frame.
+// pushGeomDeferred dedupes IPC at the lower layer, but the debug-geometry
+// emit + placeholder annotation in pushGeometryForLabel still run per
+// call. Slot-map diffing keyed by label skips all of that work when the
+// computed geometry hasn't changed since the last successful push.
+describe('LexeraMultiviewWebview.pushGeometryForLabel — slot-map diffing', () => {
+  function buildHarness() {
+    const invoke = vi.fn((command) => {
+      if (command === 'multiview_get_host_geometry') {
+        return Promise.resolve({ x: 0, y: 0, width: 1200, height: 800 });
+      }
+      return Promise.resolve(null);
+    });
+    const pushGeomDeferred = vi.fn();
+    const window = {
+      location: { href: 'http://127.0.0.1:1431/', search: '' },
+      localStorage: createStorage(),
+      addEventListener() {},
+      removeEventListener() {},
+      LexeraMultiview: {
+        invoke,
+        pushGeomDeferred,
+        setGeometry: () => Promise.resolve(null)
+      }
+    };
+    const { api } = loadMultiviewWebview({ window });
+    return { api, invoke, pushGeomDeferred };
+  }
+
+  function debugEmitCalls(invoke) {
+    return invoke.mock.calls
+      .filter(([command, payload]) => command === 'multiview_emit_to' && payload && payload.event === 'debug-geometry')
+      .map(([, payload]) => payload);
+  }
+
+  it('skips downstream emit + IPC when the next geometry equals the cached one', async () => {
+    const { api, invoke, pushGeomDeferred } = buildHarness();
+    await api.refreshHostGeometryContext(true);
+
+    const placeholder = createPlaceholder({ visible: true });
+    api._test_pushGeometryForLabel('panel-tab-tab-a', placeholder);
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(1);
+    expect(debugEmitCalls(invoke).length).toBe(1);
+
+    // Same placeholder, same rect → cached value matches, no new work.
+    api._test_pushGeometryForLabel('panel-tab-tab-a', placeholder);
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(1);
+    expect(debugEmitCalls(invoke).length).toBe(1);
+
+    // Snapshot reflects the cached entry for the label.
+    const snap = api._test_lastPushedGeometryByLabel();
+    expect(snap['panel-tab-tab-a']).toMatchObject({ width: 300, height: 160 });
+  });
+
+  it('emits when the geometry changes vs the cached value', async () => {
+    const { api, invoke, pushGeomDeferred } = buildHarness();
+    await api.refreshHostGeometryContext(true);
+
+    // Visible placeholder with a fixed rect, push once to seed the cache.
+    const placeholder = createPlaceholder({ visible: true, rect: { left: 10, top: 20, width: 300, height: 160 } });
+    api._test_pushGeometryForLabel('panel-tab-tab-a', placeholder);
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(1);
+
+    // Replace with a placeholder reporting a different rect — must re-emit.
+    const grown = createPlaceholder({ visible: true, rect: { left: 10, top: 20, width: 400, height: 220 } });
+    api._test_pushGeometryForLabel('panel-tab-tab-a', grown);
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(2);
+    expect(debugEmitCalls(invoke).length).toBe(2);
+
+    const snap = api._test_lastPushedGeometryByLabel();
+    expect(snap['panel-tab-tab-a']).toMatchObject({ width: 400, height: 220 });
+  });
+
+  it('caches per label — two labels don\'t collide', async () => {
+    const { api, pushGeomDeferred } = buildHarness();
+    await api.refreshHostGeometryContext(true);
+
+    const phA = createPlaceholder({ visible: true });
+    const phB = createPlaceholder({ visible: true, rect: { left: 400, top: 200, width: 500, height: 240 } });
+
+    api._test_pushGeometryForLabel('panel-tab-tab-a', phA);
+    api._test_pushGeometryForLabel('panel-tab-tab-b', phB);
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(2);
+
+    // Repeating either label is a no-op (cache hits).
+    api._test_pushGeometryForLabel('panel-tab-tab-a', phA);
+    api._test_pushGeometryForLabel('panel-tab-tab-b', phB);
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(2);
+
+    const snap = api._test_lastPushedGeometryByLabel();
+    expect(Object.keys(snap).sort()).toEqual(['panel-tab-tab-a', 'panel-tab-tab-b']);
+  });
+
+  it('parking offscreen invalidates the cache so the next on-screen push re-emits', async () => {
+    const { api, pushGeomDeferred } = buildHarness();
+    await api.refreshHostGeometryContext(true);
+
+    const placeholder = createPlaceholder({ visible: true });
+    api._test_pushGeometryForLabel('panel-tab-tab-a', placeholder);
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(1);
+
+    // Fold the parent dock — placeholder becomes invisible; the bug
+    // regression test in the preceding describe already covers the park
+    // call. Here we confirm the cache was cleared so that returning to
+    // the same on-screen rect re-emits rather than diff-skipping.
+    placeholder.setVisible(false);
+    api._test_pushGeometryForLabel('panel-tab-tab-a', placeholder);
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(2); // the park call
+    expect(api._test_lastPushedGeometryByLabel()['panel-tab-tab-a']).toBeUndefined();
+
+    // Restore visibility with the same rect — must re-emit (cache empty).
+    placeholder.setVisible(true);
+    api._test_pushGeometryForLabel('panel-tab-tab-a', placeholder);
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(3);
+  });
+});
+
 // Reason: cross-Tauri-webview drag (Phase 5 of the workspace-viewer task)
 // needs a way to ask "which native child webview is the cursor over?".
 // Native Tauri webviews are NOT iframes — `document.elementFromPoint`
