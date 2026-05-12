@@ -1726,6 +1726,26 @@ interface LexeraDashboardTestApi {
   clickCard(cardId: string, listId?: string): unknown;
 }
 
+/**
+ * Source: src/devtools/devtoolsTitle.js (IIFE;
+ * window.LexeraDevtoolsTitle = api). Pure helper for app.js's
+ * document.title decoration. Picks the most human-readable
+ * identifier from the URL params so each DevTools inspector window
+ * is named after the thing the user actually cares about.
+ */
+interface LexeraDevtoolsTitleApi {
+  /** Short-hand a long opaque id (board id, workspace id) for display
+   *  in window-chrome real estate. ≤12 chars passes through; longer
+   *  collapses to `<first-8>…<last-3>`. */
+  shortHash(value: unknown): string;
+  /** Compute the `<title>` suffix from URL params + the window label.
+   *  Returns an empty string for the boot main shell (no decoration). */
+  deriveSuffix(
+    urlParams: URLSearchParams | Record<string, unknown> | null | undefined,
+    windowLabel: string | null | undefined
+  ): string;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3194,6 +3214,7 @@ declare global {
     LexeraFrontendSettings: LexeraFrontendSettingsApi;
     LexeraFrontendSettingsTestApi: LexeraFrontendSettingsTestApi;
     LexeraDashboardTestApi: LexeraDashboardTestApi;
+    LexeraDevtoolsTitle: LexeraDevtoolsTitleApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;

@@ -75,6 +75,7 @@
     "src/views/renderApps/renderApps.js",
     "src/views/backendSettings/backendSettings.js",
     "src/views/frontendSettings/frontendSettings.js",
-    "src/views/dashboard/dashboard.js"
+    "src/views/dashboard/dashboard.js",
+    "src/devtools/devtoolsTitle.js"
   ]
 }
