@@ -1163,6 +1163,72 @@ interface LexeraContentEnhancerRegistryApi {
   observeLazyImages(root: Element | Document | null | undefined): void;
 }
 
+/**
+ * Source: src/views/inspector/inspector.js. Test seam published as
+ * window.LexeraInspectorTestApi when the inspector view boots — lets
+ * Vitest integration tests drive the destroy/reload buttons and
+ * snapshot the visible state without simulating raw clicks.
+ */
+interface LexeraInspectorVisibleRow {
+  health: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface LexeraInspectorLogLine {
+  level: string;
+  text: string;
+}
+
+interface LexeraInspectorTestApiState {
+  countLabel: string;
+  rows: Array<LexeraInspectorVisibleRow>;
+  logLines: Array<LexeraInspectorLogLine>;
+  fps: string;
+}
+
+interface LexeraInspectorTestApi {
+  collectState(): LexeraInspectorTestApiState;
+  clickDestroy(label: string): boolean;
+  clickReload(label: string): boolean;
+}
+
+/**
+ * Source: src/views/log/log.js. Test seam published as
+ * window.LexeraLogTestApi when the log view boots — lets Vitest
+ * integration tests drive the filter chips, search box, and clear /
+ * refresh actions without simulating raw user interactions.
+ */
+interface LexeraLogVisibleEntry {
+  level: string;
+  source: string;
+  message: string;
+}
+
+interface LexeraLogTestApiState {
+  status: string;
+  connected: boolean;
+  visibleEntries: Array<LexeraLogVisibleEntry>;
+  totalEntries: number;
+  searchText: string;
+  activeLevels: { [level: string]: boolean };
+  activeSources: { [source: string]: boolean };
+  sourceFilterAll: boolean;
+}
+
+interface LexeraLogTestApi {
+  collectState(): LexeraLogTestApiState;
+  appendEntry(entry: { level?: string; source?: string; message?: string; [k: string]: unknown }): void;
+  setSearch(text: string): boolean;
+  clickClear(): boolean;
+  clickRefresh(): boolean;
+  toggleLevel(lvl: string): boolean;
+  toggleSource(src: string): boolean;
+}
+
 interface LexeraGeometryObserverApi {
   /** Build an instance bound to the supplied callback bag.
    *  `onTabsLayoutChanged(headerEl)` fires after each recompute so
@@ -2541,8 +2607,8 @@ declare global {
     getLexeraCurrentVisualThemeId: any;
     applyLexeraVisualTheme: any;
     ContextMenuBuilders: any;
-    LexeraInspectorTestApi: any;
-    LexeraLogTestApi: any;
+    LexeraInspectorTestApi: LexeraInspectorTestApi;
+    LexeraLogTestApi: LexeraLogTestApi;
     LexeraDebugWindow: any;
     LexeraDragDropHandlers: any;
     LexeraOrderHelpers: any;
