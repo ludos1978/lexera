@@ -1608,6 +1608,42 @@ interface LexeraMultiviewWebviewApi {
   };
 }
 
+/**
+ * Source: src/settings/renderAppsSettings.js (IIFE;
+ * window.LexeraRenderAppsSettings = api). Manages the render-apps
+ * (Mermaid, Excalidraw, Marp, etc.) settings panel — discovery,
+ * status caching, and theme-list refresh.
+ */
+interface LexeraRenderAppsSettingsApi {
+  render(panel: Element | null): void;
+  init(panel: Element | null): void;
+  destroy(panel: Element | null): void;
+  reload(panel: Element | null): void;
+  ensureDiscovery(): Promise<unknown>;
+  refreshDiscovery(): Promise<unknown>;
+  getCachedStatus(): unknown;
+  getCachedThemes(): unknown;
+  onDiscoveryChange(handler: (snapshot: unknown) => void): () => void;
+}
+
+/**
+ * Source: src/views/renderApps/renderApps.js. Test seam published as
+ * window.LexeraRenderAppsTestApi when the renderApps sub-app boots —
+ * surfaces mount status, status text in the panel, and the error
+ * landing state. Sibling of {Dashboard, Workspaces, Hierarchy, Log,
+ * Inspector, Files}TestApi seams.
+ */
+interface LexeraRenderAppsTestApiState {
+  initialised: boolean;
+  error: string;
+  statusText: string;
+  hasErrorBlock: boolean;
+}
+
+interface LexeraRenderAppsTestApi {
+  collectState(): LexeraRenderAppsTestApiState;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3070,6 +3106,8 @@ declare global {
     LexeraHierarchyController: LexeraHierarchyControllerApi;
     LexeraFrontendTests: any;
     LexeraFilesTestApi: LexeraFilesTestApi;
+    LexeraRenderAppsTestApi: LexeraRenderAppsTestApi;
+    LexeraRenderAppsSettings: LexeraRenderAppsSettingsApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;

@@ -71,6 +71,7 @@
     "src/contentEnhancerRegistry.js",
     "src/sidebar/sidebarTree.js",
     "src/views/monthCalendar/monthCalendar.js",
-    "src/views/weekCalendar/weekCalendar.js"
+    "src/views/weekCalendar/weekCalendar.js",
+    "src/views/renderApps/renderApps.js"
   ]
 }
