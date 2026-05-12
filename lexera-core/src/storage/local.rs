@@ -3522,21 +3522,44 @@ impl LocalStorage {
         file_path: &Path,
         board: &KanbanBoard,
     ) -> Result<String, StorageError> {
-        let markdown = parser::generate_markdown(board);
-
-        // Write include files FIRST so that if any include write fails,
-        // the main board file is still consistent with the previous state.
-        // (write_include_column skips unchanged includes internally.)
+        // Write include files FIRST so failures (permission, disk full,
+        // raced unlink) are observable BEFORE the main markdown is
+        // generated. Collect any failed raw_paths; their columns flip
+        // to missing on the board clone below so the main markdown
+        // serializes their cards inline as a safety net. Without this
+        // fallback, cards would live in neither the include file nor
+        // the main .md after a failed include write — silent data loss.
+        let mut failed_include_paths: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         for column in board.all_columns() {
-            if column.include_source.is_some() {
+            if let Some(src) = &column.include_source {
                 if let Err(e) = self.write_include_column(column) {
                     log::warn!(
-                        "[lexera.storage.persist] Failed to write include column for board {}: {} — continuing with main board save",
-                        board_id, e
+                        "[lexera.storage.persist] Failed to write include column for board {} ({}): {} — falling back to inline serialization in main markdown",
+                        board_id, src.raw_path, e
                     );
+                    failed_include_paths.insert(src.raw_path.clone());
                 }
             }
         }
+
+        let markdown = if failed_include_paths.is_empty() {
+            parser::generate_markdown(board)
+        } else {
+            // Flip include_source.missing on the failed columns so
+            // is_writable_target() returns false and write_column_cards
+            // serializes their cards inline. Operate on a clone so the
+            // in-memory board state is not mutated by the save path.
+            let mut shadow = board.clone();
+            for col in shadow.all_columns_mut() {
+                if let Some(src) = col.include_source.as_mut() {
+                    if failed_include_paths.contains(&src.raw_path) {
+                        src.missing = true;
+                    }
+                }
+            }
+            parser::generate_markdown(&shadow)
+        };
 
         // Skip main board write if the file already has identical content.
         let disk_unchanged = file_path.exists()
@@ -5197,6 +5220,69 @@ kanban-plugin: board
             !missing_include_path.exists(),
             "saving a board with a missing include must not silently create a zero-byte placeholder at {:?}",
             missing_include_path
+        );
+    }
+
+    #[test]
+    fn test_write_board_falls_back_inline_when_include_write_fails() {
+        // When the include path is writable in principle (.md extension,
+        // not missing) but atomic_write fails — here simulated by
+        // pre-creating the include path as a DIRECTORY so the file-write
+        // can't succeed — persist_board_files must fall back to inline
+        // serialization in main .md. Without this fallback cards would
+        // live in neither file (data loss). See TODOs-lexera.md "Resolve
+        // include-save semantics" and write_column_cards in parser.rs.
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        // Include "path" is actually a directory — atomic_write to it
+        // fails because a regular-file write can't replace a directory.
+        let include_path = dir.path().join("slides.md");
+        fs::create_dir(&include_path).unwrap();
+
+        // Seed the board file with one inline card under the include
+        // header. The parser merges inline + include cards on load; the
+        // include directory has no content so the merge keeps just the
+        // inline card. Save then tries to write the include file, fails
+        // (it's a directory), and must fall back to inline.
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./slides.md)!!!\n- [ ] Inline survivor\n",
+        )
+        .unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        let cols = board.all_columns();
+        assert_eq!(cols.len(), 1);
+        assert!(
+            cols[0].include_source.is_some(),
+            "include_source must be set on load"
+        );
+        assert!(
+            !cols[0].cards.is_empty(),
+            "inline card must be in column.cards after merge"
+        );
+        drop(cols);
+
+        // Save must succeed end-to-end (the include write failure is
+        // an internal fallback, not a hard error returned to the caller).
+        storage.write_board(&id, &board).unwrap();
+
+        // The include "file" is still a directory; nothing else got
+        // materialized there.
+        assert!(
+            include_path.is_dir(),
+            "include path must still be the pre-existing directory"
+        );
+
+        // Main markdown must carry the inline card.
+        let on_disk_board = fs::read_to_string(&board_path).unwrap();
+        assert!(
+            on_disk_board.contains("- [ ] Inline survivor"),
+            "main .md must serialize cards inline when include write fails; got:\n{}",
+            on_disk_board
         );
     }
 
