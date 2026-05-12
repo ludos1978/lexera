@@ -34,9 +34,11 @@
   }
 
   var rootEl = document.querySelector('.lexera-shared-panel-dashboard');
-  var searchInput = document.getElementById('dashboard-search-input');
+  /** @type {HTMLInputElement | null} */
+  var searchInput = /** @type {HTMLInputElement | null} */ (document.getElementById('dashboard-search-input'));
   var searchBtn = document.getElementById('btn-dashboard-search');
-  var scopeCheckbox = document.getElementById('dashboard-scope-select');
+  /** @type {HTMLInputElement | null} */
+  var scopeCheckbox = /** @type {HTMLInputElement | null} */ (document.getElementById('dashboard-scope-select'));
   var pinBtn = document.getElementById('btn-dashboard-pin');
   var bodyEl = rootEl ? rootEl.querySelector('.sidebar-dashboard-body') : null;
   var resultsList = document.getElementById('dashboard-results-list');
@@ -78,6 +80,7 @@
   }
 
   function collectDashboardTestState() {
+    /** @type {{ [k: string]: { cardIds: string[]; nodeCount: number; htmlLength: number } }} */
     var lists = {};
     for (var i = 0; i < DASHBOARD_LIST_IDS.length; i++) {
       var id = DASHBOARD_LIST_IDS[i];
@@ -234,16 +237,17 @@
 
   if (bodyEl) {
     bodyEl.addEventListener('click', function (e) {
+      var clickTarget = /** @type {Element | null} */ (e.target);
       // Local toggle: section headers should expand/collapse in place
       // instead of routing as a navigate. The SHELL renders these with
       // a `.tree-toggle` element; we just flip the `expanded` class on
       // the matching `.tree-children` sibling.
-      var toggle = e.target && e.target.closest && e.target.closest('.tree-toggle');
+      var toggle = clickTarget && clickTarget.closest && clickTarget.closest('.tree-toggle');
       if (toggle) {
         var section = toggle.closest('.tree-node');
         if (section) {
-          var children = section.parentNode && section.parentNode.querySelector
-            ? section.parentNode.querySelector(':scope > .tree-children')
+          var children = section.parentNode && /** @type {Element} */ (section.parentNode).querySelector
+            ? /** @type {Element} */ (section.parentNode).querySelector(':scope > .tree-children')
             : null;
           if (children) {
             var nowExpanded = !children.classList.contains('expanded');
@@ -254,7 +258,7 @@
           return;
         }
       }
-      var node = e.target && e.target.closest && e.target.closest('.tree-node[data-dashboard-target]');
+      var node = clickTarget && clickTarget.closest && clickTarget.closest('.tree-node[data-dashboard-target]');
       if (!node) return;
       var target = (node.getAttribute('data-dashboard-target') || '').trim();
       // Group / context / tag / board headers are not navigation targets

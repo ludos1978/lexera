@@ -1696,6 +1696,36 @@ interface LexeraFrontendSettingsTestApi {
   triggerVisualThemesChanged(): boolean;
 }
 
+/**
+ * Source: src/views/dashboard/dashboard.js. Test seam published as
+ * window.LexeraDashboardTestApi when the dashboard sub-app boots —
+ * surfaces visible state (loading / query / mounted board lists +
+ * card ids) and drives search + mirror-update + node-click without
+ * simulating raw user input.
+ */
+interface LexeraDashboardTestApiListSummary {
+  cardIds: string[];
+  nodeCount: number;
+  htmlLength: number;
+}
+
+interface LexeraDashboardTestApiState {
+  mounted: boolean;
+  loading: boolean;
+  receivedFirstSnapshot: boolean;
+  query: string;
+  allBoards: boolean;
+  activeBoardId: string;
+  lists: { [listId: string]: LexeraDashboardTestApiListSummary };
+}
+
+interface LexeraDashboardTestApi {
+  collectState(): LexeraDashboardTestApiState;
+  setSearch(query: string, allBoards?: boolean): void;
+  applyMirror(snapshot: Record<string, unknown> | null | undefined): void;
+  clickCard(cardId: string, listId?: string): unknown;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3163,6 +3193,7 @@ declare global {
     LexeraBackendSettingsTestApi: LexeraBackendSettingsTestApi;
     LexeraFrontendSettings: LexeraFrontendSettingsApi;
     LexeraFrontendSettingsTestApi: LexeraFrontendSettingsTestApi;
+    LexeraDashboardTestApi: LexeraDashboardTestApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;
@@ -3246,6 +3277,9 @@ declare global {
   // Hierarchy contract IIFE — accessed by bare name from sidebarTree.js
   // for entity capability lookups.
   const LexeraHierarchyContract: any;
+  // SubApp IIFE — broadcast/listen sugar, accessed by bare name in
+  // some view bootstraps (`LexeraSubApp.broadcast(...)`).
+  const LexeraSubApp: any;
 
   // Custom property the shell stashes on a side-dock header DOM
   // node so it can match the centre-tree overflow header lookup.
