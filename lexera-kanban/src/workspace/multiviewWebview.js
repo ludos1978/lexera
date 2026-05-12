@@ -497,13 +497,20 @@
     }
     var update = computeNativeGeometry(label, placeholderEl);
     if (!update) {
-      // Placeholder is currently invisible (offsetParent null because an
-      // ancestor has display:none — e.g. dock fold collapses the panel
-      // content tabset). The native webview MUST be moved offscreen, not
-      // left at its previous position; otherwise it keeps painting on top
-      // of whatever now occupies that screen area (e.g. the fold strip).
-      // This is the root cause of "log viewer invisible when folded".
-      if (label && placeholderEl) parkWebviewOffscreen(label);
+      // Park whenever the placeholder isn't measurable. Covers:
+      //   (a) offsetParent === null — an ancestor has display:none
+      //       (e.g. dock fold collapses the panel content tabset). The
+      //       native webview MUST be moved offscreen, not left at its
+      //       previous position; otherwise it keeps painting on top of
+      //       whatever now occupies that screen area (e.g. the fold
+      //       strip). Root cause of "log viewer invisible when folded".
+      //   (b) placeholderEl is missing entirely — Phase 5b safety net.
+      //       The placeholder DOM was removed without going through the
+      //       destroy path (MutationObserver should have caught it, but
+      //       belt-and-braces against any future DOM-mutation path).
+      //       Park the spawned webview offscreen so it cannot keep
+      //       painting at its last on-screen position above the shell.
+      if (label) parkWebviewOffscreen(label);
       return;
     }
     // Slot-map diff: if this slot's geometry is unchanged since the last

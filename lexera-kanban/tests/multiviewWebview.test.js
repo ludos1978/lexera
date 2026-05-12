@@ -271,6 +271,45 @@ describe('LexeraMultiviewWebview.pushGeometryForLabel — hidden-placeholder han
     api._test_pushGeometryForLabel('', placeholder);
     expect(pushGeomDeferred).not.toHaveBeenCalled();
   });
+
+  // Phase 5b safety net: placeholder DOM is missing entirely (not in
+  // the document at all). Phase 4.1's MutationObserver should have
+  // caught DOM-mutation-driven removals, but any future code path that
+  // removes a placeholder without going through destroy must not be
+  // able to leave the spawned webview painting at its last position.
+  it('parks the webview offscreen when the placeholder is null (orphan safety net)', async () => {
+    const pushGeomDeferred = vi.fn();
+    const invoke = vi.fn((command) => {
+      if (command === 'multiview_get_host_geometry') {
+        return Promise.resolve({ x: 0, y: 0, width: 1200, height: 800 });
+      }
+      return Promise.resolve(null);
+    });
+    const window = {
+      location: { href: 'http://127.0.0.1:1431/', search: '' },
+      localStorage: createStorage(),
+      addEventListener() {},
+      removeEventListener() {},
+      LexeraMultiview: {
+        invoke,
+        pushGeomDeferred,
+        setGeometry: () => Promise.resolve(null)
+      }
+    };
+    const { api } = loadMultiviewWebview({ window });
+    await api.refreshHostGeometryContext(true);
+
+    api._test_pushGeometryForLabel('panel-tab-orphan', null);
+
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(1);
+    const parkCall = pushGeomDeferred.mock.calls[0];
+    expect(parkCall[0].label).toBe('panel-tab-orphan');
+    expect(parkCall[0].x).toBeLessThan(-1000);
+    expect(parkCall[0].y).toBeLessThan(-1000);
+    // parkWebviewOffscreen uses immediate: true so the webview moves the
+    // same frame the placeholder becomes unmeasurable.
+    expect(parkCall[1]).toEqual({ immediate: true });
+  });
 });
 
 // Reason: refreshAllGeometry() iterates every spawned tab and calls
