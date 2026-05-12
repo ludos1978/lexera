@@ -72,6 +72,7 @@
     "src/sidebar/sidebarTree.js",
     "src/views/monthCalendar/monthCalendar.js",
     "src/views/weekCalendar/weekCalendar.js",
-    "src/views/renderApps/renderApps.js"
+    "src/views/renderApps/renderApps.js",
+    "src/views/backendSettings/backendSettings.js"
   ]
 }

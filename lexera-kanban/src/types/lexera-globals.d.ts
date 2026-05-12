@@ -1644,6 +1644,26 @@ interface LexeraRenderAppsTestApi {
   collectState(): LexeraRenderAppsTestApiState;
 }
 
+/**
+ * Source: src/views/backendSettings/backendSettings.js. Test seam
+ * published as window.LexeraBackendSettingsTestApi when the sub-app
+ * boots — surfaces mount status + the management-refresh hook the
+ * shell fires. Same shape as the other ManagementUI-wrapper test
+ * seams.
+ */
+interface LexeraBackendSettingsTestApiState {
+  mounted: boolean;
+  error: string;
+  loadingClass: boolean;
+  errorText: string;
+  hasErrorBlock: boolean;
+}
+
+interface LexeraBackendSettingsTestApi {
+  collectState(): LexeraBackendSettingsTestApiState;
+  triggerManagementRefresh(section?: string): boolean;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -3108,6 +3128,7 @@ declare global {
     LexeraFilesTestApi: LexeraFilesTestApi;
     LexeraRenderAppsTestApi: LexeraRenderAppsTestApi;
     LexeraRenderAppsSettings: LexeraRenderAppsSettingsApi;
+    LexeraBackendSettingsTestApi: LexeraBackendSettingsTestApi;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;
