@@ -1443,6 +1443,75 @@ interface LexeraHierarchyControllerApi {
   ): LexeraHierarchyControllerInlineEditHandle | null;
 }
 
+/**
+ * Source: src/tagSystem.js (IIFE; window.LexeraTagSystem = api). Pure
+ * tag-handling utilities — layout-tag vocabulary, internal hidden-tag
+ * markers, header-tag tokenization, tag expressions, query helpers, and
+ * tag manipulation. Single source of truth for `row(N)` / `span(N)` /
+ * `stack` / `header` / `footer` / `wip-N` / `sticky` / `width{N}` /
+ * `height{N}` layout tag patterns.
+ */
+interface LexeraTagSystemLayoutTagDef {
+  name: string;
+  pattern: string;
+  type: 'numeric' | 'boolean' | 'braced';
+  negate: string | null;
+}
+
+interface LexeraTagSystemExtractedLayoutTags {
+  [tagName: string]: number | boolean | string | null;
+}
+
+interface LexeraTagSystemTokenOptions {
+  includeOffsets?: boolean;
+  [k: string]: unknown;
+}
+
+interface LexeraTagSystemApi {
+  LAYOUT_TAGS: Array<LexeraTagSystemLayoutTagDef>;
+  INTERNAL_HIDDEN_SUFFIXES: Array<string>;
+
+  // Layout tag operations
+  stripLayoutTags(title: string | null | undefined): string;
+  stripLegacyStructureTags(title: string | null | undefined): string;
+  isLayoutTag(tagName: string | null | undefined): boolean;
+  extractLayoutTags(title: string | null | undefined): LexeraTagSystemExtractedLayoutTags;
+  reconstructTitle(userInput: string | null | undefined, originalTitle: string | null | undefined): string;
+  getElementSizeTag(title: string | null | undefined, tagName: 'width' | 'height' | string): string | null;
+
+  // Internal hidden tag operations
+  isArchivedOrDeleted(text: string | null | undefined): boolean;
+  hasInternalHiddenTag(text: string | null | undefined, tag: string): boolean;
+  stripInternalHiddenTags(text: string | null | undefined): string;
+  applyInternalHiddenTag(text: string | null | undefined, tag: string): string;
+
+  // Header tag tokenization
+  isTagTokenBoundaryChar(ch: string): boolean;
+  normalizeTagTokenForMatch(token: string | null | undefined): string;
+  collectHeaderTagTokens(text: string | null | undefined, options?: LexeraTagSystemTokenOptions): Array<string | { token: string; start: number; end: number }>;
+
+  // Tag expressions
+  isTagExpression(tagName: string | null | undefined): boolean;
+  evaluateTagExpression(expression: string, tagLookup: (tag: string) => boolean): boolean;
+  tokenizeTagExpression(expression: string): Array<unknown>;
+
+  // Tag query
+  extractAllTags(text: string | null | undefined): Array<string>;
+  hasTag(text: string | null | undefined, tagName: string): boolean;
+
+  // Tag classification
+  isNumericIndexTag(tagName: string | null | undefined): boolean;
+  isTagStyleEligible(tagName: string | null | undefined): boolean;
+
+  // Tag manipulation
+  normalizePromptTagToken(rawToken: string | null | undefined): string;
+  parsePromptTagList(rawInput: string | null | undefined): Array<string>;
+  removeTagFromHeader(headerText: string | null | undefined, tagName: string): string;
+  addTagToHeader(headerText: string | null | undefined, tagName: string): string;
+  replaceTagInHeader(headerText: string | null | undefined, oldTag: string, newTag: string): string;
+  clearRemovableTags(headerText: string | null | undefined): string;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -2889,7 +2958,7 @@ declare global {
     LexeraRowStackMenu: any;
     LexeraActionRegistry: LexeraActionRegistryApi;
     LexeraContentEnhancerRegistry: LexeraContentEnhancerRegistryApi;
-    LexeraTagSystem: any;
+    LexeraTagSystem: LexeraTagSystemApi;
     LexeraDropZoneIndicators: LexeraDropZoneIndicatorsApi;
     LexeraPollingService: any;
     LexeraCanvasMode: LexeraCanvasModeApi;
@@ -2979,8 +3048,11 @@ declare global {
   // Plugin registry IIFE — accessed by bare name via `typeof
   // LexeraPluginRegistry !== 'undefined'` in contentEnhancerRegistry.js.
   const LexeraPluginRegistry: any;
-  // Tag system IIFE — accessed by bare name via `LexeraTagSystem.x`
+  // Tag system IIFE — also accessed by bare name via `LexeraTagSystem.x`
   // from sidebarTree.js and other consumers loaded after tagSystem.js.
+  // (The Window-typed form is `LexeraTagSystemApi`; the bare-name const
+  // stays `any` because the bare-name reference doesn't always import
+  // the Window narrowing.)
   const LexeraTagSystem: any;
   // Hierarchy contract IIFE — accessed by bare name from sidebarTree.js
   // for entity capability lookups.
