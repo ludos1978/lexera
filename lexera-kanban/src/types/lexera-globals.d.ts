@@ -1169,6 +1169,26 @@ interface LexeraContentEnhancerRegistryApi {
  * Vitest integration tests drive the destroy/reload buttons and
  * snapshot the visible state without simulating raw clicks.
  */
+/**
+ * Source: src/views/files/files.js. Test seam published as
+ * window.LexeraFilesTestApi when the files sub-app boots — surfaces
+ * mount status / error sub-tree and the management-refresh hook the
+ * shell fires across the IPC bus. Sibling of {Dashboard, Workspaces,
+ * Hierarchy, Log, Inspector}TestApi seams.
+ */
+interface LexeraFilesTestApiState {
+  mounted: boolean;
+  error: string | null;
+  loadingClass: boolean;
+  errorText: string;
+  hasErrorBlock: boolean;
+}
+
+interface LexeraFilesTestApi {
+  collectState(): LexeraFilesTestApiState;
+  triggerManagementRefresh(section?: string): boolean;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -2630,7 +2650,7 @@ declare global {
     LexeraSidebarTree: any;
     LexeraHierarchyController: any;
     LexeraFrontendTests: any;
-    LexeraFilesTestApi: any;
+    LexeraFilesTestApi: LexeraFilesTestApi;
     ManagementUI: any;
     LexeraSettingsRuntime: any;
     LexeraWorkspaceShell: any;
