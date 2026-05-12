@@ -87,7 +87,7 @@ This snapshot consolidates the currently open work. The detailed task history re
 
 ### Save Path And Data Safety
 - [ ] Make `sync.json` config saves atomic (`tmp` + file fsync + rename + directory fsync) and add a regression test for config write durability.
-- [ ] Resolve include-save semantics: either abort the main board save on writable include write failure or prove/pin the inline-card fallback with tests and matching comments.
+- [x] (done) ~~Resolve include-save semantics: either abort the main board save on writable include write failure or prove/pin the inline-card fallback with tests and matching comments.~~ Chose inline-fallback path per design ("if content cannot be written to the include file, write to main markdown"). `persist_board_files` now tracks include-write failures, clones the board, flips `include_source.missing` on the failed columns, and regenerates main markdown so `write_column_cards` serializes their cards inline. Pinned by `test_write_board_falls_back_inline_when_include_write_fails` (pre-creates include path as a directory to force atomic_write failure; asserts the inline card survives in main .md). Real-app cold-restart verification of the broader Slice 1 (5c018ec6) still pending. (commit 047356ff)
 - [ ] Close the 500ms local-draft debounce loss window by flushing pending drafts on critical boundaries such as pagehide, board switch, save failure, and app shutdown.
 
 ## Open Tasks
