@@ -1297,6 +1297,28 @@ interface LexeraSettingsRuntimeApi {
   setLs(key: string, value: unknown): void;
 }
 
+/**
+ * Source: src/visualThemes.js (IIFE; window.LEXERA_VISUAL_THEMES + 5
+ * helper functions exposed on the Window). Built-in themes are
+ * `warm-paper` (default) and `no-style`; user themes are discovered
+ * from the on-disk themes directory at runtime.
+ */
+interface LexeraVisualTheme {
+  id: string;
+  /** Inherited base theme id (e.g. starter themes share `warm-paper`'s
+   *  visuals as a baseline). */
+  baseId?: string;
+  name: string;
+  description?: string;
+  /** When true, the theme is the explicit "no overrides" choice and
+   *  should leave app.css alone. */
+  noStyle?: boolean;
+  /** Build-time `'builtin'` themes vs runtime-discovered `'user'`
+   *  themes. */
+  source: 'builtin' | 'user' | string;
+  [k: string]: unknown;
+}
+
 interface LexeraInspectorVisibleRow {
   health: string;
   label: string;
@@ -2731,9 +2753,9 @@ declare global {
     LexeraTestApi: any;
     LexeraApi: any;
     LexeraCalendarRuntime: LexeraCalendarRuntimeApi;
-    LEXERA_VISUAL_THEMES: any;
-    getLexeraCurrentVisualThemeId: any;
-    applyLexeraVisualTheme: any;
+    LEXERA_VISUAL_THEMES: Array<LexeraVisualTheme>;
+    getLexeraCurrentVisualThemeId(): string;
+    applyLexeraVisualTheme(themeId: string | null | undefined, options?: Record<string, unknown>): LexeraVisualTheme;
     ContextMenuBuilders: any;
     LexeraInspectorTestApi: LexeraInspectorTestApi;
     LexeraLogTestApi: LexeraLogTestApi;
