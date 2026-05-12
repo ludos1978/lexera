@@ -27,58 +27,17 @@ var TreeView = (function () {
 
   // --- Internal helpers ---
 
-  function normalizeSidebarDisplayOptions(raw) {
-    var source = raw && typeof raw === 'object' ? raw : {};
-    return {
-      counts: source.counts !== false,
-      presence: source.presence !== false
-    };
-  }
-
-  function readSidebarDisplayOptions() {
-    try {
-      var raw = localStorage.getItem('lexera-sidebar-tree-display');
-      if (raw) return normalizeSidebarDisplayOptions(JSON.parse(raw));
-    } catch (_) { /* ignore malformed or unavailable storage */ }
-    try {
-      return {
-        counts: localStorage.getItem('lexera-sidebar-counts') !== '0',
-        presence: localStorage.getItem('lexera-sidebar-presence') !== '0'
-      };
-    } catch (_) {
-      return normalizeSidebarDisplayOptions(null);
-    }
-  }
-
-  function applySidebarDisplayAttributes(options) {
+  function applySidebarDisplayAttributes() {
     var root = typeof document !== 'undefined' && document.documentElement ? document.documentElement : null;
     if (!root) return;
-    var normalized = normalizeSidebarDisplayOptions(options);
-    root.setAttribute('data-sidebar-tree-counts', normalized.counts ? 'on' : 'off');
-    root.setAttribute('data-sidebar-tree-presence', normalized.presence ? 'on' : 'off');
+    root.setAttribute('data-sidebar-tree-counts', 'on');
+    root.setAttribute('data-sidebar-tree-presence', 'on');
     root.removeAttribute('data-sidebar-tree-grips');
     root.removeAttribute('data-sidebar-tree-menus');
   }
 
   function installSidebarDisplaySettingsBridge() {
-    applySidebarDisplayAttributes(readSidebarDisplayOptions());
-    var tauri = typeof window !== 'undefined' ? window.__TAURI__ : null;
-    var eventApi = tauri && tauri.event ? tauri.event : null;
-    var currentWebview = tauri && tauri.webview && typeof tauri.webview.getCurrentWebview === 'function'
-      ? tauri.webview.getCurrentWebview() : null;
-    var listen = currentWebview && typeof currentWebview.listen === 'function'
-      ? function (eventName, handler) { return currentWebview.listen(eventName, handler); }
-      : eventApi && typeof eventApi.listen === 'function'
-        ? function (eventName, handler) { return eventApi.listen(eventName, handler); }
-        : null;
-    if (!listen) return;
-    try {
-      listen('frontend-setting-changed', function (event) {
-        var payload = event && event.payload ? event.payload : null;
-        if (!payload || payload.setting !== 'sidebarDisplayOptions') return;
-        applySidebarDisplayAttributes(payload.value || readSidebarDisplayOptions());
-      });
-    } catch (_) { /* listener unavailable outside Tauri */ }
+    applySidebarDisplayAttributes();
   }
 
   installSidebarDisplaySettingsBridge();
@@ -473,7 +432,11 @@ var TreeView = (function () {
 
     container.classList.add('tree-view');
     var nodePadLeft = computeNodePadLeft();
-    patchChildren(container, nodes, [], options, nodePadLeft, 1);
+    var depth = typeof options.depth === 'number' && isFinite(options.depth) && options.depth > 0
+      ? options.depth : 1;
+    var parentLastFlags = Array.isArray(options.parentLastFlags)
+      ? options.parentLastFlags.slice() : [];
+    patchChildren(container, nodes, parentLastFlags, options, nodePadLeft, depth);
     return true;
   }
 

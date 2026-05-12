@@ -2852,6 +2852,14 @@ impl LocalStorage {
                 continue;
             }
             matched = true;
+            // Only refresh card content for writable-target includes
+            // (markdown extension, not missing). For non-card-shape files
+            // (.pdf, .epub) parse_slides would yield garbage; for missing
+            // files the cards live inline in main markdown and aren't
+            // refreshable from the include path.
+            if !include_source.is_writable_target() {
+                continue;
+            }
             let include_content = match fs::read_to_string(&include_source.resolved_path) {
                 Ok(content) => content,
                 Err(error) => {
@@ -3468,12 +3476,15 @@ impl LocalStorage {
         // Never silently materialize a broken reference. If the include file was
         // missing when the board loaded, saving the board must not create an
         // empty placeholder at that path — the user expects broken links to
-        // stay broken until they explicitly create the file.
-        if include_source.missing {
-            log::warn!(
-                "[lexera.storage.include] Skipping write to missing include {:?} (column {:?}) — refusing to create placeholder",
+        // stay broken until they explicitly create the file (burger menu).
+        // The matching write_column_cards path in parser.rs keeps the cards
+        // inline in main markdown as a safety net so no data is lost.
+        if !include_source.is_writable_target() {
+            log::info!(
+                "[lexera.storage.include] Keeping cards inline for non-writable include {:?} (column {:?}, missing={})",
                 include_source.resolved_path,
-                column.title
+                column.title,
+                include_source.missing
             );
             return Ok(());
         }

@@ -255,6 +255,88 @@ beforeEach(() => {
   document.body.innerHTML = '';
 });
 
+describe('getCrossViewDragPayload — source identity normalization', () => {
+  it('carries stable card aliases on the legacy cross-frame payload path', () => {
+    DDH.setCardDrag({
+      started: true,
+      el: null,
+      boardId: 'board-a',
+      flatColIndex: 2,
+      rowIndex: 0,
+      stackIndex: 1,
+      colIndex: 2,
+      cardIndex: 3,
+      rowId: 'row-a',
+      stackId: 'stack-a',
+      columnId: 'col-a',
+      cardId: 'kid-a',
+      cardKid: 'kid-a',
+      cardDomId: 'crdt-a'
+    });
+
+    const payload = DDH.getCrossViewDragPayload('card');
+
+    expect(payload.type).toBe('tree-card');
+    expect(payload.source).toMatchObject({
+      boardId: 'board-a',
+      kind: 'card',
+      entityId: 'kid-a',
+      entityIds: ['kid-a', 'crdt-a'],
+      cardId: 'kid-a',
+      cardKid: 'kid-a',
+      cardDomId: 'crdt-a',
+      rowId: 'row-a',
+      stackId: 'stack-a',
+      columnId: 'col-a',
+      rowIndex: 0,
+      stackIndex: 1,
+      colIndex: 2,
+      flatColIndex: 2,
+      cardIndex: 3
+    });
+
+    DDH.setCardDrag(null);
+  });
+
+  it('normalizes ptr sources that only carry workspace entity ids', () => {
+    DDH.setPtrDrag({
+      type: 'tree-card',
+      source: {
+        boardId: 'board-a',
+        kind: 'card',
+        entityId: 'kid-a',
+        entityIds: ['kid-a', 'crdt-a'],
+        rowId: 'row-a',
+        stackId: 'stack-a',
+        columnId: 'col-a',
+        rowIndex: 0,
+        stackIndex: 1,
+        colIndex: 2,
+        cardIndex: 3
+      }
+    });
+
+    const payload = DDH.getCrossViewDragPayload('ptr');
+
+    expect(payload.type).toBe('tree-card');
+    expect(payload.source).toMatchObject({
+      boardId: 'board-a',
+      kind: 'card',
+      entityId: 'kid-a',
+      entityIds: ['kid-a', 'crdt-a'],
+      rowId: 'row-a',
+      stackId: 'stack-a',
+      columnId: 'col-a',
+      rowIndex: 0,
+      stackIndex: 1,
+      colIndex: 2,
+      cardIndex: 3
+    });
+
+    DDH.setPtrDrag(null);
+  });
+});
+
 describe('resolveCardDropTarget — drop target hit-testing', () => {
   it('returns a main-column target when hovering over a column-cards container', () => {
     const board = makeBoard([
@@ -540,6 +622,41 @@ describe('applyCardDropByPoint — end-to-end drop pipeline', () => {
     expect(calledTarget.flatColIndex).toBe(0);
     expect(calledTarget.columnId).toBe('col-1');
     expect(calledTarget.insertIdx).toBe(3);
+
+    DDH.setCardDrag(null);
+  });
+
+  it('preserves card kid and DOM id aliases when finishing a card drag', async () => {
+    const board = makeBoard([
+      makeRow('r1', 'Row', [
+        makeStack('s1', 'Stack', [
+          makeColumn('col-1', 'Col', [makeCard('crdt-a', 'A'), makeCard('crdt-b', 'B')]),
+        ]),
+      ]),
+    ]);
+    buildBoardDom(board);
+    const moveCardSpy = vi.fn().mockResolvedValue();
+    DDH.init(makeDeps({ board, moveCardSpy }));
+    const sourceEl = document.querySelector('.card[data-card-id="crdt-a"]');
+    sourceEl.setAttribute('data-card-kid', 'kid-a');
+    DDH.setCardDrag({
+      started: true,
+      el: sourceEl,
+      boardId: 'test-board',
+      flatColIndex: 0,
+      cardIndex: 0,
+      cardId: 'kid-a',
+      cardKid: 'kid-a',
+      cardDomId: 'crdt-a'
+    });
+
+    DDH.finishCardDrag(100, 100);
+    expect(moveCardSpy).toHaveBeenCalledTimes(1);
+
+    const [calledSource] = moveCardSpy.mock.calls[0];
+    expect(calledSource.cardId).toBe('kid-a');
+    expect(calledSource.cardKid).toBe('kid-a');
+    expect(calledSource.cardDomId).toBe('crdt-a');
 
     DDH.setCardDrag(null);
   });

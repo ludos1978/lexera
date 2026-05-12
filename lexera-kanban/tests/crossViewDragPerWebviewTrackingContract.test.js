@@ -141,18 +141,19 @@ describe('per-webview cross-view-drag tracking', () => {
       // drag lands on the source's own DOM element in a sibling
       // kanban view of the same board.
       // Same-kind sibling resolution must compare the candidate's
-      // id/kid to the source's entityId before returning.
+      // id/kid to the source's alias set before returning.
       expect(embeddedBoardBridge).toMatch(/function\s+isSourceCardEl\s*\(/);
-      expect(embeddedBoardBridge).toMatch(/sourceEntityId/);
+      expect(embeddedBoardBridge).toMatch(/sourceEntityIds/);
+      expect(embeddedBoardBridge).toMatch(/function\s+sourceMatchesEntity\s*\(/);
       // Card branch: the direct-card hit AND the nearest-card-in-
       // column-cards loop must skip the source's own element.
       expect(embeddedBoardBridge).toMatch(/!\s*isSourceCardEl\s*\(\s*card\s*\)/);
       expect(embeddedBoardBridge).toMatch(/if\s*\(\s*isSourceCardEl\s*\(\s*siblingCards\[i\]\s*\)\s*\)\s*continue/);
       // Column / stack / row branches each gate the return on
-      // `id !== sourceEntityId`.
-      expect(embeddedBoardBridge).toMatch(/colId\s*&&\s*colId\s*!==\s*sourceEntityId/);
-      expect(embeddedBoardBridge).toMatch(/stId\s*&&\s*stId\s*!==\s*sourceEntityId/);
-      expect(embeddedBoardBridge).toMatch(/rwId\s*&&\s*rwId\s*!==\s*sourceEntityId/);
+      // `!sourceMatchesEntity(id)`.
+      expect(embeddedBoardBridge).toMatch(/colId\s*&&\s*!\s*sourceMatchesEntity\(\s*colId\s*\)/);
+      expect(embeddedBoardBridge).toMatch(/stId\s*&&\s*!\s*sourceMatchesEntity\(\s*stId\s*\)/);
+      expect(embeddedBoardBridge).toMatch(/rwId\s*&&\s*!\s*sourceMatchesEntity\(\s*rwId\s*\)/);
     });
 
     it('listens for cross-view-drag-handled to tear down its own tracker (sibling-webview echo)', () => {

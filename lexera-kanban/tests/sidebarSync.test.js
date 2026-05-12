@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadIIFE } from './load-iife.js';
 
 function createSidebarSync() {
@@ -180,5 +180,37 @@ describe('SidebarSync.syncSidebarToView', () => {
 
     expect(idNode.classList.contains('sync-highlight')).toBe(true);
     expect(indexNode.classList.contains('sync-highlight')).toBe(false);
+  });
+
+  it('omits removed count and presence display toggles from the sidebar menu', () => {
+    const SidebarSync = createSidebarSync();
+    const showNativeMenu = vi.fn(() => Promise.resolve(null));
+
+    SidebarSync.init({
+      getElColumnsContainer() {
+        return null;
+      },
+      buildSidebarHierarchyDisplayMenuItems() {
+        return [];
+      },
+      showNativeMenu
+    });
+
+    SidebarSync.showSidebarHierarchyMenu({
+      getBoundingClientRect() {
+        return { right: 20, bottom: 30 };
+      }
+    });
+
+    const menuItems = showNativeMenu.mock.calls[0][0];
+    const ids = menuItems.map((item) => item.id).filter(Boolean);
+    expect(ids).toEqual(expect.arrayContaining([
+      'toggle-sidebar-sync',
+      'toggle-sidebar-lock',
+      'sidebar-fold-all',
+      'sidebar-unfold-all'
+    ]));
+    expect(ids).not.toContain('toggle-sidebar-counts');
+    expect(ids).not.toContain('toggle-sidebar-presence');
   });
 });

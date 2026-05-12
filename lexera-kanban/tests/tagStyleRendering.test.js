@@ -66,4 +66,10 @@ describe('tag style rendering parity', () => {
     expect(combinedSource.includes('--tag-chip-border-color:')).toBe(true);
     expect(cssSource.includes('--tag-chip-border-color')).toBe(true);
   });
+
+  it('keeps the card left tag border on the same spine width token as normal cards', () => {
+    const cssSource = readSource('app.css');
+    expect(cssSource).toContain('.card.tag-styled[data-tag-border-position="left"]');
+    expect(cssSource).toContain('border-left: var(--tag-border-width, var(--spine-card-width))');
+  });
 });

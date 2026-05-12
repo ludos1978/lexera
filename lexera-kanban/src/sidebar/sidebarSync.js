@@ -4,7 +4,7 @@
  * Manages:
  *   - Sync-highlight of the sidebar tree node matching the current viewport
  *   - Sidebar lock toggle (editable vs read-only hierarchy)
- *   - Sidebar hierarchy burger menu (sync, lock, fold/unfold, display options)
+ *   - Sidebar hierarchy burger menu (sync, lock, fold/unfold)
  *   - Debounced scroll-sync listener
  *
  * Dependencies injected via init():
@@ -13,7 +13,7 @@
  *   - getElBoardList()                  — returns the sidebar board-list element
  *   - getSidebarTreeOwnerNode(el)       — returns the tree-node that owns a .tree-children container
  *   - renderBoardList()                 — re-renders the sidebar board list
- *   - buildSidebarHierarchyDisplayMenuItems() — returns display toggle menu items
+ *   - buildSidebarHierarchyDisplayMenuItems() — optional legacy display menu items
  *   - formatMenuToggleLabel(on, label)  — formats a toggle menu label
  *   - showNativeMenu(items, x, y, id)  — shows a native context menu, returns Promise<string|null>
  *   - getActionRegistry()               — returns the ActionRegistry instance (or null)
@@ -182,14 +182,19 @@
     var displayItems = getDisplayMenuItems();
     var items = [
       { id: 'toggle-sidebar-sync', label: fmtToggle(sidebarSyncEnabled, 'Sync with View') },
-      { id: 'toggle-sidebar-lock', label: fmtToggle(!hierarchyLocked, 'Editable') },
-      { separator: true },
-      { id: 'toggle-sidebar-counts', label: displayItems[0] ? displayItems[0].label : '' },
-      { id: 'toggle-sidebar-presence', label: displayItems[1] ? displayItems[1].label : '' },
+      { id: 'toggle-sidebar-lock', label: fmtToggle(!hierarchyLocked, 'Editable') }
+    ];
+    if (displayItems.length) {
+      items.push({ separator: true });
+      for (var i = 0; i < displayItems.length; i++) {
+        if (displayItems[i] && displayItems[i].id && displayItems[i].label) items.push(displayItems[i]);
+      }
+    }
+    items.push(
       { separator: true },
       { id: 'sidebar-fold-all', label: 'Fold All' },
       { id: 'sidebar-unfold-all', label: 'Unfold All' }
-    ];
+    );
     nativeMenu(items, rect.right, rect.bottom, 'menu.sidebar').then(function (action) {
       if (!action) return;
       if (action === 'toggle-sidebar-sync') { toggleSidebarSync(); return; }

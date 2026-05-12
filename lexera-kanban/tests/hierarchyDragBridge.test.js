@@ -671,6 +671,66 @@ describe('LexeraHierarchyDragBridge.applyDrop (unified dispatch)', () => {
       .toEqual(['a-card']);
   });
 
+  it('resolves cross-board card drops from entityIds when the primary entityId is stale', () => {
+    const a = {
+      title: 'a', columns: [],
+      rows: [{ id: 'a-r', title: 'R', stacks: [{
+        id: 'a-s', title: 'S', columns: [{
+          id: 'a-c', title: 'C',
+          cards: [{ id: 'crdt-a-1', kid: 'kid-a-1', title: 'A' }]
+        }]
+      }] }]
+    };
+    const b = {
+      title: 'b', columns: [],
+      rows: [{ id: 'b-r', title: 'R', stacks: [{
+        id: 'b-s', title: 'S', columns: [{ id: 'b-c', title: 'Target', cards: [] }]
+      }] }]
+    };
+
+    const ok = bridge.applyDrop(a, b,
+      { boardId: 'A', kind: 'card', entityId: 'stale-tree-id', entityIds: ['stale-tree-id', 'kid-a-1'] },
+      { boardId: 'B', kind: 'column', entityId: 'b-c' }
+    );
+
+    expect(ok).toBe(true);
+    expect(a.rows[0].stacks[0].columns[0].cards).toEqual([]);
+    expect(b.rows[0].stacks[0].columns[0].cards.map((c) => c.kid))
+      .toEqual(['kid-a-1']);
+  });
+
+  it('falls back to source path when a cross-board card source id is stale', () => {
+    const a = {
+      title: 'a', columns: [],
+      rows: [{ id: 'a-r', title: 'R', stacks: [{
+        id: 'a-s', title: 'S', columns: [{
+          id: 'a-c', title: 'C',
+          cards: [{ id: 'crdt-a-1', kid: 'kid-a-1', title: 'A' }]
+        }]
+      }] }]
+    };
+    const b = {
+      title: 'b', columns: [],
+      rows: [{ id: 'b-r', title: 'R', stacks: [{
+        id: 'b-s', title: 'S', columns: [{ id: 'b-c', title: 'Target', cards: [] }]
+      }] }]
+    };
+
+    const ok = bridge.applyDrop(a, b,
+      {
+        boardId: 'A', kind: 'card', entityId: 'stale-tree-id', entityIds: ['stale-tree-id'],
+        rowId: 'a-r', stackId: 'a-s', columnId: 'a-c',
+        rowIndex: 0, stackIndex: 0, colIndex: 0, cardIndex: 0
+      },
+      { boardId: 'B', kind: 'column', entityId: 'b-c' }
+    );
+
+    expect(ok).toBe(true);
+    expect(a.rows[0].stacks[0].columns[0].cards).toEqual([]);
+    expect(b.rows[0].stacks[0].columns[0].cards.map((c) => c.kid))
+      .toEqual(['kid-a-1']);
+  });
+
   it('returns false on missing source or target', () => {
     expect(bridge.applyDrop({}, {}, null, {})).toBe(false);
     expect(bridge.applyDrop({}, {}, {}, null)).toBe(false);

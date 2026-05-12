@@ -36,7 +36,6 @@ var LexeraSettings = (function () {
     sidebarSync:          { key: 'lexera-sidebar-sync',           type: 'boolean', default: false },
     sidebarExpanded:      { key: 'lexera-sidebar-expanded',       type: 'json',    default: [] },
     sidebarTreeState:     { key: 'lexera-sidebar-tree-state',     type: 'json',    default: {} },
-    sidebarTreeDisplay:   { key: 'lexera-sidebar-tree-display',   type: 'json',    default: {} },
 
     // --- Header & Search ---
     headerSearchExpanded: { key: 'lexera-header-search-expanded', type: 'boolean', default: false },

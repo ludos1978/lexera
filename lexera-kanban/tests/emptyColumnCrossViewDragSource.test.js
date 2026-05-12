@@ -39,7 +39,7 @@ function buildColumnDom({ withCard = false } = {}) {
           '<div class="board-stack" data-row-index="0" data-stack-index="0" data-row-id="row-main" data-stack-id="stack-main">' +
             '<div class="board-stack-content">' +
               '<div class="column" data-row-index="0" data-stack-index="0" data-col-local-index="0" data-col-index="0" data-row-id="row-main" data-stack-id="stack-main" data-column-id="col-empty">' +
-                '<div class="column-header"><span class="column-title">Empty column</span></div>' +
+                '<div class="column-header"><span class="drag-grip entity-drag-icon entity-drag-icon-column"></span><span class="column-title">Empty column</span></div>' +
                 '<div class="column-cards" data-col-index="0" data-row-id="row-main" data-stack-id="stack-main" data-column-id="col-empty">' +
                   (withCard ? '<div class="card" data-card-id="card-1" data-col-index="0" data-card-index="0">Card</div>' : '') +
                 '</div>' +
@@ -53,6 +53,7 @@ function buildColumnDom({ withCard = false } = {}) {
     container: document.getElementById('columns-container'),
     boardList: document.getElementById('board-list'),
     title: document.querySelector('.column-title'),
+    grip: document.querySelector('.entity-drag-icon-column'),
   };
 }
 
@@ -120,6 +121,39 @@ describe('empty kanban column cross-view drag source', () => {
 
     expect(DDH.getPtrDrag()).toBeNull();
     expect(startCalls).toEqual([]);
+  });
+
+  it('keeps the column grip draggable when the column is empty', () => {
+    const dom = buildColumnDom({ withCard: false });
+    const { DDH, startCalls } = bindDndListeners(dom);
+
+    dispatchMouse(dom.grip, 'mousedown', 24, 24);
+
+    const ptr = DDH.getPtrDrag();
+    expect(ptr).toBeTruthy();
+    expect(ptr.type).toBe('column');
+    expect(ptr.source).toMatchObject({
+      type: 'column',
+      boardId: 'board-source',
+      rowId: 'row-main',
+      stackId: 'stack-main',
+      columnId: 'col-empty',
+      indexMode: 'display',
+    });
+    expect(startCalls).toEqual(['ptr']);
+  });
+
+  it('keeps the column grip draggable when title clicks are reserved for non-empty-column editing', () => {
+    const dom = buildColumnDom({ withCard: true });
+    const { DDH, startCalls } = bindDndListeners(dom);
+
+    dispatchMouse(dom.grip, 'mousedown', 24, 24);
+
+    const ptr = DDH.getPtrDrag();
+    expect(ptr).toBeTruthy();
+    expect(ptr.type).toBe('column');
+    expect(ptr.source.columnId).toBe('col-empty');
+    expect(startCalls).toEqual(['ptr']);
   });
 
   it('renders stable parent ids onto column drag surfaces', () => {

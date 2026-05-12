@@ -379,18 +379,6 @@
             '<span>Show special characters</span>' +
           '</label>' +
         '</div>' +
-        // Hierarchy
-        '<div class="mgmt-section" data-frontend-settings-section="hierarchy">' +
-          '<div class="mgmt-section-title">Hierarchy</div>' +
-          '<label class="frontend-settings-toggle">' +
-            '<input class="lexera-shared-frontend-settings-sidebar-counts" type="checkbox">' +
-            '<span>Counts</span>' +
-          '</label>' +
-          '<label class="frontend-settings-toggle">' +
-            '<input class="lexera-shared-frontend-settings-sidebar-presence" type="checkbox">' +
-            '<span>Presence badges</span>' +
-          '</label>' +
-        '</div>' +
       '</div>';
     return root;
   }

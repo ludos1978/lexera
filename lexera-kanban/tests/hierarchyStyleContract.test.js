@@ -106,21 +106,25 @@ describe('hierarchy style contract', () => {
     expect(appCss).not.toContain('data-sidebar-tree-grips');
   });
 
-  it('applies count and presence visibility settings to workspace board lists too', () => {
-    expect(appCss).toContain(':root[data-sidebar-tree-counts="off"] .lexera-shared-board-list .board-item-count,');
-    expect(appCss).toContain(':root[data-sidebar-tree-counts="off"] .lexera-shared-board-list .tree-count');
-    expect(appCss).toContain(':root[data-sidebar-tree-presence="off"] .lexera-shared-board-list .board-presence-badge');
-    expect(treeViewSource).toContain("localStorage.getItem('lexera-sidebar-tree-display')");
-    expect(treeViewSource).toContain("listen('frontend-setting-changed'");
+  it('keeps count and presence columns always visible without frontend settings gates', () => {
+    expect(appCss).toContain('.lexera-shared-board-list .board-item-count');
+    expect(appCss).toContain('.lexera-shared-board-list .tree-count');
+    expect(appCss).toContain('.lexera-shared-board-list .board-presence-badge');
+    expect(treeViewSource).toContain("root.setAttribute('data-sidebar-tree-counts', 'on')");
+    expect(treeViewSource).toContain("root.setAttribute('data-sidebar-tree-presence', 'on')");
+    expect(treeViewSource).not.toContain("localStorage.getItem('lexera-sidebar-tree-display')");
+    expect(treeViewSource).not.toContain("listen('frontend-setting-changed'");
   });
 
-  it('keeps frontend hierarchy settings limited to counts and presence', () => {
-    expect(frontendSettingsHtml).toContain('lexera-shared-frontend-settings-sidebar-counts');
-    expect(frontendSettingsHtml).toContain('lexera-shared-frontend-settings-sidebar-presence');
+  it('does not expose hierarchy display toggles in frontend settings', () => {
+    expect(frontendSettingsHtml).not.toContain('data-frontend-settings-section="hierarchy"');
+    expect(frontendSettingsHtml).not.toContain('lexera-shared-frontend-settings-sidebar-counts');
+    expect(frontendSettingsHtml).not.toContain('lexera-shared-frontend-settings-sidebar-presence');
     expect(frontendSettingsHtml).not.toContain('lexera-shared-frontend-settings-sidebar-grips');
     expect(frontendSettingsHtml).not.toContain('lexera-shared-frontend-settings-sidebar-menus');
-    expect(sharedPanels).toContain('lexera-shared-frontend-settings-sidebar-counts');
-    expect(sharedPanels).toContain('lexera-shared-frontend-settings-sidebar-presence');
+    expect(sharedPanels).not.toContain('data-frontend-settings-section="hierarchy"');
+    expect(sharedPanels).not.toContain('lexera-shared-frontend-settings-sidebar-counts');
+    expect(sharedPanels).not.toContain('lexera-shared-frontend-settings-sidebar-presence');
     expect(sharedPanels).not.toContain('lexera-shared-frontend-settings-sidebar-grips');
     expect(sharedPanels).not.toContain('lexera-shared-frontend-settings-sidebar-menus');
   });

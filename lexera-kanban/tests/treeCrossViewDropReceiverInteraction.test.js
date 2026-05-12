@@ -147,12 +147,11 @@ describe('LexeraTreeCrossViewDrop — real-interaction destination receiver', ()
 
     const dropCalls = broadcastSpy.mock.calls.filter((c) => c[0] === 'hierarchy-entity-drop');
     expect(dropCalls.length).toBe(1);
-    // mapXviewSourceFromPayload strips sourceWebviewLabel — the
-    // hierarchy-entity-drop broadcast carries the entity coords only
-    // ({ boardId, kind, entityId }). The shell's hierarchyDragBridge
-    // doesn't need the source webview label past the routing stage.
+    // mapXviewSourceFromPayload strips sourceWebviewLabel. The hierarchy-
+    // entity-drop broadcast keeps only entity coordinates plus alias ids for
+    // stale-primary-id recovery in the shell's hierarchyDragBridge.
     expect(dropCalls[0][1].source).toEqual({
-      boardId: 'b2', kind: 'card', entityId: 'src-card-X'
+      boardId: 'b2', kind: 'card', entityId: 'src-card-X', entityIds: ['src-card-X']
     });
     expect(dropCalls[0][1].target).toEqual({
       boardId: 'b1', kind: 'card', entityId: 'card-A', position: 'after'

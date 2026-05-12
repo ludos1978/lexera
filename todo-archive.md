@@ -1,5 +1,7 @@
 # Lexera Kanban — Completed Items Archive
 
+- [x] if the content cannot be written into the file the content can be written into the main markdown file. When loading a markdown file that has a include and content in the main file we try to merge the data into the included file if possible (on loading, and when an include file is added to a header with pre-existing content!) if a include file is replaced (one included file for another): if there is just content from the included file, just replace all cards with the new cards. if there is a mixed setup (main and include) we show a warning and ask the user: keep content from main file in main file or export as marp-markdown (user can select a filename, default is the same filename and location as the existing file, but do not overwrite!)
+
 ## Archived During Workspaces-View Single-Scrollbar Fix — 2026-05-04
 - [x] (done) Workspaces sub-app showed a scrollbar inside another scrollbar. The global `.board-list` rule in `app.css:851-859` gives `flex: 1 1 auto; overflow-y: auto` (correct for the main board sidebar); the workspaces view's `<main class="body">` also had `overflow: auto`, so two scrollbars stacked. Fix in `lexera-kanban/src/views/workspaces/workspaces.css`: scoped `.body > section > .board-list` selector that overrides the global rule with `flex: 0 0 auto; min-height: 0; overflow: visible`. Tree now sizes to its content; outer `.body` is the single scrollable element. Pinned by 4 contract tests in `workspacesViewSingleScrollContract.test.js`. (commit dfe7dfb9)
 

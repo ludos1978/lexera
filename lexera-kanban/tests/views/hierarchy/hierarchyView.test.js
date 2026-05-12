@@ -623,6 +623,7 @@ describe('hierarchy view sub-app', () => {
       // broadcasting webview's own drag.
       expect(dragBroadcast.payload).toEqual({
         boardId: 'b1', kind: 'card', entityId: 'card-1',
+        entityIds: ['card-1'],
         sourceWebviewLabel: ''
       });
     });
@@ -682,7 +683,9 @@ describe('hierarchy view sub-app', () => {
       expect(targetCard.classList.contains('is-drop-target')).toBe(false);
       const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
       expect(dropBroadcast).toBeTruthy();
-      expect(dropBroadcast.payload.source).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
+      expect(dropBroadcast.payload.source).toEqual({
+        boardId: 'b1', kind: 'card', entityId: 'card-1', entityIds: ['card-1']
+      });
       expect(dropBroadcast.payload.target.boardId).toBe('b1');
       expect(dropBroadcast.payload.target.kind).toBe('card');
       expect(dropBroadcast.payload.target.entityId).toBe('card-2');
@@ -827,7 +830,9 @@ describe('hierarchy view sub-app', () => {
       pointerDragSequence(window, sourceRow, boardNode);
       const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
       expect(dropBroadcast).toBeTruthy();
-      expect(dropBroadcast.payload.source).toEqual({ boardId: 'b1', kind: 'row', entityId: 'r1' });
+      expect(dropBroadcast.payload.source).toEqual({
+        boardId: 'b1', kind: 'row', entityId: 'r1', entityIds: ['r1']
+      });
       expect(dropBroadcast.payload.target.kind).toBe('board');
       expect(dropBroadcast.payload.target.boardId).toBe('b1');
       // Cross-kind absorb → no `position` set (always appended).
@@ -1091,7 +1096,9 @@ describe('hierarchy view sub-app', () => {
       expect(typeof dragMove.args.request.sourceClientY).toBe('number');
       expect(typeof dragMove.args.request.screenX).toBe('number');
       expect(typeof dragMove.args.request.screenY).toBe('number');
-      expect(dragMove.args.request.source).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
+      expect(dragMove.args.request.source).toEqual({
+        boardId: 'b1', kind: 'card', entityId: 'card-1', entityIds: ['card-1']
+      });
       expect(dragMove.args.request.dndType).toBe('tree-card');
 
       const dragEnd = invokeCalls.find((c) =>
@@ -1283,6 +1290,8 @@ describe('hierarchy view sub-app', () => {
       expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledTimes(1);
       const boardNodeBefore = window.document
         .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]');
+      const boardChildrenBefore = window.TreeView.getNodeChildrenContainer(boardNodeBefore);
+      const patchSpy = vi.spyOn(window.TreeView, 'patch');
 
       // Fire the change event the bridge would broadcast after a save.
       capturedOpts.onCustom['hierarchy-board-changed']({ boardId: 'b1' });
@@ -1292,7 +1301,12 @@ describe('hierarchy view sub-app', () => {
       expect(window.document
         .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]'))
         .toBe(boardNodeBefore);
+      expect(patchSpy).toHaveBeenCalled();
+      expect(patchSpy.mock.calls[0][0]).toBe(boardChildrenBefore);
+      expect(patchSpy.mock.calls.find((call) => call[0] === window.document.getElementById('local-boards'))).toBeFalsy();
       expect(rowLabels()).toEqual(['V2 (after reorder)']);
+      expect(window.document.querySelector('#local-boards .tree-row').getAttribute('data-tree-depth')).toBe('2');
+      patchSpy.mockRestore();
     });
 
     // Regression 2026-05-03: rows / stacks / columns inside an expanded

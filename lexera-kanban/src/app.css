@@ -2653,7 +2653,7 @@ body.show-special-characters .card-content .ws-nl {
 }
 
 .card.tag-styled[data-tag-border-position="left"] {
-  border-left: var(--tag-border-width, 3px) var(--tag-border-style, solid) var(--tag-border-color, var(--tag-accent, var(--card-border)));
+  border-left: var(--tag-border-width, var(--spine-card-width)) var(--tag-border-style, solid) var(--tag-border-color, var(--tag-accent, var(--card-border)));
 }
 
 .board-header.tag-styled[data-tag-border-position="full"],

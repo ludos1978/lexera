@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { loadIIFE } from './load-iife.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -36,6 +37,13 @@ const hierarchyHtml = readFileSync(
 const workspacesHtml = readFileSync(
   resolve(repoRoot, 'src', 'views', 'workspaces', 'index.html'), 'utf8'
 );
+
+function loadSharedReceiver() {
+  return loadIIFE('views/_shared/treeCrossViewDrop.js', 'window.LexeraTreeCrossViewDrop', {
+    window: {},
+    globalThis: {}
+  });
+}
 
 describe('shared destination cross-view drop receiver — _shared/treeCrossViewDrop.js', () => {
   it('exposes the IIFE module on window.LexeraTreeCrossViewDrop with install / mapXviewSourceFromPayload / KIND_TO_TYPE', () => {
@@ -79,6 +87,46 @@ describe('shared destination cross-view drop receiver — _shared/treeCrossViewD
     expect(tail).toMatch(/src\.columnId/);
     expect(tail).toMatch(/src\.stackId/);
     expect(tail).toMatch(/src\.rowId/);
+  });
+
+  it('mapXviewSourceFromPayload preserves entityIds aliases for stale-primary-id recovery', () => {
+    const shared = loadSharedReceiver();
+    const source = shared.mapXviewSourceFromPayload({
+      payload: {
+        type: 'tree-card',
+        source: {
+          boardId: 'board-a',
+          kind: 'card',
+          entityId: 'stale-tree-id',
+          entityIds: ['stale-tree-id', 'kid-a-1'],
+          cardId: 'crdt-a-1',
+          cardKid: 'kid-a-1',
+          rowId: 'row-a',
+          stackId: 'stack-a',
+          columnId: 'col-a',
+          rowIndex: 0,
+          stackIndex: 1,
+          colIndex: 2,
+          cardIndex: 3
+        }
+      }
+    });
+
+    expect(source).toEqual({
+      boardId: 'board-a',
+      kind: 'card',
+      entityId: 'stale-tree-id',
+      entityIds: ['stale-tree-id', 'kid-a-1', 'crdt-a-1'],
+      rowId: 'row-a',
+      stackId: 'stack-a',
+      columnId: 'col-a',
+      cardId: 'crdt-a-1',
+      cardKid: 'kid-a-1',
+      rowIndex: 0,
+      stackIndex: 1,
+      colIndex: 2,
+      cardIndex: 3
+    });
   });
 
   it('onExternalDnd hover paints is-drop-before / -after / -absorb classes from match.info.position', () => {

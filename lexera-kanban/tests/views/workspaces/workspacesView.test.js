@@ -541,6 +541,8 @@ describe('workspaces view sub-app', () => {
       expect(rowLabels()).toEqual(['V1']);
       const board1Before = findBoardNode(window, 'b1');
       const board2Before = findBoardNode(window, 'b2');
+      const board1ChildrenBefore = window.TreeView.getNodeChildrenContainer(board1Before);
+      const patchSpy = vi.spyOn(window.TreeView, 'patch');
 
       capturedOpts.onCustom['hierarchy-board-changed']({ boardId: 'b1' });
       await new Promise((r) => setTimeout(r, 0));
@@ -548,7 +550,12 @@ describe('workspaces view sub-app', () => {
       expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledTimes(2);
       expect(findBoardNode(window, 'b1')).toBe(board1Before);
       expect(findBoardNode(window, 'b2')).toBe(board2Before);
+      expect(patchSpy).toHaveBeenCalled();
+      expect(patchSpy.mock.calls[0][0]).toBe(board1ChildrenBefore);
+      expect(patchSpy.mock.calls.find((call) => call[0] === window.document.getElementById('local-boards'))).toBeFalsy();
       expect(rowLabels()).toEqual(['V2 (after cross-board drop)']);
+      expect(window.document.querySelector('#local-boards .tree-row').getAttribute('data-tree-depth')).toBe('2');
+      patchSpy.mockRestore();
     });
 
     // Alt+click on a row / stack / column toggle folds or unfolds every

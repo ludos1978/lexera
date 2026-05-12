@@ -136,15 +136,26 @@ pub fn parse_markdown_with_includes(content: &str, ctx: &ParseContext) -> Kanban
 
             col.include_source = Some(IncludeSource::new(raw_path.clone(), resolved));
 
-            // Load cards from include file content
+            // Merge inline cards (already parsed from main markdown by
+            // parse_markdown above) with cards loaded from the include
+            // file. This preserves user-typed cards under include-headers
+            // even when the include exists; on save those merged cards
+            // round-trip into the include file (if writable) or stay
+            // inline (if missing / non-markdown extension). Without this
+            // merge, parse_slides clobbered any inline cards and the
+            // following save dropped them from disk.
             if let Some(include_content) = ctx.include_contents.get(&raw_path) {
-                col.cards = slide_parser::parse_slides(include_content);
+                let mut include_cards = slide_parser::parse_slides(include_content);
+                col.cards.append(&mut include_cards);
             } else {
                 log::warn!(
                     "[lexera.parser.include] Include file not found in context: {}",
                     raw_path
                 );
-                col.cards = Vec::new();
+                // Missing include: keep inline cards as the safety net.
+                // The storage layer sets include_source.missing later, and
+                // write_column_cards uses is_writable_target() to decide
+                // whether to write them inline or skip.
             }
 
             // Keep tags in the title for display purposes
@@ -159,10 +170,15 @@ pub fn parse_markdown_with_includes(content: &str, ctx: &ParseContext) -> Kanban
 
 /// Write cards for a single column in markdown format.
 fn write_column_cards(markdown: &mut String, column: &KanbanColumn) {
-    // Include columns: cards live in the include file, not in the main markdown
-    if column.include_source.is_some() {
-        markdown.push('\n');
-        return;
+    // Include columns with a writable target: cards round-trip into the
+    // include file via write_include_column, not into the main markdown.
+    // Non-writable targets (missing file, .pdf / .epub / etc.) fall through
+    // and serialize inline as a safety net so the cards survive on disk.
+    if let Some(src) = &column.include_source {
+        if src.is_writable_target() {
+            markdown.push('\n');
+            return;
+        }
     }
 
     for task in &column.cards {
@@ -1042,5 +1058,155 @@ kanban-plugin: board
                 failures.join("\n\n")
             );
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Include-column data preservation (Slice 1 of include-save fix)
+    // ─────────────────────────────────────────────────────────────────────
+    // Contract: inline cards typed under an `!!!include(...)!!!` column
+    // header must survive the load → serialize round-trip regardless of
+    // whether the include file exists, is markdown, or is a non-card-shape
+    // format. Before the fix, parse_markdown_with_includes clobbered inline
+    // cards with parse_slides output (or Vec::new() for missing files) and
+    // write_column_cards skipped serializing them — net result was silent
+    // data loss in the main .md.
+
+    const INCLUDE_INLINE_BOARD: &str = "\
+---
+kanban-plugin: board
+---
+
+# Board
+
+## Stack One
+
+### !!!include(includes/missing.md)!!! #red
+- [ ] Inline card under missing include
+- [x] Second inline card
+";
+
+    fn ctx_with(board_dir: &str, contents: &[(&str, &str)]) -> ParseContext {
+        let mut include_contents = HashMap::new();
+        for (k, v) in contents {
+            include_contents.insert((*k).to_string(), (*v).to_string());
+        }
+        ParseContext {
+            include_contents,
+            board_dir: std::path::PathBuf::from(board_dir),
+        }
+    }
+
+    #[test]
+    fn include_missing_preserves_inline_cards_on_parse() {
+        // Missing include: parser must keep inline cards, not clear them.
+        let ctx = ctx_with("/tmp/board", &[]);
+        let board = parse_markdown_with_includes(INCLUDE_INLINE_BOARD, &ctx);
+        let cols = board.all_columns();
+        let include_col = cols
+            .iter()
+            .find(|c| c.title.contains("!!!include"))
+            .expect("include column present");
+        assert!(include_col.include_source.is_some(), "include_source set");
+        assert_eq!(
+            include_col.cards.len(),
+            2,
+            "inline cards must survive missing-include parse"
+        );
+        assert_eq!(include_col.cards[0].content, "Inline card under missing include");
+        assert!(include_col.cards[1].checked);
+    }
+
+    #[test]
+    fn include_present_merges_inline_with_slide_cards_on_parse() {
+        // Present markdown include: parser must merge inline + slide cards,
+        // not clobber inline.
+        let ctx = ctx_with(
+            "/tmp/board",
+            &[("includes/missing.md", "# Slide A\n\n---\n\n# Slide B\n")],
+        );
+        let board = parse_markdown_with_includes(INCLUDE_INLINE_BOARD, &ctx);
+        let include_col = board
+            .all_columns()
+            .into_iter()
+            .find(|c| c.title.contains("!!!include"))
+            .expect("include column present")
+            .clone();
+        // 2 inline + 2 slide blocks = 4 (inline preserved, slides appended)
+        assert_eq!(
+            include_col.cards.len(),
+            4,
+            "merged set: 2 inline + 2 slides"
+        );
+        assert_eq!(
+            include_col.cards[0].content, "Inline card under missing include",
+            "inline cards stay first"
+        );
+        assert!(
+            include_col.cards[2].content.contains("Slide A")
+                && include_col.cards[3].content.contains("Slide B"),
+            "slide cards appended after inline (got [2]={:?}, [3]={:?})",
+            include_col.cards[2].content,
+            include_col.cards[3].content
+        );
+    }
+
+    #[test]
+    fn include_non_writable_serializes_cards_inline() {
+        // is_writable_target=false (here via missing flag): serializer
+        // must write cards inline in main .md as a safety net.
+        let ctx = ctx_with("/tmp/board", &[]);
+        let mut board = parse_markdown_with_includes(INCLUDE_INLINE_BOARD, &ctx);
+        // Simulate the storage layer's missing-flag annotation.
+        for col in board.all_columns_mut() {
+            if let Some(src) = col.include_source.as_mut() {
+                src.missing = true;
+            }
+        }
+        let serialized = generate_markdown(&board);
+        assert!(
+            serialized.contains("- [ ] Inline card under missing include"),
+            "first inline card should round-trip into main .md, got:\n{}",
+            serialized
+        );
+        assert!(
+            serialized.contains("- [x] Second inline card"),
+            "second inline card should round-trip into main .md"
+        );
+    }
+
+    #[test]
+    fn include_writable_target_serializes_blank_in_main_md() {
+        // is_writable_target=true (markdown extension, not missing):
+        // serializer skips inline cards in main .md (they round-trip via
+        // write_include_column into the include file instead).
+        let ctx = ctx_with("/tmp/board", &[("includes/missing.md", "")]);
+        let board = parse_markdown_with_includes(INCLUDE_INLINE_BOARD, &ctx);
+        // Sanity: missing flag stays false because content was present.
+        for col in board.all_columns() {
+            if let Some(src) = &col.include_source {
+                assert!(!src.missing, "missing not set when content is provided");
+                assert!(src.is_writable_target(), "md extension is writable target");
+            }
+        }
+        let serialized = generate_markdown(&board);
+        assert!(
+            !serialized.contains("Inline card under missing include"),
+            "writable-target include: inline cards must NOT appear in main .md"
+        );
+    }
+
+    #[test]
+    fn is_writable_target_extension_matrix() {
+        use std::path::PathBuf;
+        let mk = |path: &str| IncludeSource::new("x".into(), PathBuf::from(path));
+        assert!(mk("a.md").is_writable_target());
+        assert!(mk("a.markdown").is_writable_target());
+        assert!(mk("a.MD").is_writable_target(), "case-insensitive");
+        assert!(!mk("a.pdf").is_writable_target());
+        assert!(!mk("a.epub").is_writable_target());
+        assert!(!mk("a").is_writable_target(), "no extension");
+        let mut missing = mk("a.md");
+        missing.missing = true;
+        assert!(!missing.is_writable_target(), "missing flag wins");
     }
 }

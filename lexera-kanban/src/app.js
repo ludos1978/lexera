@@ -6716,9 +6716,6 @@ var LexeraDashboard = (function () {
         reRenderAllCardDisplayStates();
         renderFrontendSettingsPanel();
       },
-      // Sidebar
-      getSidebarDisplayOptions: getSidebarTreeDisplayOptions,
-      applySidebarDisplayOptions: applySidebarTreeDisplayOptions,
       // Editor toggles
       isOverlayEditorEnabled: isOverlayEditorEnabled,
       isSpecialCharactersVisible: isSpecialCharactersVisible,
@@ -6743,32 +6740,6 @@ var LexeraDashboard = (function () {
       renderFrontendSettingsPanel();
     });
   }
-
-  function installFrontendSettingsBroadcastListener() {
-    var tauri = window.__TAURI__ || null;
-    var eventApi = tauri && tauri.event ? tauri.event : null;
-    var currentWebview = tauri && tauri.webview && typeof tauri.webview.getCurrentWebview === 'function'
-      ? tauri.webview.getCurrentWebview() : null;
-    var listen = currentWebview && typeof currentWebview.listen === 'function'
-      ? function (eventName, handler) { return currentWebview.listen(eventName, handler); }
-      : eventApi && typeof eventApi.listen === 'function'
-        ? function (eventName, handler) { return eventApi.listen(eventName, handler); }
-        : null;
-    if (!listen) return;
-    try {
-      listen('frontend-setting-changed', function (event) {
-        var payload = event && event.payload ? event.payload : null;
-        if (!payload || typeof payload !== 'object') return;
-        if (payload.setting === 'sidebarDisplayOptions') {
-          applySidebarTreeDisplayOptions(payload.value || {});
-        }
-      });
-    } catch (err) {
-      logFrontendIssue('warn', 'frontend.settings', 'Failed to listen for frontend settings changes', err);
-    }
-  }
-
-  installFrontendSettingsBroadcastListener();
 
   function initFrontendSettingsPanel(panelEl) {
     if (FrontendSettings) return FrontendSettings.init(buildFrontendSettingsOptions(), panelEl);

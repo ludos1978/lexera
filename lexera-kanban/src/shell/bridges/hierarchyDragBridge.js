@@ -100,21 +100,66 @@
   // card drop with mismatched id formats hits applyEntityReorder,
   // returns false at locateEntity, and the user-pasted log's
   // `apply.local-drop.skip(applyDrop-returned-false)` line fires.
-  // Rows / stacks / columns only have `id` so they keep the
-  // single-field match.
+  // Rows / stacks / columns only have `id`, but every kind can also
+  // fall back to drag-path indices when a source view's captured id is
+  // stale during the first cross-window drop.
   function matchesCardEntity(card, entityId) {
     if (!card) return false;
     if (card.id === entityId) return true;
     if (card.kid && card.kid === entityId) return true;
     return false;
   }
-  function locateEntity(board, kind, entityId) {
-    if (!board || !entityId) return null;
+  function addUniqueId(ids, value) {
+    var text = String(value == null ? '' : value).trim();
+    if (!text) return;
+    if (ids.indexOf(text) === -1) ids.push(text);
+  }
+  function entityIdCandidates(entityRef, kind) {
+    var ids = [];
+    if (typeof entityRef === 'string') {
+      addUniqueId(ids, entityRef);
+      return ids;
+    }
+    if (!entityRef || typeof entityRef !== 'object') return ids;
+    var refKind = kind || entityRef.kind || '';
+    addUniqueId(ids, entityRef.entityId);
+    if (Array.isArray(entityRef.entityIds)) {
+      for (var i = 0; i < entityRef.entityIds.length; i++) addUniqueId(ids, entityRef.entityIds[i]);
+    }
+    if (refKind === 'card') {
+      addUniqueId(ids, entityRef.cardId);
+      addUniqueId(ids, entityRef.cardKid);
+      addUniqueId(ids, entityRef.cardDomId);
+    } else if (refKind === 'column') {
+      addUniqueId(ids, entityRef.columnId);
+    } else if (refKind === 'stack') {
+      addUniqueId(ids, entityRef.stackId);
+    } else if (refKind === 'row') {
+      addUniqueId(ids, entityRef.rowId);
+    }
+    return ids;
+  }
+  function entityRefsOverlap(a, b) {
+    var aIds = entityIdCandidates(a, a && a.kind);
+    var bIds = entityIdCandidates(b, b && b.kind);
+    for (var ai = 0; ai < aIds.length; ai++) {
+      if (bIds.indexOf(aIds[ai]) !== -1) return true;
+    }
+    return false;
+  }
+  function toSafeIndex(value) {
+    if (value == null || value === '') return -1;
+    var n = typeof value === 'number' ? value : parseInt(String(value), 10);
+    if (!isFinite(n) || n < 0) return -1;
+    return n;
+  }
+  function locateEntityByIds(board, kind, ids) {
+    if (!board || !ids.length) return null;
     var rows = Array.isArray(board.rows) ? board.rows : null;
     if (!rows) return null;
     if (kind === 'row') {
       for (var ri = 0; ri < rows.length; ri++) {
-        if (rows[ri] && rows[ri].id === entityId) return { parent: rows, index: ri };
+        if (rows[ri] && ids.indexOf(rows[ri].id) !== -1) return { parent: rows, index: ri };
       }
       return null;
     }
@@ -123,7 +168,7 @@
       var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
       if (kind === 'stack') {
         for (var si = 0; si < stacks.length; si++) {
-          if (stacks[si] && stacks[si].id === entityId) return { parent: stacks, index: si };
+          if (stacks[si] && ids.indexOf(stacks[si].id) !== -1) return { parent: stacks, index: si };
         }
         continue;
       }
@@ -132,7 +177,7 @@
         var cols = stack && Array.isArray(stack.columns) ? stack.columns : [];
         if (kind === 'column') {
           for (var ci = 0; ci < cols.length; ci++) {
-            if (cols[ci] && cols[ci].id === entityId) return { parent: cols, index: ci };
+            if (cols[ci] && ids.indexOf(cols[ci].id) !== -1) return { parent: cols, index: ci };
           }
           continue;
         }
@@ -141,13 +186,64 @@
           var cards = col && Array.isArray(col.cards) ? col.cards : [];
           if (kind === 'card') {
             for (var ki = 0; ki < cards.length; ki++) {
-              if (matchesCardEntity(cards[ki], entityId)) return { parent: cards, index: ki };
+              for (var ii = 0; ii < ids.length; ii++) {
+                if (matchesCardEntity(cards[ki], ids[ii])) return { parent: cards, index: ki };
+              }
             }
           }
         }
       }
     }
     return null;
+  }
+  function locateEntityByPath(board, kind, entityRef) {
+    if (!board || !entityRef || typeof entityRef !== 'object') return null;
+    var rows = Array.isArray(board.rows) ? board.rows : null;
+    if (!rows) return null;
+    if (kind === 'row') {
+      var rowIndex = toSafeIndex(entityRef.rowIndex);
+      return rowIndex >= 0 && rowIndex < rows.length ? { parent: rows, index: rowIndex } : null;
+    }
+    var rowRef = entityRef.rowId ? locateEntityByIds(board, 'row', [entityRef.rowId]) : null;
+    var row = rowRef ? rowRef.parent[rowRef.index] : null;
+    if (!row) {
+      var fallbackRowIndex = toSafeIndex(entityRef.rowIndex);
+      row = fallbackRowIndex >= 0 && fallbackRowIndex < rows.length ? rows[fallbackRowIndex] : null;
+    }
+    var stacks = row && Array.isArray(row.stacks) ? row.stacks : null;
+    if (!stacks) return null;
+    if (kind === 'stack') {
+      var stackIndex = toSafeIndex(entityRef.stackIndex);
+      return stackIndex >= 0 && stackIndex < stacks.length ? { parent: stacks, index: stackIndex } : null;
+    }
+    var stackRef = entityRef.stackId ? locateEntityByIds(board, 'stack', [entityRef.stackId]) : null;
+    var stack = stackRef ? stackRef.parent[stackRef.index] : null;
+    if (!stack) {
+      var fallbackStackIndex = toSafeIndex(entityRef.stackIndex);
+      stack = fallbackStackIndex >= 0 && fallbackStackIndex < stacks.length ? stacks[fallbackStackIndex] : null;
+    }
+    var columns = stack && Array.isArray(stack.columns) ? stack.columns : null;
+    if (!columns) return null;
+    if (kind === 'column') {
+      var colIndex = toSafeIndex(entityRef.colIndex);
+      return colIndex >= 0 && colIndex < columns.length ? { parent: columns, index: colIndex } : null;
+    }
+    if (kind !== 'card') return null;
+    var colRef = entityRef.columnId ? locateEntityByIds(board, 'column', [entityRef.columnId]) : null;
+    var column = colRef ? colRef.parent[colRef.index] : null;
+    if (!column) {
+      var fallbackColIndex = toSafeIndex(entityRef.colIndex);
+      column = fallbackColIndex >= 0 && fallbackColIndex < columns.length ? columns[fallbackColIndex] : null;
+    }
+    var cards = column && Array.isArray(column.cards) ? column.cards : null;
+    var cardIndex = toSafeIndex(entityRef.cardIndex);
+    return cards && cardIndex >= 0 && cardIndex < cards.length ? { parent: cards, index: cardIndex } : null;
+  }
+  function locateEntity(board, kind, entityRef) {
+    var ids = entityIdCandidates(entityRef, kind);
+    var byId = locateEntityByIds(board, kind, ids);
+    if (byId) return byId;
+    return locateEntityByPath(board, kind, entityRef);
   }
 
   /**
@@ -170,9 +266,9 @@
   function applyEntityReorder(board, source, target) {
     if (!board || !source || !target) return false;
     if (source.kind !== target.kind) return false;
-    if (source.entityId === target.entityId) return false;
-    var src = locateEntity(board, source.kind, source.entityId);
-    var tgt = locateEntity(board, target.kind, target.entityId);
+    if (entityRefsOverlap(source, target)) return false;
+    var src = locateEntity(board, source.kind, source);
+    var tgt = locateEntity(board, target.kind, target);
     if (!src || !tgt) return false;
     var moved = src.parent.splice(src.index, 1)[0];
     var insertAt = tgt.index;
@@ -225,7 +321,7 @@
     if (source.kind === target.kind) return false;
     var rule = ABSORB_RULES[source.kind + '->' + target.kind];
     if (!rule) return false;
-    var src = locateEntity(board, source.kind, source.entityId);
+    var src = locateEntity(board, source.kind, source);
     if (!src) return false;
     // The board itself is the absorb container for the special
     // `row -> board` case — there's nothing to "locate" since the
@@ -235,7 +331,7 @@
     if (target.kind === 'board') {
       children = rule(board);
     } else {
-      var tgt = locateEntityRich(board, target.kind, target.entityId);
+      var tgt = locateEntityRich(board, target.kind, target);
       if (!tgt) return false;
       children = rule(tgt.entity);
     }
@@ -262,9 +358,9 @@
     if (!srcBoard || !tgtBoard || !source || !target) return false;
     if (source.kind !== target.kind) return false;
     if (source.boardId === target.boardId) return false;
-    if (source.entityId === target.entityId) return false;
-    var src = locateEntity(srcBoard, source.kind, source.entityId);
-    var tgt = locateEntity(tgtBoard, target.kind, target.entityId);
+    if (entityRefsOverlap(source, target)) return false;
+    var src = locateEntity(srcBoard, source.kind, source);
+    var tgt = locateEntity(tgtBoard, target.kind, target);
     if (!src || !tgt) return false;
     var moved = src.parent.splice(src.index, 1)[0];
     // No `src.index` adjustment needed — source and target live in
@@ -290,13 +386,13 @@
     if (source.boardId === target.boardId) return false;
     var rule = ABSORB_RULES[source.kind + '->' + target.kind];
     if (!rule) return false;
-    var src = locateEntity(srcBoard, source.kind, source.entityId);
+    var src = locateEntity(srcBoard, source.kind, source);
     if (!src) return false;
     var children;
     if (target.kind === 'board') {
       children = rule(tgtBoard);
     } else {
-      var tgt = locateEntityRich(tgtBoard, target.kind, target.entityId);
+      var tgt = locateEntityRich(tgtBoard, target.kind, target);
       if (!tgt) return false;
       children = rule(tgt.entity);
     }
@@ -317,7 +413,7 @@
     if (!board || !source) return false;
     var trimmed = String(newTitle == null ? '' : newTitle).trim();
     if (!trimmed) return false;
-    var found = locateEntity(board, source.kind, source.entityId);
+    var found = locateEntity(board, source.kind, source);
     if (!found) return false;
     var entity = found.parent[found.index];
     if (!entity) return false;
@@ -746,14 +842,16 @@
           // pair is missing — without this, "applyDrop-returned-false"
           // is opaque and we can't tell self-drop / id-mismatch /
           // missing-card / etc apart.
-          var srcLocated = locateEntity(srcBoard, source.kind, source.entityId);
-          var tgtLocated = locateEntity(tgtBoard, target.kind, target.entityId);
+          var srcLocated = locateEntity(srcBoard, source.kind, source);
+          var tgtLocated = locateEntity(tgtBoard, target.kind, target);
           xviewLog('apply.local-drop.skip(applyDrop-returned-false)', {
             srcKind: source.kind,
             srcId: source.entityId,
+            srcAliases: entityIdCandidates(source, source.kind),
             srcLocated: !!srcLocated,
             tgtKind: target.kind,
             tgtId: target.entityId,
+            tgtAliases: entityIdCandidates(target, target.kind),
             tgtLocated: !!tgtLocated,
             sameKind: source.kind === target.kind,
             sameEntity: source.entityId === target.entityId,

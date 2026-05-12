@@ -41,14 +41,59 @@
   //     payload.payload = { source: { boardId, kind, entityId }, type }
   //   kanban dispatch (kanban→workspace via Stage 17a):
   //     payload.payload = { source: { boardId, cardId|columnId|stackId|rowId, ... }, type }
-  // The receiver normalises both into { boardId, kind, entityId }.
+  // The receiver normalises both into { boardId, kind, entityId, entityIds, ...pathContext }.
+  function addUniqueId(ids, value) {
+    var text = String(value == null ? '' : value).trim();
+    if (text && ids.indexOf(text) === -1) ids.push(text);
+  }
+  function normalizeSource(src, kind, entityId) {
+    var ids = [];
+    addUniqueId(ids, entityId);
+    if (src && Array.isArray(src.entityIds)) {
+      for (var i = 0; i < src.entityIds.length; i++) addUniqueId(ids, src.entityIds[i]);
+    }
+    if (src) {
+      if (kind === 'card') {
+        addUniqueId(ids, src.cardId);
+        addUniqueId(ids, src.cardKid);
+        addUniqueId(ids, src.cardDomId);
+      } else if (kind === 'column') {
+        addUniqueId(ids, src.columnId);
+      } else if (kind === 'stack') {
+        addUniqueId(ids, src.stackId);
+      } else if (kind === 'row') {
+        addUniqueId(ids, src.rowId);
+      }
+    }
+    var out = {
+      boardId: src && src.boardId || '',
+      kind: kind || '',
+      entityId: ids[0] || '',
+      entityIds: ids
+    };
+    if (src) {
+      var textKeys = ['rowId', 'stackId', 'columnId', 'cardId', 'cardKid', 'cardDomId'];
+      for (var ti = 0; ti < textKeys.length; ti++) {
+        var textValue = String(src[textKeys[ti]] == null ? '' : src[textKeys[ti]]).trim();
+        if (textValue) out[textKeys[ti]] = textValue;
+      }
+      var indexKeys = ['rowIndex', 'stackIndex', 'colIndex', 'flatColIndex', 'cardIndex'];
+      for (var ii = 0; ii < indexKeys.length; ii++) {
+        var indexValue = src[indexKeys[ii]];
+        if (typeof indexValue === 'number' && isFinite(indexValue) && indexValue >= 0) {
+          out[indexKeys[ii]] = indexValue;
+        }
+      }
+    }
+    return out;
+  }
   function mapXviewSourceFromPayload(p) {
     var inner = p && p.payload;
     var src = inner && inner.source;
     var type = inner && inner.type;
     if (!src) return null;
     if (src.kind && src.entityId) {
-      return { boardId: src.boardId || '', kind: src.kind, entityId: src.entityId };
+      return normalizeSource(src, src.kind, src.entityId);
     }
     if (!type) return null;
     var kind = (type === 'tree-card') ? 'card'
@@ -63,7 +108,7 @@
       (kind === 'stack') ? (src.stackId || '') :
       (src.rowId || '');
     if (!entityId) return null;
-    return { boardId: src.boardId || '', kind: kind, entityId: entityId };
+    return normalizeSource(src, kind, entityId);
   }
 
   /**

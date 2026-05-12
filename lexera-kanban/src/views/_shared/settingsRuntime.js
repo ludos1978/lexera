@@ -34,43 +34,6 @@
     catch (_) { /* localStorage unavailable */ }
   }
 
-  function readJsonLs(key, fallback) {
-    try {
-      var raw = localStorage.getItem(key);
-      if (!raw) return fallback;
-      return JSON.parse(raw);
-    } catch (_) {
-      return fallback;
-    }
-  }
-
-  function normalizeSidebarDisplayOptions(raw) {
-    var source = raw && typeof raw === 'object' ? raw : {};
-    return {
-      counts: source.counts !== false,
-      presence: source.presence !== false
-    };
-  }
-
-  function readSidebarDisplayOptions() {
-    var stored = readJsonLs('lexera-sidebar-tree-display', null);
-    if (stored && typeof stored === 'object') {
-      return normalizeSidebarDisplayOptions(stored);
-    }
-    return {
-      counts: getLs('lexera-sidebar-counts', '1') === '1',
-      presence: getLs('lexera-sidebar-presence', '1') === '1'
-    };
-  }
-
-  function writeSidebarDisplayOptions(opts) {
-    var next = normalizeSidebarDisplayOptions(Object.assign(readSidebarDisplayOptions(), opts || {}));
-    try {
-      localStorage.setItem('lexera-sidebar-tree-display', JSON.stringify(next));
-    } catch (_) { /* localStorage unavailable */ }
-    return next;
-  }
-
   function broadcast(event, payload) {
     if (typeof window === 'undefined' || !window.__TAURI__ || !window.__TAURI__.core) return;
     try {
@@ -176,16 +139,6 @@
       setHtmlContentMode: function (v) {
         setLs('lexera-default-htmlContentRenderMode', v);
         broadcast('frontend-setting-changed', { setting: 'htmlContentRenderMode', value: v });
-      },
-
-      // ── Sidebar display options ─────────────────────────────────
-      getSidebarDisplayOptions: function () {
-        return readSidebarDisplayOptions();
-      },
-      applySidebarDisplayOptions: function (opts) {
-        if (!opts) return;
-        var next = writeSidebarDisplayOptions(opts);
-        broadcast('frontend-setting-changed', { setting: 'sidebarDisplayOptions', value: next });
       },
 
       // ── Editor toggles ──────────────────────────────────────────

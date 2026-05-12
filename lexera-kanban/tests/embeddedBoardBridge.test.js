@@ -446,6 +446,132 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     expect(dropFn).not.toHaveBeenCalled();
   });
 
+  it('uses source entityIds aliases when skipping the source card in destination hit-testing', async () => {
+    const dom = new JSDOM(
+      '<!doctype html><html><head></head><body>' +
+      '<div id="columns-container">' +
+      '<div class="column" data-column-id="col-1">' +
+      '<div class="column-cards" data-col-index="0" data-column-id="col-1">' +
+      '<div class="card" data-card-id="crdt-source" data-card-kid="kid-source"></div>' +
+      '<div class="card" data-card-id="crdt-neighbor" data-card-kid="kid-neighbor"></div>' +
+      '</div>' +
+      '</div>' +
+      '</div>' +
+      '</body></html>',
+      { url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1' }
+    );
+    const { window } = dom;
+    const handlers = {};
+    const invoke = vi.fn(() => Promise.resolve());
+    const sourceCard = window.document.querySelector('[data-card-kid="kid-source"]');
+    const neighborCard = window.document.querySelector('[data-card-kid="kid-neighbor"]');
+    sourceCard.getBoundingClientRect = () => ({ left: 0, right: 100, top: 10, bottom: 50, width: 100, height: 40 });
+    neighborCard.getBoundingClientRect = () => ({ left: 0, right: 100, top: 60, bottom: 100, width: 100, height: 40 });
+    window.document.elementFromPoint = vi.fn(() => sourceCard);
+    window.LexeraDashboard = { getActiveBoardId: () => 'board-alpha' };
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+    bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn((eventName, handler) => { handlers[eventName] = handler; })
+      }),
+      invoke,
+      handleRequest: vi.fn()
+    });
+
+    const source = {
+      boardId: 'source-board',
+      kind: 'card',
+      entityId: 'stale-crdt-id',
+      entityIds: ['stale-crdt-id', 'kid-source']
+    };
+    handlers['external-dnd-drop']({
+      payload: {
+        payload: { source, type: 'tree-card' },
+        x: 50,
+        y: 20
+      }
+    });
+
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'hierarchy-entity-drop',
+      payload: {
+        source,
+        target: { boardId: 'board-alpha', kind: 'card', entityId: 'kid-neighbor', position: 'before' }
+      }
+    });
+  });
+
+  it('uses source entityIds aliases when skipping a source column before parent absorb', async () => {
+    const dom = new JSDOM(
+      '<!doctype html><html><head></head><body>' +
+      '<div id="columns-container">' +
+      '<div class="board-row" data-row-id="row-1">' +
+      '<div class="board-stack" data-stack-id="stack-1">' +
+      '<div class="column" data-column-id="col-source"><div class="column-header">Source</div></div>' +
+      '</div>' +
+      '</div>' +
+      '</div>' +
+      '</body></html>',
+      { url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1' }
+    );
+    const { window } = dom;
+    const handlers = {};
+    const invoke = vi.fn(() => Promise.resolve());
+    const sourceColumn = window.document.querySelector('[data-column-id="col-source"]');
+    window.document.elementFromPoint = vi.fn(() => sourceColumn);
+    window.LexeraDashboard = { getActiveBoardId: () => 'board-alpha' };
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+    bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn((eventName, handler) => { handlers[eventName] = handler; })
+      }),
+      invoke,
+      handleRequest: vi.fn()
+    });
+
+    const source = {
+      boardId: 'source-board',
+      kind: 'column',
+      entityId: 'stale-column-id',
+      entityIds: ['stale-column-id', 'col-source']
+    };
+    handlers['external-dnd-drop']({
+      payload: {
+        payload: { source, type: 'tree-column' },
+        x: 50,
+        y: 20
+      }
+    });
+
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'hierarchy-entity-drop',
+      payload: {
+        source,
+        target: { boardId: 'board-alpha', kind: 'stack', entityId: 'stack-1' }
+      }
+    });
+  });
+
   it('logs receive.no-handler when window.__lexeraExternalDnd is missing at relay time', () => {
     // Same external-dnd-hover firing path, but the receiver hasn't
     // installed __lexeraExternalDnd yet. The bridge must NOT throw

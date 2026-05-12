@@ -158,17 +158,6 @@
         if (el && typeof getter === 'function') el.checked = getter();
       }
 
-      // Sidebar toggles
-      var sidebarOptions = opts && typeof opts.getSidebarDisplayOptions === 'function'
-        ? opts.getSidebarDisplayOptions() : {};
-      var sidebarToggles = [
-        ['sidebar-counts', 'counts'],
-        ['sidebar-presence', 'presence']
-      ];
-      for (var s = 0; s < sidebarToggles.length; s++) {
-        var sEl = q(root, sidebarToggles[s][0]);
-        if (sEl) sEl.checked = !!sidebarOptions[sidebarToggles[s][1]];
-      }
     }
     return true;
   }
@@ -209,23 +198,6 @@
     // Checkbox toggles
     bindToggle('overlay-editor', 'setOverlayEditorEnabled');
     bindToggle('special-chars', 'setSpecialCharactersVisible');
-
-    function bindSidebarToggle(cls, key) {
-      var input = q(panel, cls);
-      if (!input) return;
-      input.addEventListener('change', function () {
-        var opts = getOptions();
-        if (opts && typeof opts.getSidebarDisplayOptions === 'function' &&
-            typeof opts.applySidebarDisplayOptions === 'function') {
-          var next = opts.getSidebarDisplayOptions();
-          next[key] = !!input.checked;
-          opts.applySidebarDisplayOptions(next);
-        }
-      });
-    }
-
-    bindSidebarToggle('sidebar-counts', 'counts');
-    bindSidebarToggle('sidebar-presence', 'presence');
 
     // Tag group chips — remove chip on x click, add on input
     var tagScopes = ['card', 'column', 'stack', 'row'];

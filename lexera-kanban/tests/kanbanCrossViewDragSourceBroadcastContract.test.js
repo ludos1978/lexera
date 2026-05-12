@@ -49,21 +49,33 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
       expect(tail).toMatch(/typeof\s+window\.LexeraMultiview\.invoke\s*[!=]==\s*['"]function['"]/);
     });
 
-    it('helper builds a workspace-shape payload { boardId, kind, entityId } for cardDrag and ptrDrag', () => {
+    it('helper builds a workspace-shape payload { boardId, kind, entityId, entityIds } for cardDrag and ptrDrag', () => {
       const idx = dragDropHandlersSrc.search(/function\s+broadcastCrossViewDragStart\s*\(\s*\)/);
       const tail = dragDropHandlersSrc.slice(idx, idx + 4500);
+      expect(tail).toMatch(/_buildCrossViewSource\(\)/);
+      const sourceIdx = dragDropHandlersSrc.search(/function\s+_buildCrossViewSource\s*\(\s*\)/);
+      expect(sourceIdx).toBeGreaterThan(-1);
+      const sourceTail = dragDropHandlersSrc.slice(sourceIdx, sourceIdx + 2200);
+      const contextIdx = dragDropHandlersSrc.search(/function\s+_copyCrossViewSourceContext\s*\(/);
+      expect(contextIdx).toBeGreaterThan(-1);
+      const contextTail = dragDropHandlersSrc.slice(contextIdx, contextIdx + 1000);
       // cardDrag → kind: 'card' + entityId from cardDrag.cardId.
-      expect(tail).toMatch(/cardDrag[\s\S]{0,200}kind\s*:\s*['"]card['"]/);
-      expect(tail).toMatch(/entityId\s*:\s*cardDrag\.cardId/);
+      expect(sourceTail).toMatch(/cardDrag[\s\S]{0,300}kind\s*:\s*['"]card['"]/);
+      expect(sourceTail).toMatch(/entityId\s*:\s*cardIds\[0\]/);
+      expect(sourceTail).toMatch(/entityIds\s*:\s*cardIds/);
+      expect(sourceTail).toMatch(/_copyCrossViewSourceContext/);
+      expect(contextTail).toMatch(/rowId/);
+      expect(contextTail).toMatch(/columnId/);
+      expect(contextTail).toMatch(/cardIndex/);
       // ptrDrag → typeToKind table maps drag types ('tree-card', 'tree-column',
       // 'tree-stack', 'tree-row', 'board-row', 'board-stack', 'column') to
       // workspace kinds.
-      expect(tail).toMatch(/['"]tree-card['"]\s*:\s*['"]card['"]/);
-      expect(tail).toMatch(/['"]tree-column['"]/);
-      expect(tail).toMatch(/['"]tree-stack['"]/);
-      expect(tail).toMatch(/['"]tree-row['"]/);
-      expect(tail).toMatch(/['"]board-row['"]/);
-      expect(tail).toMatch(/['"]board-stack['"]/);
+      expect(sourceTail).toMatch(/['"]tree-card['"]\s*:\s*['"]card['"]/);
+      expect(sourceTail).toMatch(/['"]tree-column['"]/);
+      expect(sourceTail).toMatch(/['"]tree-stack['"]/);
+      expect(sourceTail).toMatch(/['"]tree-row['"]/);
+      expect(sourceTail).toMatch(/['"]board-row['"]/);
+      expect(sourceTail).toMatch(/['"]board-stack['"]/);
     });
 
     it('helper attaches sourceWebviewLabel for embeddedBoardBridge self-skip', () => {
@@ -129,6 +141,17 @@ describe('kanban cross-view drag source broadcast (Stage 17a)', () => {
       expect(dndListenersSrc).toMatch(
         /ptrDrag\.started\s*=\s*true[\s\S]*?_deps\.startCrossViewBridge\(\s*['"]ptr['"]\s*\)[\s\S]*?_deps\.broadcastCrossViewDragStart\(/
       );
+    });
+
+    it('tree-card ptr sources preserve card kid and DOM id aliases', () => {
+      const idx = dndListenersSrc.indexOf("dragType === 'tree-card'");
+      expect(idx).toBeGreaterThan(-1);
+      const tail = dndListenersSrc.slice(idx, idx + 1200);
+      expect(tail).toMatch(/source\.cardKid/);
+      expect(tail).toMatch(/data-card-kid/);
+      expect(tail).toMatch(/source\.cardDomId/);
+      expect(tail).toMatch(/data-card-id/);
+      expect(tail).toMatch(/source\.cardId\s*=\s*source\.cardKid\s*\|\|\s*source\.cardDomId/);
     });
   });
 

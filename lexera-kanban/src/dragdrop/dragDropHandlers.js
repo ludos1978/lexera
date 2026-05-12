@@ -709,6 +709,8 @@ var LexeraDragDropHandlers = (function () {
       stackId: cardDrag.stackId || null,
       columnId: cardDrag.columnId || null,
       cardId: cardDrag.cardId || null,
+      cardKid: cardDrag.cardKid || null,
+      cardDomId: cardDrag.cardDomId || null,
       cardIndexMode: 'visible',
       indexMode: 'display'
     };
@@ -896,6 +898,16 @@ var LexeraDragDropHandlers = (function () {
     return Math.abs(dx) >= DRAG_THRESHOLD || Math.abs(dy) >= DRAG_THRESHOLD;
   }
 
+  function cloneCrossViewSource(source) {
+    if (typeof structuredClone === 'function') return structuredClone(source || {});
+    return Object.assign({}, source || {});
+  }
+
+  function mergeNormalisedCrossViewSource(source) {
+    var normalised = _buildCrossViewSource();
+    return normalised ? Object.assign({}, source || {}, normalised) : (source || {});
+  }
+
   function getCrossViewDragPayload(kind) {
     if (kind === 'card' && cardDrag) {
       var source = {
@@ -906,6 +918,8 @@ var LexeraDragDropHandlers = (function () {
         stackId: cardDrag.stackId || null,
         columnId: cardDrag.columnId || null,
         cardId: cardDrag.cardId || null,
+        cardKid: cardDrag.cardKid || null,
+        cardDomId: cardDrag.cardDomId || null,
         cardIndexMode: 'visible',
         indexMode: 'display'
       };
@@ -921,6 +935,7 @@ var LexeraDragDropHandlers = (function () {
         source.stackIndex = cardDrag.stackIndex;
         source.colIndex = cardDrag.colIndex;
       }
+      source = mergeNormalisedCrossViewSource(source);
       return {
         type: 'tree-card',
         source: source
@@ -938,9 +953,10 @@ var LexeraDragDropHandlers = (function () {
       ) {
         return null;
       }
+      var ptrSource = mergeNormalisedCrossViewSource(cloneCrossViewSource(ptrDrag.source || {}));
       return {
         type: ptrDrag.type,
-        source: structuredClone(ptrDrag.source || {})
+        source: ptrSource
       };
     }
     return null;
@@ -2198,41 +2214,7 @@ var LexeraDragDropHandlers = (function () {
         sourceWebviewLabel = String(window.LexeraMultiview.getMyLabel() || '');
       }
     } catch (_) { /* non-fatal */ }
-    var payload = null;
-    if (cardDrag && cardDrag.boardId && cardDrag.cardId) {
-      payload = {
-        boardId: cardDrag.boardId,
-        kind: 'card',
-        entityId: cardDrag.cardId
-      };
-    } else if (ptrDrag && ptrDrag.type) {
-      var typeToKind = {
-        'tree-card': 'card',
-        'tree-column': 'column', 'column': 'column',
-        'tree-stack': 'stack', 'board-stack': 'stack',
-        'tree-row': 'row', 'board-row': 'row'
-      };
-      var kind = typeToKind[ptrDrag.type];
-      if (!kind) {
-        _xviewLog('kanban.broadcast.skip(unsupported-ptr-type)', { ptrType: ptrDrag.type });
-        return;
-      }
-      var src = ptrDrag.source || {};
-      var entityId =
-        kind === 'card' ? src.cardId :
-        kind === 'column' ? src.columnId :
-        kind === 'stack' ? src.stackId :
-        src.rowId;
-      if (!entityId) {
-        _xviewLog('kanban.broadcast.skip(no-entityId)', { kind: kind, srcKeys: Object.keys(src) });
-        return;
-      }
-      payload = {
-        boardId: src.boardId || '',
-        kind: kind,
-        entityId: entityId
-      };
-    }
+    var payload = _buildCrossViewSource();
     if (!payload || !payload.boardId || !payload.entityId) {
       _xviewLog('kanban.broadcast.skip(no-payload)', { hasCardDrag: !!cardDrag, hasPtrDrag: !!ptrDrag });
       return;
@@ -2395,9 +2377,52 @@ var LexeraDragDropHandlers = (function () {
   }
   // Builds the workspace-shape source from cardDrag / ptrDrag state.
   // Shared by drag-start broadcast and drag-move / drag-end routing.
+  function _addUniqueCrossViewId(ids, value) {
+    var text = String(value == null ? '' : value).trim();
+    if (text && ids.indexOf(text) === -1) ids.push(text);
+  }
+  function _sourceEntityIds(src, kind, primaryId) {
+    var ids = [];
+    _addUniqueCrossViewId(ids, primaryId);
+    if (src && Array.isArray(src.entityIds)) {
+      for (var i = 0; i < src.entityIds.length; i++) _addUniqueCrossViewId(ids, src.entityIds[i]);
+    }
+    if (kind === 'card') {
+      _addUniqueCrossViewId(ids, src && src.cardKid);
+      _addUniqueCrossViewId(ids, src && src.cardDomId);
+      _addUniqueCrossViewId(ids, src && src.cardId);
+    } else if (kind === 'column') {
+      _addUniqueCrossViewId(ids, src && src.columnId);
+    } else if (kind === 'stack') {
+      _addUniqueCrossViewId(ids, src && src.stackId);
+    } else if (kind === 'row') {
+      _addUniqueCrossViewId(ids, src && src.rowId);
+    }
+    return ids;
+  }
+  function _copyCrossViewSourceContext(src, payload) {
+    if (!src || !payload) return payload;
+    var textKeys = ['rowId', 'stackId', 'columnId', 'cardId', 'cardKid', 'cardDomId'];
+    for (var ti = 0; ti < textKeys.length; ti++) {
+      var textValue = String(src[textKeys[ti]] == null ? '' : src[textKeys[ti]]).trim();
+      if (textValue) payload[textKeys[ti]] = textValue;
+    }
+    var indexKeys = ['rowIndex', 'stackIndex', 'colIndex', 'flatColIndex', 'cardIndex'];
+    for (var ii = 0; ii < indexKeys.length; ii++) {
+      var indexValue = src[indexKeys[ii]];
+      if (typeof indexValue === 'number' && isFinite(indexValue) && indexValue >= 0) {
+        payload[indexKeys[ii]] = indexValue;
+      }
+    }
+    return payload;
+  }
   function _buildCrossViewSource() {
-    if (cardDrag && cardDrag.boardId && cardDrag.cardId) {
-      return { boardId: cardDrag.boardId, kind: 'card', entityId: cardDrag.cardId };
+    if (cardDrag && cardDrag.boardId && (cardDrag.cardId || cardDrag.cardKid || cardDrag.cardDomId || cardDrag.entityId)) {
+      var cardPrimaryId = cardDrag.cardId || cardDrag.cardKid || cardDrag.cardDomId || cardDrag.entityId;
+      var cardIds = _sourceEntityIds(cardDrag, 'card', cardPrimaryId);
+      return _copyCrossViewSourceContext(cardDrag, {
+        boardId: cardDrag.boardId, kind: 'card', entityId: cardIds[0] || '', entityIds: cardIds
+      });
     }
     if (ptrDrag && ptrDrag.type) {
       var typeToKind = {
@@ -2410,12 +2435,15 @@ var LexeraDragDropHandlers = (function () {
       if (!kind) return null;
       var src = ptrDrag.source || {};
       var entityId =
-        kind === 'card' ? src.cardId :
-        kind === 'column' ? src.columnId :
-        kind === 'stack' ? src.stackId :
-        src.rowId;
+        kind === 'card' ? (src.cardId || src.entityId) :
+        kind === 'column' ? (src.columnId || src.entityId) :
+        kind === 'stack' ? (src.stackId || src.entityId) :
+        (src.rowId || src.entityId);
       if (!entityId) return null;
-      return { boardId: src.boardId || '', kind: kind, entityId: entityId };
+      var ids = _sourceEntityIds(src, kind, entityId);
+      return _copyCrossViewSourceContext(src, {
+        boardId: src.boardId || '', kind: kind, entityId: ids[0] || '', entityIds: ids
+      });
     }
     return null;
   }

@@ -123,10 +123,9 @@ var LexeraDndListeners = (function () {
           source.rowId = String(treeNode.getAttribute('data-row-id') || '').trim() || null;
           source.stackId = String(treeNode.getAttribute('data-stack-id') || '').trim() || null;
           source.columnId = String(treeNode.getAttribute('data-column-id') || '').trim() || null;
-          source.cardId =
-            String(treeNode.getAttribute('data-card-kid') || '').trim() ||
-            String(treeNode.getAttribute('data-card-id') || '').trim() ||
-            null;
+          source.cardKid = String(treeNode.getAttribute('data-card-kid') || '').trim() || null;
+          source.cardDomId = String(treeNode.getAttribute('data-card-id') || '').trim() || null;
+          source.cardId = source.cardKid || source.cardDomId || null;
           source.cardIndexMode = source.boardId === activeBoardId ? 'visible' : 'full';
           source.indexMode = source.boardId === activeBoardId ? 'display' : 'full';
         }
@@ -360,6 +359,8 @@ var LexeraDndListeners = (function () {
         var visibleCards = colEl ? colEl.querySelectorAll('.column-cards > .card:not(.hidden-card)') : [];
         var cardIdx = Array.prototype.indexOf.call(visibleCards, cardEl);
 
+        var cardKid = String(cardEl.getAttribute('data-card-kid') || '').trim();
+        var cardDomId = String(cardEl.getAttribute('data-card-id') || '').trim();
         DDH.setCardDrag({
           el: cardEl,
           boardId: activeBoardId,
@@ -371,10 +372,9 @@ var LexeraDndListeners = (function () {
           rowId: stackEl ? (String(stackEl.getAttribute('data-row-id') || '').trim() || null) : null,
           stackId: stackEl ? (String(stackEl.getAttribute('data-stack-id') || '').trim() || null) : null,
           columnId: colEl ? (String(colEl.getAttribute('data-column-id') || '').trim() || null) : null,
-          cardId:
-            String(cardEl.getAttribute('data-card-kid') || '').trim() ||
-            String(cardEl.getAttribute('data-card-id') || '').trim() ||
-            null,
+          cardId: cardKid || cardDomId || null,
+          cardKid: cardKid || null,
+          cardDomId: cardDomId || null,
           startX: e.clientX,
           startY: e.clientY,
           started: false,
@@ -499,6 +499,8 @@ var LexeraDndListeners = (function () {
           var visibleCards = colEl ? colEl.querySelectorAll('.column-cards > .card:not(.hidden-card)') : [];
           var cardIdx = Array.prototype.indexOf.call(visibleCards, cardEl);
 
+          var fallbackCardKid = String(cardEl.getAttribute('data-card-kid') || '').trim();
+          var fallbackCardDomId = String(cardEl.getAttribute('data-card-id') || '').trim();
           DDH.setCardDrag({
             el: cardEl,
             boardId: activeBoardId,
@@ -510,10 +512,9 @@ var LexeraDndListeners = (function () {
             rowId: stackEl ? (String(stackEl.getAttribute('data-row-id') || '').trim() || null) : null,
             stackId: stackEl ? (String(stackEl.getAttribute('data-stack-id') || '').trim() || null) : null,
             columnId: colEl ? (String(colEl.getAttribute('data-column-id') || '').trim() || null) : null,
-            cardId:
-              String(cardEl.getAttribute('data-card-kid') || '').trim() ||
-              String(cardEl.getAttribute('data-card-id') || '').trim() ||
-              null,
+            cardId: fallbackCardKid || fallbackCardDomId || null,
+            cardKid: fallbackCardKid || null,
+            cardDomId: fallbackCardDomId || null,
             startX: e.clientX,
             startY: e.clientY,
             started: false,

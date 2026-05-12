@@ -483,14 +483,6 @@
       var mode = d.normalizeTagVisibilityMode(d.getBoardSettingValue('tagVisibility', 'allexcludinglayout'));
       d.setBoardSettingValue('tagVisibility', mode === 'none' ? 'allexcludinglayout' : 'none');
     });
-    ActionRegistry.register('board', 'toggle-sidebar-counts', function () {
-      var next = d.toggleSidebarTreeDisplayOption('counts');
-      d.showNotification('Sidebar counts ' + (next.counts ? 'shown' : 'hidden'));
-    });
-    ActionRegistry.register('board', 'toggle-sidebar-presence', function () {
-      var next = d.toggleSidebarTreeDisplayOption('presence');
-      d.showNotification('Sidebar presence ' + (next.presence ? 'shown' : 'hidden'));
-    });
     ActionRegistry.register('board', 'toggle-inspector', function () { d.toggleInspector(); });
     ActionRegistry.register('board', 'open-all-inspectors', function () { d.openAllInspectors(); });
     // Save/export/settings

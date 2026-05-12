@@ -28,8 +28,6 @@ function createPanel(window) {
     <select class="lexera-shared-frontend-settings-html-content"><option value="escaped">Escaped</option><option value="rendered">Rendered</option></select>
     <input class="lexera-shared-frontend-settings-overlay-editor" type="checkbox" />
     <input class="lexera-shared-frontend-settings-special-chars" type="checkbox" />
-    <input class="lexera-shared-frontend-settings-sidebar-counts" type="checkbox" />
-    <input class="lexera-shared-frontend-settings-sidebar-presence" type="checkbox" />
   `;
   window.document.body.appendChild(panel);
   return panel;
@@ -72,8 +70,6 @@ describe('LexeraFrontendSettings interactions', () => {
     const applyUiScale = vi.fn();
     const setOverlayEditorEnabled = vi.fn();
     const syncMenuCheckStates = vi.fn();
-    const applySidebarDisplayOptions = vi.fn();
-    const sidebarOptions = { counts: true, presence: true };
     const LexeraFrontendSettings = loadFrontendSettings(window);
 
     LexeraFrontendSettings.init({
@@ -96,9 +92,7 @@ describe('LexeraFrontendSettings interactions', () => {
       setOverlayEditorEnabled,
       isSpecialCharactersVisible: () => false,
       setSpecialCharactersVisible: vi.fn(),
-      syncMenuCheckStates,
-      getSidebarDisplayOptions: () => ({ ...sidebarOptions }),
-      applySidebarDisplayOptions
+      syncMenuCheckStates
     }, panel);
 
     const themeSelect = panel.querySelector('.lexera-shared-frontend-settings-visual-theme');
@@ -116,14 +110,6 @@ describe('LexeraFrontendSettings interactions', () => {
     overlayToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
     expect(setOverlayEditorEnabled).toHaveBeenCalledWith(true);
     expect(syncMenuCheckStates).toHaveBeenCalled();
-
-    const countsToggle = panel.querySelector('.lexera-shared-frontend-settings-sidebar-counts');
-    countsToggle.checked = false;
-    countsToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
-    expect(applySidebarDisplayOptions).toHaveBeenCalledWith({
-      counts: false,
-      presence: true
-    });
   });
 
   it('renders tag-group chips and persists add/remove actions through ContextMenuBuilders', () => {
@@ -236,7 +222,7 @@ describe('LexeraFrontendSettings interactions', () => {
     expect(window.localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
   });
 
-  it('settings runtime persists hierarchy display options through the shared settings key', async () => {
+  it('settings runtime does not expose removed hierarchy display options', async () => {
     const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
     const { window } = dom;
     const invoke = vi.fn(() => Promise.resolve(null));
@@ -257,28 +243,17 @@ describe('LexeraFrontendSettings interactions', () => {
     });
 
     const options = runtime.buildFrontendSettingsOptions();
-    expect(options.getSidebarDisplayOptions()).toEqual({
-      counts: false,
-      presence: true
-    });
-
-    options.applySidebarDisplayOptions({ counts: true });
+    expect(options.getSidebarDisplayOptions).toBeUndefined();
+    expect(options.applySidebarDisplayOptions).toBeUndefined();
     await Promise.resolve();
 
     expect(JSON.parse(window.localStorage.getItem('lexera-sidebar-tree-display'))).toEqual({
-      counts: true,
-      presence: true
+      counts: false,
+      presence: true,
+      grips: false,
+      menus: false
     });
-    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
-      event: 'frontend-setting-changed',
-      payload: {
-        setting: 'sidebarDisplayOptions',
-        value: {
-          counts: true,
-          presence: true
-        }
-      }
-    });
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it('settings runtime routes backend notifications through showNotification when present', () => {

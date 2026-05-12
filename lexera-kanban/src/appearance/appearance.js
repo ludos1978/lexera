@@ -60,51 +60,18 @@ var LexeraAppearance = (function () {
 
   // ─── Sidebar tree display options ─────────────────────────────────────
 
-  var DEFAULT_SIDEBAR_TREE_DISPLAY_OPTIONS = {
+  var SIDEBAR_TREE_DISPLAY_OPTIONS = {
     counts: true,
     presence: true
   };
 
-  function normalizeSidebarTreeDisplayOptions(raw) {
-    var source = raw && typeof raw === 'object' ? raw : {};
-    return {
-      counts: source.counts !== false,
-      presence: source.presence !== false
-    };
-  }
-
-  function readStoredSidebarTreeDisplayOptions() {
-    if (Settings) {
-      return normalizeSidebarTreeDisplayOptions(Settings.get('sidebarTreeDisplay'));
-    }
-    try {
-      var raw = localStorage.getItem('lexera-sidebar-tree-display');
-      if (!raw) return normalizeSidebarTreeDisplayOptions(DEFAULT_SIDEBAR_TREE_DISPLAY_OPTIONS);
-      return normalizeSidebarTreeDisplayOptions(JSON.parse(raw));
-    } catch (err) {
-      return normalizeSidebarTreeDisplayOptions(DEFAULT_SIDEBAR_TREE_DISPLAY_OPTIONS);
-    }
-  }
-
-  var sidebarTreeDisplayOptions = readStoredSidebarTreeDisplayOptions();
-
-  function applySidebarTreeDisplayOptions(nextOptions) {
-    sidebarTreeDisplayOptions = normalizeSidebarTreeDisplayOptions(nextOptions);
+  function applySidebarTreeDisplayOptions() {
     var root = document && document.documentElement ? document.documentElement : null;
     if (root) {
-      root.setAttribute('data-sidebar-tree-counts', sidebarTreeDisplayOptions.counts ? 'on' : 'off');
-      root.setAttribute('data-sidebar-tree-presence', sidebarTreeDisplayOptions.presence ? 'on' : 'off');
+      root.setAttribute('data-sidebar-tree-counts', 'on');
+      root.setAttribute('data-sidebar-tree-presence', 'on');
       root.removeAttribute('data-sidebar-tree-grips');
       root.removeAttribute('data-sidebar-tree-menus');
-    }
-    if (Settings) {
-      Settings.set('sidebarTreeDisplay', sidebarTreeDisplayOptions);
-    } else {
-      try {
-        localStorage.setItem('lexera-sidebar-tree-display', JSON.stringify(sidebarTreeDisplayOptions));
-      } catch (err) {
-        /* ignore localStorage errors */
-      }
     }
     _callDep('renderFrontendSettingsPanel');
     return getSidebarTreeDisplayOptions();
@@ -112,28 +79,21 @@ var LexeraAppearance = (function () {
 
   function getSidebarTreeDisplayOptions() {
     return {
-      counts: !!sidebarTreeDisplayOptions.counts,
-      presence: !!sidebarTreeDisplayOptions.presence
+      counts: SIDEBAR_TREE_DISPLAY_OPTIONS.counts,
+      presence: SIDEBAR_TREE_DISPLAY_OPTIONS.presence
     };
   }
 
-  function toggleSidebarTreeDisplayOption(optionKey) {
-    var next = getSidebarTreeDisplayOptions();
-    if (!Object.prototype.hasOwnProperty.call(next, optionKey)) return next;
-    next[optionKey] = !next[optionKey];
-    return applySidebarTreeDisplayOptions(next);
+  function toggleSidebarTreeDisplayOption() {
+    return applySidebarTreeDisplayOptions();
   }
 
   function buildSidebarHierarchyDisplayMenuItems() {
-    var options = getSidebarTreeDisplayOptions();
-    return [
-      { id: 'toggle-sidebar-counts', label: _callDep('formatMenuToggleLabel', options.counts, 'Counts') },
-      { id: 'toggle-sidebar-presence', label: _callDep('formatMenuToggleLabel', options.presence, 'Presence Badges') }
-    ];
+    return [];
   }
 
   // Apply initial sidebar tree display options
-  applySidebarTreeDisplayOptions(sidebarTreeDisplayOptions);
+  applySidebarTreeDisplayOptions();
 
   // ─── Theme application ────────────────────────────────────────────────
 

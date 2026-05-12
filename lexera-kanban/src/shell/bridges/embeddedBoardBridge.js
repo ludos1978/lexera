@@ -544,6 +544,34 @@
       var sourceKind = source && source.kind;
       if (!sourceKind) return null;
       var absorbKind = ABSORB_PARENT[sourceKind] || null;
+      function addSourceId(ids, value) {
+        var text = String(value == null ? '' : value).trim();
+        if (text && ids.indexOf(text) === -1) ids.push(text);
+      }
+      function buildSourceEntityIds() {
+        var ids = [];
+        addSourceId(ids, source && source.entityId);
+        if (source && Array.isArray(source.entityIds)) {
+          for (var si = 0; si < source.entityIds.length; si++) addSourceId(ids, source.entityIds[si]);
+        }
+        if (sourceKind === 'card') {
+          addSourceId(ids, source && source.cardKid);
+          addSourceId(ids, source && source.cardDomId);
+          addSourceId(ids, source && source.cardId);
+        } else if (sourceKind === 'column') {
+          addSourceId(ids, source && source.columnId);
+        } else if (sourceKind === 'stack') {
+          addSourceId(ids, source && source.stackId);
+        } else if (sourceKind === 'row') {
+          addSourceId(ids, source && source.rowId);
+        }
+        return ids;
+      }
+      var sourceEntityIds = buildSourceEntityIds();
+      function sourceMatchesEntity(entityId) {
+        var text = String(entityId == null ? '' : entityId).trim();
+        return !!text && sourceEntityIds.indexOf(text) !== -1;
+      }
 
       // 1) Card source: prefer card-sibling reorder. If the cursor
       // landed on a specific card, use it. Otherwise look for the
@@ -576,16 +604,16 @@
       // the same board) resolved to a self-target, applyDrop bailed
       // at the second guard, and the user saw `apply.local-drop.skip
       // (applyDrop-returned-false) sameEntity:true` in the log.
-      // Compare both card.id (Loro form via data-card-id) AND
-      // card.kid (kid form via data-card-kid) since the source's
-      // entityId can be either form.
-      var sourceEntityId = (source && source.entityId) || '';
+      // Compare the candidate against the full source id alias set:
+      // source.entityId, source.entityIds, and kind-specific DOM/kid
+      // fields. Parent path ids stay out of this set so a card drag
+      // can still target its owning column.
       function isSourceCardEl(el) {
-        if (!el || !sourceEntityId) return false;
+        if (!el) return false;
         var kid = String(el.getAttribute('data-card-kid') || '').trim();
-        if (kid && kid === sourceEntityId) return true;
+        if (sourceMatchesEntity(kid)) return true;
         var id = String(el.getAttribute('data-card-id') || '').trim();
-        return !!id && id === sourceEntityId;
+        return sourceMatchesEntity(id);
       }
       if (sourceKind === 'card') {
         var card = hit.closest('.card[data-card-id]');
@@ -642,7 +670,7 @@
         var col = hit.closest('.column[data-column-id]');
         if (col) {
           var colId = String(col.getAttribute('data-column-id') || '').trim();
-          if (colId && colId !== sourceEntityId) {
+          if (colId && !sourceMatchesEntity(colId)) {
             var colRect = col.getBoundingClientRect();
             // Columns are typically arranged horizontally inside a
             // stack — pick before/after on the X axis.
@@ -658,7 +686,7 @@
         var st = hit.closest('.board-stack[data-stack-id]');
         if (st) {
           var stId = String(st.getAttribute('data-stack-id') || '').trim();
-          if (stId && stId !== sourceEntityId) {
+          if (stId && !sourceMatchesEntity(stId)) {
             var stRect = st.getBoundingClientRect();
             // Stacks within a row are typically horizontal too.
             var stPos = (stRect.width > 0 && x >= stRect.left + stRect.width / 2)
@@ -673,7 +701,7 @@
         var rw = hit.closest('.board-row[data-row-id]');
         if (rw) {
           var rwId = String(rw.getAttribute('data-row-id') || '').trim();
-          if (rwId && rwId !== sourceEntityId) {
+          if (rwId && !sourceMatchesEntity(rwId)) {
             var rwRect = rw.getBoundingClientRect();
             // Rows are stacked vertically in a board.
             var rwPos = (rwRect.height > 0 && y >= rwRect.top + rwRect.height / 2)

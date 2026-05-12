@@ -128,15 +128,6 @@ var LexeraStateKeyRegistry = {
     settingsStore: true
   },
 
-  'lexera-sidebar-tree-display': {
-    type: 'json',
-    category: 'preference',
-    default: {},
-    description: 'Sidebar tree display options (show tags, counts, etc.)',
-    files: ['appearance/appearance.js', 'treeView.js', 'views/_shared/settingsRuntime.js'],
-    settingsStore: true
-  },
-
   // ═══════════════════════════════════════════════════════════════════
   //  HEADER & SEARCH
   // ═══════════════════════════════════════════════════════════════════

@@ -267,6 +267,12 @@
       'data-drag-board-id': boardId
     };
   }
+  function cardDragAttrs(boardId, card) {
+    var attrs = dragAttrs(boardId, 'card');
+    if (card && card.id != null) attrs['data-card-id'] = String(card.id);
+    if (card && card.kid != null) attrs['data-card-kid'] = String(card.kid);
+    return attrs;
+  }
   function buildCardNode(card, ctx) {
     // Prefer the persistent `card.kid` (8-char hex) over `card.id`
     // (Loro CRDT container id) so the data-tree-id surfaced in the
@@ -282,7 +288,7 @@
              children: null, expanded: false, hasToggle: false, grip: true,
              menu: true,
              gripTitle: 'Drag card to reorder',
-             attrs: dragAttrs(ctx.boardId, 'card') };
+             attrs: cardDragAttrs(ctx.boardId, card) };
   }
   function buildColumnNode(column, ctx) {
     var cards = Array.isArray(column.cards) ? column.cards : [];
@@ -315,11 +321,9 @@
     return { id: null, label: text, type: 'placeholder',
              children: null, expanded: false, hasToggle: false, grip: false };
   }
-  function buildBoardNode(board) {
-    var boardId = board.id || '';
-    var isExpanded = !!expandedBoardIds[boardId];
+  function buildBoardChildren(boardId) {
     var children = [];
-    if (isExpanded) {
+    if (expandedBoardIds[boardId]) {
       var hierarchy = boardHierarchies[boardId];
       var ctx = { boardId: boardId };
       if (Array.isArray(hierarchy)) {
@@ -332,6 +336,11 @@
         children = [buildPlaceholderNode('Loading…')];
       }
     }
+    return children;
+  }
+  function buildBoardNode(board) {
+    var boardId = board.id || '';
+    var isExpanded = !!expandedBoardIds[boardId];
     return {
       id: 'board:' + boardId,
       label: resolveBoardLabel(board),
@@ -340,7 +349,7 @@
       expanded: isExpanded,
       grip: false,
       menu: true,
-      children: children,
+      children: buildBoardChildren(boardId),
       attrs: {
         'data-board-id': boardId,
         'data-tree-target': 'board'
@@ -357,11 +366,11 @@
     boardHierarchies[boardId] = 'loading';
     api.getBoardHierarchy(boardId).then(function (data) {
       boardHierarchies[boardId] = (data && Array.isArray(data.rows)) ? data.rows : [];
-      if (renderMode === 'patch' && patchLocalBoards()) return;
+      if (renderMode === 'patch' && (patchBoardHierarchy(boardId) || patchLocalBoards())) return;
       rerenderLocalBoards();
     }).catch(function () {
       boardHierarchies[boardId] = 'error';
-      if (renderMode === 'patch' && patchLocalBoards()) return;
+      if (renderMode === 'patch' && (patchBoardHierarchy(boardId) || patchLocalBoards())) return;
       rerenderLocalBoards();
     });
   }
@@ -399,6 +408,39 @@
       localBoardsEl,
       latestBoardsRendered.map(buildBoardNode),
       { escapeHtml: escapeHtml }
+    );
+    if (patched) refreshActiveHighlight();
+    return !!patched;
+  }
+
+  function cssAttrValue(value) {
+    return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }
+
+  function getBoardEntryLastFlag(boardNode) {
+    var entry = boardNode && boardNode.parentElement;
+    if (!entry || !entry.parentElement) return true;
+    var entries = entry.parentElement.querySelectorAll(':scope > .tree-entry');
+    return entries.length === 0 || entries[entries.length - 1] === entry;
+  }
+
+  function patchBoardHierarchy(boardId) {
+    if (!localBoardsEl || !boardId || !expandedBoardIds[boardId]) return false;
+    if (!window.TreeView || typeof window.TreeView.patch !== 'function' ||
+        typeof window.TreeView.getNodeChildrenContainer !== 'function') return false;
+    var boardNode = localBoardsEl.querySelector(
+      '.tree-node[data-tree-target="board"][data-board-id="' + cssAttrValue(boardId) + '"]'
+    );
+    var childrenEl = window.TreeView.getNodeChildrenContainer(boardNode);
+    if (!childrenEl) return false;
+    var patched = window.TreeView.patch(
+      childrenEl,
+      buildBoardChildren(boardId),
+      {
+        escapeHtml: escapeHtml,
+        depth: 2,
+        parentLastFlags: [getBoardEntryLastFlag(boardNode)]
+      }
     );
     if (patched) refreshActiveHighlight();
     return !!patched;
@@ -474,13 +516,28 @@
       capturedPointerId = -1;
     };
 
+    var readEntityIdsFromNode = function (node, kind) {
+      var ids = [];
+      function add(value) {
+        var text = String(value == null ? '' : value).trim();
+        if (text && ids.indexOf(text) === -1) ids.push(text);
+      }
+      add(node && node.getAttribute('data-tree-id'));
+      if (kind === 'card') {
+        add(node && node.getAttribute('data-card-kid'));
+        add(node && node.getAttribute('data-card-id'));
+      }
+      return ids;
+    };
     var readSourceFromNode = function (el) {
       var src = el && el.closest ? el.closest('.tree-node[data-drag-kind]') : null;
       if (!src || !localBoardsEl.contains(src)) return null;
+      var kind = src.getAttribute('data-drag-kind') || '';
       return {
         boardId: src.getAttribute('data-drag-board-id') || '',
-        kind: src.getAttribute('data-drag-kind') || '',
-        entityId: src.getAttribute('data-tree-id') || ''
+        kind: kind,
+        entityId: src.getAttribute('data-tree-id') || '',
+        entityIds: readEntityIdsFromNode(src, kind)
       };
     };
     var readDropTargetFromPoint = function (clientX, clientY, dragSource) {
@@ -495,10 +552,12 @@
       if (!tgt || !localBoardsEl.contains(tgt)) return null;
       var info;
       if (tgt.getAttribute('data-drag-kind')) {
+        var targetKind = tgt.getAttribute('data-drag-kind') || '';
         info = {
           boardId: tgt.getAttribute('data-drag-board-id') || '',
-          kind: tgt.getAttribute('data-drag-kind') || '',
-          entityId: tgt.getAttribute('data-tree-id') || ''
+          kind: targetKind,
+          entityId: tgt.getAttribute('data-tree-id') || '',
+          entityIds: readEntityIdsFromNode(tgt, targetKind)
         };
       } else if (tgt.getAttribute('data-tree-target') === 'board') {
         var bid = tgt.getAttribute('data-board-id') || '';
