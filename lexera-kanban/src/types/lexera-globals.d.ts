@@ -1283,6 +1283,82 @@ interface LexeraBackendDiscoveryApi {
 }
 
 /**
+ * Source: src/test/frontendTests.js (IIFE;
+ * window.LexeraFrontendTests = api). In-app test runner exposed to
+ * Tauri (--run-tests CLI flag), the frontendTests panel webview,
+ * and manual debugging. Test definitions live in the same 9k-line
+ * IIFE; the exposed surface is just the runner controls.
+ */
+interface LexeraFrontendTestsListEntry {
+  name: string;
+  categories: Array<string>;
+}
+
+interface LexeraFrontendTestsCategorySummary {
+  name: string;
+  count: number;
+}
+
+interface LexeraFrontendTestsRunOptions {
+  /** Test name filter — only tests whose name contains this run. */
+  filter?: string;
+  /** Continue running after the first failure. Defaults true. */
+  continueOnError?: boolean;
+  [key: string]: unknown;
+}
+
+type LexeraFrontendTestsResultScope = 'all' | 'failed' | 'passed' | string;
+
+interface LexeraFrontendTestsApi {
+  /** Run every registered test. Returns a Promise that resolves when
+   *  the run completes (or rejects if requested to stop early). */
+  runAll(): Promise<unknown>;
+  // Runner methods return `any` rather than `unknown | Promise<unknown>`
+  // because navigationBridge.js checks `result && typeof result.then ===
+  // 'function'` at the call site — that needs property access on the
+  // return value, which `unknown` blocks without explicit narrowing.
+  // Sticking to `any` here is the minimal accommodation; the rest of
+  // the surface is fully typed.
+  run(name: string): any;
+  runTest(name: string): any;
+  /** Names of every registered test. */
+  list(): Array<string>;
+  /** Names + categories for every registered test. */
+  listWithCategories(): Array<LexeraFrontendTestsListEntry>;
+  /** Category groups + member counts. */
+  categories(): Array<LexeraFrontendTestsCategorySummary>;
+  clearResults(): void;
+  runCategory(name: string): any;
+  clearCategory(name: string): void;
+  /** Returns the current state snapshot. Caller (navigationBridge.js)
+   *  mutates it by setting `available: true` before broadcasting, so
+   *  the return needs to accept property assignment. */
+  getStateSnapshot(): any;
+  /** Build a formatted result-text block for `scope` ('all' /
+   *  'failed' / 'passed'). */
+  buildResults(scope?: LexeraFrontendTestsResultScope): string;
+  /** Copy result text to clipboard for sharing. */
+  copyResults(scope?: LexeraFrontendTestsResultScope): any;
+  /** Request the current run to stop after the current test. */
+  stop(): void;
+  /** Continue past a manual-undo wait point. */
+  continueUndo(): void;
+  /** Pin a specific board for the next run (e.g. a fixture board).
+   *  Returns the actually-selected board id (may differ if the
+   *  requested id isn't available). */
+  setBoardSelection(boardId: string | null | undefined): string;
+  setManualInspectEnabled(enabled: boolean): void;
+  /** Populate the test list panel (idempotent). */
+  showPanel(): void;
+  /** Populate the panel AND start a runAll. */
+  runAllWithUI(options?: LexeraFrontendTestsRunOptions): any;
+  /** Internal state used by the Rust-side --run-tests poller. */
+  _runState: unknown;
+  _currentTestName(): string;
+  _buildResults(): string;
+}
+
+/**
  * Source: src/menu/contextMenuBuilders.js (IIFE; both
  * `window.ContextMenuBuilders` and a bare-name reference). Builds
  * the Tag / Marp submenu trees consumed by the card / column / stack
@@ -4502,7 +4578,7 @@ declare global {
     LexeraSidebarSync: LexeraSidebarSyncApi;
     LexeraSidebarTree: LexeraSidebarTreeApi;
     LexeraHierarchyController: LexeraHierarchyControllerApi;
-    LexeraFrontendTests: any;
+    LexeraFrontendTests: LexeraFrontendTestsApi;
     LexeraFilesTestApi: LexeraFilesTestApi;
     LexeraRenderAppsTestApi: LexeraRenderAppsTestApi;
     LexeraRenderAppsSettings: LexeraRenderAppsSettingsApi;
