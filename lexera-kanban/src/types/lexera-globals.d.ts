@@ -4311,7 +4311,14 @@ declare global {
      *  tauriInvoke.js reads `window.LexeraBackendDiscovery?.invokeTauri` to
      *  let a shared abstraction layer interpose on the IPC. */
     LexeraBackendDiscovery: LexeraBackendDiscoveryApi;
-    __TAURI_INTERNALS__: any;
+    /** Tauri 2 internals namespace — exposed during `before-script`
+     *  by `@tauri-apps/api/core` and other internal modules. Lexera
+     *  reads only `.invoke`; declared as an open shape so other
+     *  Tauri-internal accesses still typecheck. */
+    __TAURI_INTERNALS__?: {
+      invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+      [key: string]: unknown;
+    };
     LexeraTagColors: any;
     tagColors: any;
     markdownit: any;
@@ -4342,9 +4349,10 @@ declare global {
     // Logging diagnostics.
     getLogFoldedStatusData(): LexeraLogFoldedStatusData;
 
-    // Tauri 2 globals injected by the runtime.
+    // Tauri 2 globals injected by the runtime. (`__TAURI_INTERNALS__`
+    // declared above with its tightened shape; this duplicate slot in
+    // the second Window block was vestigial and is no longer needed.)
     __TAURI__: any;
-    __TAURI_INTERNALS__: any;
 
     // Test seams. All optional — only the test runner / debug surface
     // sets them; production code does truthy-checks before reading.
