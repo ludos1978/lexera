@@ -3,7 +3,7 @@
   if (typeof module === 'object' && module.exports) {
     module.exports = api;
   }
-  root.LexeraCanvasMath = api;
+  /** @type {any} */ (root).LexeraCanvasMath = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
