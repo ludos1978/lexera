@@ -4384,12 +4384,43 @@ declare global {
   // Bare globals (declared without `window.` prefix at their call
   // sites — IIFE-pattern leak from sibling scripts loaded before
   // workspaceShell.js into the same window).
-  function traceFrontendAction(...args: any[]): any;
-  function setDropZoneHighlight(...args: any[]): any;
-  function showNativeMenu(...args: any[]): any;
-  function showInFinder(...args: any[]): any;
-  function logFrontendIssue(...args: any[]): any;
-  function lexeraLog(...args: any[]): any;
+  /** Logs a "user-initiated action started" trace entry to the in-app
+   *  Log panel. Same call signature as `logFrontendIssue` so they're
+   *  interchangeable in catch-block patterns. `extras` are passed
+   *  through to the underlying logger and surface in the Log entry. */
+  function traceFrontendAction(
+    level: LexeraLogLevel,
+    target: string,
+    message: string,
+    ...extras: Array<unknown>
+  ): void;
+  /** Paints / clears a drop-zone highlight ring on the workspace
+   *  tabset edges. `zone` is one of the WorkspaceShell drop zones
+   *  (`'before'|'after'|'center'|'left'|'right'|...`); passing
+   *  empty `''` clears any existing highlight on `leafId`. */
+  function setDropZoneHighlight(leafId: string | null, zone: string): void;
+  /** Show a native context menu via the Tauri plugin. Resolves with
+   *  the clicked item's id, or `null` if the menu was dismissed. */
+  function showNativeMenu(
+    items: ReadonlyArray<unknown>,
+    x: number,
+    y: number,
+    id?: string
+  ): Promise<string | null>;
+  /** Reveal `path` in the platform file manager (Finder / Explorer /
+   *  Nautilus). No-op when Tauri's `show_in_folder` command is missing. */
+  function showInFinder(path: string): void | Promise<unknown>;
+  /** Logs a frontend-side issue to the in-app Log panel. Per CLAUDE.md
+   *  the kanban frontend MUST funnel all logging through this or
+   *  `lexeraLog` — never `console.*` or stderr. */
+  function logFrontendIssue(
+    level: LexeraLogLevel,
+    target: string,
+    message: string,
+    ...extras: Array<unknown>
+  ): void;
+  /** Logs a single line into the in-app Log panel. */
+  function lexeraLog(level: LexeraLogLevel, message: string): void;
   // Vendor IIFE bound to bare-name access in settingsRuntime.js
   // (loaded via plain <script> tag, doesn't carry `window.` prefix
   // at every call site).
