@@ -126,4 +126,4 @@ var LexeraCardCollapse = (function () {
     saveCardCollapseState: saveCardCollapseState
   };
 })();
-(typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {}).LexeraCardCollapse = LexeraCardCollapse;
+/** @type {any} */ (typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {}).LexeraCardCollapse = LexeraCardCollapse;

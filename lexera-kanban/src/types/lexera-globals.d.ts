@@ -4745,6 +4745,18 @@ declare global {
       isKnownExternalEmbedUrl(url: string | null | undefined): boolean;
       normalizeEmbedHandling(mode: unknown): 'iframe' | 'remove' | 'fallback' | 'keep';
     };
+    /** Card collapse/expand state — collects card ids from a board's
+     *  row/stack/column tree, reads + writes the per-board collapsed
+     *  card list to LexeraSettings. */
+    LexeraCardCollapse: {
+      init(deps: Record<string, unknown>): void;
+      collectBoardCardIds(rows: ReadonlyArray<unknown>): Array<string>;
+      getCollapsedCards(boardId: string): Array<string>;
+      saveCardCollapseState(
+        boardId: string,
+        collapsedIds: ReadonlyArray<string>
+      ): void;
+    };
     // Vendor markdown-it plugins — each is a `(md, options?) => void`
     // factory loaded via a separate <script> tag from src/vendor/markdown-it/.
     // markdownPluginManifest.js reads `typeof window.markdownitX === 'function'`

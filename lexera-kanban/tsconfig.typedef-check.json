@@ -107,6 +107,7 @@
     "src/plugins/embed/embedPlugin.js",
     "src/plugins/formats/fileFormatHelpers.js",
     "src/plugins/markdown/markdownPluginManifest.js",
+    "src/board/cardCollapse.js",
     "src/plugins/exports/filterExport.js",
     "src/plugins/exports/marpExport.js",
     "src/plugins/exports/pandocExport.js",
