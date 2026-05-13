@@ -1283,6 +1283,50 @@ interface LexeraBackendDiscoveryApi {
 }
 
 /**
+ * Source: src/menu/embedMenu.js (IIFE; window.LexeraEmbedMenu = api).
+ * 80+ method module — owns the file-embed UI (preview chips, modal
+ * previews, path-fix dialogs, external-embed allowlist, drag-drop /
+ * paste / upload, Tauri menu shims, asset registry). Partial-typed
+ * via the same pattern as LexeraApi / LexeraWorkspaceShell — the
+ * methods documented as used by plugin manifests are listed
+ * explicitly; the rest live behind `[key: string]: any`.
+ */
+interface LexeraEmbedMenuApi {
+  /** Build the `<div class="embed-chip">` HTML for a preview kind +
+   *  file path. Consumed by `plugins/formats/fileFormatHelpers.js` to
+   *  seed the chip before the cached-preview enhancer runs. Returns
+   *  empty string when LexeraEmbedMenu isn't ready yet. */
+  getFileEmbedChipHtml(
+    previewKind: string,
+    filePath: string,
+    mediaStyleAttr?: string
+  ): string;
+  /** Replace a placeholder embed container with the cached preview
+   *  for `previewKind`. Resolves the asset URL, checks cache, invokes
+   *  the worker if needed, attaches onerror logging. */
+  renderCachedSpecialPreview(
+    containerEl: HTMLElement,
+    boardId: string,
+    filePath: string,
+    previewKind: string,
+    options?: {
+      pageNumber?: number;
+      forceRerender?: boolean;
+      modal?: boolean;
+      [key: string]: unknown;
+    }
+  ): Promise<unknown>;
+  /** Re-enhance a single embed container (used by forceRerender +
+   *  external-embed policy changes). */
+  enhanceSingleEmbedContainer(
+    container: HTMLElement,
+    enhanceOpts?: { forceRerender?: boolean; [key: string]: unknown }
+  ): Promise<unknown>;
+  /** Any other embedMenu.js method — index signature preserves access. */
+  [key: string]: any;
+}
+
+/**
  * Source: src/workspace/workspaceShell.js (IIFE;
  * window.LexeraWorkspaceShell = api). The workspace shell — owns the
  * dock tree, panel + board tab lifecycle, fold strip, drop zones,
@@ -4748,7 +4792,7 @@ declare global {
     LexeraWorkspaceShell: LexeraWorkspaceShellApi;
     LexeraDashboard: LexeraDashboardApi;
     LexeraDebug: LexeraDebugApi;
-    LexeraEmbedMenu: any;
+    LexeraEmbedMenu: LexeraEmbedMenuApi;
     LexeraThemeBridge: LexeraThemeBridgeApi;
     LexeraCatalogBridge: LexeraCatalogBridgeApi;
     LexeraNavigationBridge: LexeraNavigationBridgeApi;
