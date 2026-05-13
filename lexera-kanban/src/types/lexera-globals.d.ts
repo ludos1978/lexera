@@ -3609,6 +3609,36 @@ interface LexeraPanelDefinitionsApi {
 }
 
 /**
+ * Hierarchy-focus target — used by the `'focus-hierarchy-target'`
+ * navigate payload. Exactly one of the entity ids is non-null per
+ * call (cardId set when focusing a card, columnId set when focusing
+ * a column, etc.); the others stay null. boardId is always set.
+ */
+interface LexeraSubAppHierarchyFocusTarget {
+  boardId?: string;
+  cardId?: string | null;
+  columnId?: string | null;
+  stackId?: string | null;
+  rowId?: string | null;
+  entityId?: string;
+}
+
+/**
+ * Discriminated union of payloads accepted by
+ * `LexeraSubApp.navigate(payload)`. The `_sourceWindow` field is
+ * injected automatically by navigate() before dispatch — callers
+ * leave it off. Listed shapes cover the current call sites; an open
+ * `{ type: string; [k: string]: unknown }` arm keeps the API
+ * forward-compatible without re-touching this type for every new
+ * navigation kind.
+ */
+type LexeraSubAppNavigatePayload =
+  | { type: 'open-board'; boardId: string }
+  | { type: 'reveal-panel'; panelId: string }
+  | { type: 'focus-hierarchy-target'; target: LexeraSubAppHierarchyFocusTarget }
+  | { type: string; [key: string]: unknown };
+
+/**
  * Notification action button rendered on a toast/pill. `callback`
  * fires on click; `dismissOnClick: false` keeps the toast visible
  * after click (default: dismiss).
@@ -3713,7 +3743,7 @@ interface LexeraSubAppInitOptions {
  */
 interface LexeraSubAppApi {
   init(opts: LexeraSubAppInitOptions): void;
-  navigate(payload: any): Promise<unknown>;
+  navigate(payload: LexeraSubAppNavigatePayload): Promise<unknown>;
   /** Broadcasts to sibling-window or global subscribers depending on event kind. */
   broadcast(event: string, payload?: any): Promise<unknown>;
   invoke(cmd: string, args?: any): Promise<unknown>;
