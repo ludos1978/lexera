@@ -3609,6 +3609,59 @@ interface LexeraPanelDefinitionsApi {
 }
 
 /**
+ * Notification action button rendered on a toast/pill. `callback`
+ * fires on click; `dismissOnClick: false` keeps the toast visible
+ * after click (default: dismiss).
+ */
+interface LexeraSubAppNotificationAction {
+  label: string;
+  callback?: () => void;
+  dismissOnClick?: boolean;
+}
+
+/**
+ * Options accepted by `LexeraSubApp.showNotification` / the
+ * `window.showNotification` shell global. Variant set documented at
+ * app.js:6812. Both `action` (legacy single) and `actions` (preferred
+ * multiple) are supported.
+ */
+interface LexeraSubAppNotificationOptions {
+  variant?: 'error' | 'success' | 'warn' | 'info';
+  duration?: number;
+  action?: LexeraSubAppNotificationAction;
+  actions?: Array<LexeraSubAppNotificationAction>;
+  dedupe?: boolean;
+}
+
+/**
+ * Options for `LexeraSubApp.confirmModal`. Every field is URL-encoded
+ * into the modal window's query string; missing fields fall back to
+ * the modal's own defaults (`'Confirm'` title, 380×180 size).
+ */
+interface LexeraSubAppConfirmModalOptions {
+  title?: string;
+  message?: string;
+  okText?: string;
+  cancelText?: string;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Options for `LexeraSubApp.promptModal`. Same shape as confirm modal
+ * plus an `initial` seed string for the input field.
+ */
+interface LexeraSubAppPromptModalOptions {
+  title?: string;
+  message?: string;
+  initial?: string;
+  okText?: string;
+  cancelText?: string;
+  width?: number;
+  height?: number;
+}
+
+/**
  * Bag of optional callbacks + flags consumed by
  * `LexeraSubApp.init(opts)`. Each callback fires when the named
  * shell-bridged event arrives over Tauri IPC. Boolean flags default
@@ -3680,10 +3733,10 @@ interface LexeraSubAppApi {
   /** Returns the Tauri webview record (label + listen) for the current
    *  webview. Returns null when the Tauri runtime isn't available. */
   getCurrentWebview(): { label: string; listen: Function } | null;
-  applyThemeSnapshot(snap: any): void;
-  confirmModal(opts: any): Promise<boolean>;
-  promptModal(opts: any): Promise<string | null>;
-  showNotification(message: string, opts?: any): void;
+  applyThemeSnapshot(snap: LexeraThemeSnapshot | null | undefined): void;
+  confirmModal(opts?: LexeraSubAppConfirmModalOptions): Promise<boolean>;
+  promptModal(opts?: LexeraSubAppPromptModalOptions): Promise<string | null>;
+  showNotification(message: string, opts?: LexeraSubAppNotificationOptions): void;
 }
 
 /**
@@ -3749,9 +3802,9 @@ declare global {
     lexeraLogWithTarget(level: LexeraLogLevel, target: string, message: string): void;
     /** Toast / pill notifications. Installed by
      *  subAppRuntime.js's `installSubAppNotifications` (and the shell
-     *  has its own implementation). `opts` is loosely-typed for now —
-     *  future slice can tighten to { variant, duration, action, ... }. */
-    showNotification(message: string, opts?: any): void;
+     *  has its own implementation). See `LexeraSubAppNotificationOptions`
+     *  for the full opts shape. */
+    showNotification(message: string, opts?: LexeraSubAppNotificationOptions): void;
     LexeraLayoutTree: LexeraLayoutTreeApi;
     /** Typed via `@typedef LexeraLifecycleReconcilerApi` in
      *  src/workspace/lifecycleReconciler.js (script-mode JS @typedef
