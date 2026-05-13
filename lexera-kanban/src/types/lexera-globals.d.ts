@@ -4954,13 +4954,10 @@ declare global {
   // Loaded lazily by `plugins/diagrams/mermaid.js`'s init() then accessed
   // by bare name (`mermaid.initialize(...)`, `mermaid.render(...)`).
   const mermaid: any;
-  // File-format-plugin helper bundle IIFE — accessed by bare name via
-  // `typeof LexeraFileFormatHelpers !== 'undefined'` in every
-  // plugins/formats/*.js registration. Aliased to `H` per format
-  // module; carries the buildPreviewConfig / buildExportConfig /
-  // pageSuffix / makeRenderFile / makeSpecialPreviewEmit /
-  // makeSpecialPreviewEnhance helpers.
-  const LexeraFileFormatHelpers: any;
+  // (LexeraFileFormatHelpers is declared by its source file's top-level
+  // `var` once `plugins/formats/fileFormatHelpers.js` joined the typedef
+  // gate. Carrying a separate `const LexeraFileFormatHelpers: any;` here
+  // would now cause a `redeclare block-scoped variable` error.)
   // ControlsSettings IIFE — accessed by bare name in scrollBehavior.js
   // via `typeof LexeraControlsSettings !== 'undefined'`. Pinned to
   // the typed `LexeraControlsSettingsApi` so bare-name access carries
