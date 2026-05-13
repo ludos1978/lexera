@@ -4745,6 +4745,35 @@ declare global {
       isKnownExternalEmbedUrl(url: string | null | undefined): boolean;
       normalizeEmbedHandling(mode: unknown): 'iframe' | 'remove' | 'fallback' | 'keep';
     };
+    // Vendor markdown-it plugins — each is a `(md, options?) => void`
+    // factory loaded via a separate <script> tag from src/vendor/markdown-it/.
+    // markdownPluginManifest.js reads `typeof window.markdownitX === 'function'`
+    // before calling `md.use(window.markdownitX, opts)`. Declared as optional
+    // `any` since each plugin has its own option shape; the manifest's
+    // typeof guard preserves runtime safety.
+    markdownitWikiLinks?: any;
+    markdownitTag?: any;
+    markdownitTaskCheckbox?: any;
+    markdownitDatePersonTag?: any;
+    markdownitTemporalTag?: any;
+    markdownItMulticolumn?: any;
+    markdownitMark?: any;
+    markdownitSub?: any;
+    markdownitSup?: any;
+    markdownitIns?: any;
+    markdownitStrikethroughAlt?: any;
+    markdownitUnderline?: any;
+    markdownitAbbr?: any;
+    markdownitContainer?: any;
+    markdownItImageFigures?: any;
+    markdownItImageAttrs?: any;
+    markdownitTableWidths?: any;
+    markdownitListSplit?: any;
+    markdownitEnhancedStrikethrough?: any;
+    markdownitSpeakerNote?: any;
+    markdownitHtmlComment?: any;
+    markdownitEmoji?: any;
+    markdownitFootnote?: any;
     // First-pass `any` declarations — future slices can tighten.
     // Added 2026-05-10 (Stage 17l) so embeddedBoardBridge.js can
     // type-check; the actual public surfaces live in their respective
