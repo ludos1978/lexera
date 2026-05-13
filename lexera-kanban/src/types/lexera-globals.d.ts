@@ -1283,6 +1283,41 @@ interface LexeraBackendDiscoveryApi {
 }
 
 /**
+ * Source: src/api.js (IIFE; window.LexeraApi = api). HTTP/IPC client
+ * for the lexera-backend REST API. ~60 methods covering boards /
+ * collab / sync / files / capture / etc.
+ *
+ * **Only the methods actively used by gated files are typed here.**
+ * The full surface lives in api.js and is consumed mostly by
+ * (non-gated) app.js. The `[key: string]: any` index signature
+ * preserves access to the wider API; future slices can tighten more
+ * methods as their consumers move into the gate.
+ */
+interface LexeraApi {
+  /** Resolve the backend base URL (port-scan + Tauri lookup + cache).
+   *  Returns the URL string or null when no backend answered. */
+  discover(): Promise<string | null>;
+  /** Generic HTTP/IPC request wrapper — auth headers + retry +
+   *  cached-base-url + transport-mode (IPC vs HTTP) all handled. */
+  request(path: string, init?: RequestInit): Promise<unknown>;
+  /** Fetch calendar tasks for the active workspace. Returns a Promise
+   *  resolving to `{ results: Array<{...}> }`. Consumed by the
+   *  calendar sub-apps via the calendarRuntime facade. */
+  getCalendarTasks(opts?: Record<string, unknown>): Promise<{ results?: Array<unknown> } & Record<string, unknown>>;
+  /** Persist board state to the backend (board id derived from the
+   *  payload). Returns the saved-board response with the new
+   *  generation / revision. Consumed by the kanban save path. */
+  saveBoard(boardId: string, boardData: unknown, options?: Record<string, unknown>): Promise<unknown>;
+  /** Returns 'tauri-ipc' when running under Tauri 2 with the local
+   *  IPC transport, otherwise 'http' / null. */
+  getTransportMode(): 'tauri-ipc' | 'http' | null | undefined;
+  /** Count of in-flight requests — drives the UI 'busy' state. */
+  getInFlightCount(): number;
+  /** Any other api.js method — index signature preserves access. */
+  [key: string]: any;
+}
+
+/**
  * Source: src/test/frontendTests.js (IIFE;
  * window.LexeraFrontendTests = api). In-app test runner exposed to
  * Tauri (--run-tests CLI flag), the frontendTests panel webview,
@@ -4550,7 +4585,7 @@ declare global {
     // type-check; the actual public surfaces live in their respective
     // modules' IIFE assignments.
     LexeraTestApi: any;
-    LexeraApi: any;
+    LexeraApi: LexeraApi;
     LexeraCalendarRuntime: LexeraCalendarRuntimeApi;
     LEXERA_VISUAL_THEMES: Array<LexeraVisualTheme>;
     getLexeraCurrentVisualThemeId(): string;
