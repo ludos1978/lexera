@@ -3609,6 +3609,49 @@ interface LexeraPanelDefinitionsApi {
 }
 
 /**
+ * Bag of optional callbacks + flags consumed by
+ * `LexeraSubApp.init(opts)`. Each callback fires when the named
+ * shell-bridged event arrives over Tauri IPC. Boolean flags default
+ * to `true` (subscribe / report); pass `false` to opt out.
+ *
+ * Derived from `function init(opts)` at subAppRuntime.js:412 — every
+ * `opts.X` access there must appear here. `[key: string]: unknown`
+ * preserves the prior `any` tolerance for any caller field this
+ * typedef doesn't yet name, while still narrowing the listed fields.
+ */
+interface LexeraSubAppInitOptions {
+  onTeardown?: () => void;
+  onError?: (err: Error) => void;
+  onReady?: () => void;
+  requestTheme?: boolean;
+  onTheme?: (payload: any) => void;
+  requestCatalog?: boolean;
+  onCatalog?: (payload: any) => void;
+  onActiveBoard?: (boardId: string) => void;
+  onLog?: (payload: any) => void;
+  onDragBegan?: (payload: any) => void;
+  onDragEnter?: (payload: any) => void;
+  onDragOver?: (payload: any) => void;
+  onDragLeave?: (payload: any) => void;
+  onDrop?: (payload: any) => void;
+  onDragEnded?: () => void;
+  /** Map of event name → handler invoked with the event payload.
+   *  Payload type is `any` because every shell-emitted event carries
+   *  a different shape (board-snapshot, log-snapshot, drag-state, …)
+   *  and forcing per-handler narrowing throughout the codebase would
+   *  add noise without value. Each handler knows the shape it expects. */
+  onCustom?: { [eventName: string]: (payload: any) => void };
+  /** `false` to opt out entirely; otherwise a map of chord → action id. */
+  shortcuts?: false | { [chord: string]: string };
+  /** Default `true` — set `false` to skip focus-change reporting. */
+  reportFocus?: boolean;
+  /** Returns a health colour the shell aggregates ('green' / 'amber' / 'red'). */
+  getHealth?: () => string;
+  /** Accept extra forward-compatible keys without typecheck rejection. */
+  [key: string]: unknown;
+}
+
+/**
  * Public surface of `src/views/_shared/subAppRuntime.js` (set via
  * `window.LexeraSubApp = { … }`). Only the methods that consumers
  * actually call are typed — the rest land as `any` until a future
@@ -3616,7 +3659,7 @@ interface LexeraPanelDefinitionsApi {
  * at subAppRuntime.js:758.
  */
 interface LexeraSubAppApi {
-  init(opts: any): void;
+  init(opts: LexeraSubAppInitOptions): void;
   navigate(payload: any): Promise<unknown>;
   /** Broadcasts to sibling-window or global subscribers depending on event kind. */
   broadcast(event: string, payload?: any): Promise<unknown>;
