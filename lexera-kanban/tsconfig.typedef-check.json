@@ -93,6 +93,7 @@
     "src/interaction/scrollBehavior.js",
     "src/hierarchy/hierarchyContract.js",
     "src/render/markdownRenderer.js",
-    "src/plugins/exports/tauriInvoke.js"
+    "src/plugins/exports/tauriInvoke.js",
+    "src/plugins/formats/plaintext.js"
   ]
 }

@@ -4846,6 +4846,13 @@ declare global {
   // Plugin registry IIFE — accessed by bare name via `typeof
   // LexeraPluginRegistry !== 'undefined'` in contentEnhancerRegistry.js.
   const LexeraPluginRegistry: any;
+  // File-format-plugin helper bundle IIFE — accessed by bare name via
+  // `typeof LexeraFileFormatHelpers !== 'undefined'` in every
+  // plugins/formats/*.js registration. Aliased to `H` per format
+  // module; carries the buildPreviewConfig / buildExportConfig /
+  // pageSuffix / makeRenderFile / makeSpecialPreviewEmit /
+  // makeSpecialPreviewEnhance helpers.
+  const LexeraFileFormatHelpers: any;
   // ControlsSettings IIFE — accessed by bare name in scrollBehavior.js
   // via `typeof LexeraControlsSettings !== 'undefined'`. Pinned to
   // the typed `LexeraControlsSettingsApi` so bare-name access carries
