@@ -94,6 +94,14 @@
     "src/hierarchy/hierarchyContract.js",
     "src/render/markdownRenderer.js",
     "src/plugins/exports/tauriInvoke.js",
-    "src/plugins/formats/plaintext.js"
+    "src/plugins/formats/plaintext.js",
+    "src/plugins/formats/tsv.js",
+    "src/plugins/formats/csv.js",
+    "src/plugins/formats/drawio.js",
+    "src/plugins/formats/epub.js",
+    "src/plugins/formats/pptx.js",
+    "src/plugins/formats/xlsx.js",
+    "src/plugins/formats/excalidraw.js",
+    "src/plugins/formats/media.js"
   ]
 }
