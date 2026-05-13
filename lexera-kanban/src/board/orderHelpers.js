@@ -697,6 +697,10 @@ var LexeraOrderHelpers = (function () {
           JSON.stringify({ embeddedMode: !!_dep('embeddedMode') }));
       } catch (_) { /* non-fatal */ }
     }
+    // Message-listener registration is now done at IIFE load time
+    // (see bottom of file). The remaining setup here is the pane-
+    // activation reporting — gated on embeddedMode because non-embedded
+    // contexts have nothing to report to.
     if (!_dep('embeddedMode')) return;
     var lastSentAt = 0;
     function sendActivation() {
@@ -708,13 +712,6 @@ var LexeraOrderHelpers = (function () {
     document.addEventListener('pointerdown', sendActivation, true);
     document.addEventListener('focusin', sendActivation, true);
     window.addEventListener('keydown', sendActivation, true);
-    window.addEventListener('message', handleEmbeddedHierarchyFocusMessage);
-    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
-      try {
-        window.lexeraLog('debug', '[focus-trace] orderHelpers.messageListener.registered ' +
-          JSON.stringify({ at: Date.now() }));
-      } catch (_) { /* non-fatal */ }
-    }
     setTimeout(sendActivation, 0);
   }
 
@@ -3526,4 +3523,29 @@ var LexeraOrderHelpers = (function () {
     markFileInventoryDirty: markFileInventoryDirty
   };
 })();
-(typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {}).LexeraOrderHelpers = LexeraOrderHelpers;
+/** @type {any} */ (typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {}).LexeraOrderHelpers = LexeraOrderHelpers;
+
+// User-report 2026-05-13: workspace-tree clicks dispatch focus-hierarchy-target
+// → shell.focusHierarchyTarget → messageBridge.focusHierarchy → board webview's
+// embeddedBoardBridge dispatches a `lexera-focus-hierarchy-target` MessageEvent
+// on window. The previous wiring registered the listener only inside
+// `setupEmbeddedPaneActivation` which gated on `_dep('embeddedMode')` —
+// turning out to be unreliable (init() may run before embeddedMode is wired,
+// the proxy may resolve to a different instance, etc.). Trace showed the
+// bridge dispatch fires but the handler never runs (no `orderHelpers.handlerEnter`
+// trace). Register the listener once at module load — the handler itself
+// (`handleEmbeddedHierarchyFocusMessage` body) gates on `_dep('embeddedMode')`
+// so non-embedded contexts still no-op. No test seam needed; this is a
+// bootstrap-time side effect.
+if (typeof window !== 'undefined' &&
+    typeof window.addEventListener === 'function' &&
+    LexeraOrderHelpers &&
+    typeof LexeraOrderHelpers.handleEmbeddedHierarchyFocusMessage === 'function') {
+  window.addEventListener('message', LexeraOrderHelpers.handleEmbeddedHierarchyFocusMessage);
+  if (typeof window.lexeraLog === 'function') {
+    try {
+      window.lexeraLog('debug', '[focus-trace] orderHelpers.module-load.listener.registered ' +
+        JSON.stringify({ at: Date.now() }));
+    } catch (_) { /* non-fatal */ }
+  }
+}

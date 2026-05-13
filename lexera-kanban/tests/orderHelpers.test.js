@@ -376,6 +376,31 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
     expect(focusBoardEntity).not.toHaveBeenCalled();
   });
 
+  it('registers handleEmbeddedHierarchyFocusMessage on window.message at module load (bootstrap-time, not init-time)', () => {
+    // Regression fence (user report 2026-05-13: "focussing a card in the
+    // kanban view by selecting it in the workspace still doesnt work").
+    // Trace showed embeddedBoardBridge.dispatch fired a MessageEvent on
+    // window but orderHelpers.handlerEnter never ran — because the
+    // listener was previously only wired inside setupEmbeddedPaneActivation
+    // which gated on `_dep('embeddedMode')`, an init-time race the
+    // bootstrap couldn't survive. Now the listener registers once at
+    // IIFE evaluation; the handler body's own embeddedMode gate keeps
+    // non-embedded contexts no-op.
+    const listeners = [];
+    const fakeWindow = {
+      addEventListener(type, handler) {
+        listeners.push({ type: type, handler: handler });
+      }
+    };
+    loadIIFE('board/orderHelpers.js', 'LexeraOrderHelpers', {
+      window: fakeWindow,
+      document: {}
+    });
+    const messageListeners = listeners.filter((entry) => entry.type === 'message');
+    expect(messageListeners).toHaveLength(1);
+    expect(typeof messageListeners[0].handler).toBe('function');
+  });
+
   it('unfolds any folded ancestors before scrollIntoView so a workspace-tree card click reveals the card', async () => {
     // User report 2026-05-13: focussing a card from the workspace view
     // doesn't work because workspace tree clicks only carry the card id
