@@ -144,9 +144,50 @@ pub fn parse_markdown_with_includes(content: &str, ctx: &ParseContext) -> Kanban
             // inline (if missing / non-markdown extension). Without this
             // merge, parse_slides clobbered any inline cards and the
             // following save dropped them from disk.
+            //
+            // Dedup-on-merge (user report 2026-05-13 "it lists the same
+            // card again and again!"): if main.md AND the include file
+            // both contain a card with the same content (e.g. because a
+            // prior save round-tripped inline cards into the include but
+            // main.md still has the inline copies due to an interrupted
+            // write, OR the user manually copied the same card into
+            // both), the naive append would compound on every save:
+            // first save writes col.cards (inline+slides) into the
+            // include → include now has both copies; next reload reads
+            // the include with both copies AND still finds inline →
+            // col.cards = inline + (inline+slides) = 3x; next save
+            // multiplies again. Dedupe by `kid` when present, fall back
+            // to content match.
             if let Some(include_content) = ctx.include_contents.get(&raw_path) {
-                let mut include_cards = slide_parser::parse_slides(include_content);
-                col.cards.append(&mut include_cards);
+                let include_cards = slide_parser::parse_slides(include_content);
+                let mut seen_kids: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
+                let mut seen_contents: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
+                for existing in col.cards.iter() {
+                    if let Some(kid) = existing.kid.as_ref() {
+                        seen_kids.insert(kid.clone());
+                    }
+                    seen_contents.insert(existing.content.clone());
+                }
+                for incoming in include_cards.into_iter() {
+                    let kid_dup = incoming
+                        .kid
+                        .as_ref()
+                        .map(|k| seen_kids.contains(k))
+                        .unwrap_or(false);
+                    if kid_dup {
+                        continue;
+                    }
+                    if seen_contents.contains(&incoming.content) {
+                        continue;
+                    }
+                    if let Some(kid) = incoming.kid.as_ref() {
+                        seen_kids.insert(kid.clone());
+                    }
+                    seen_contents.insert(incoming.content.clone());
+                    col.cards.push(incoming);
+                }
             } else {
                 log::warn!(
                     "[lexera.parser.include] Include file not found in context: {}",
@@ -1123,6 +1164,77 @@ kanban-plugin: board
             "Inline card under missing include"
         );
         assert!(include_col.cards[1].checked);
+    }
+
+    #[test]
+    fn include_merge_dedupes_by_content_so_round_trip_doesnt_multiply_cards() {
+        // User report 2026-05-13: "it lists the same card again and again!"
+        //
+        // Repro: a card's content appears BOTH inline in main.md AND as
+        // a slide block in the include file (the round-trip state after
+        // a save where main.md wasn't yet purged of inline cards, OR a
+        // user-edited fixture where both files happen to have matching
+        // content). Without dedup, the load merges them and the card
+        // appears 2×; the next save writes both copies into the include
+        // file; the next load sees both copies in the include AND any
+        // remaining inline copies, multiplying again.
+        //
+        // The dedup operates ONLY within a single column's cards. If
+        // multiple BOARDS share the same include file, each board's
+        // column gets its own deduped list — the card still appears
+        // under each board's hierarchy entry as the user expects.
+        //
+        // Dedup key: `kid` when present (persistent identity), fallback
+        // to content match (covers the kid-less case during initial
+        // round-trip before save assigns kids).
+        let board_md = "\
+---
+kanban-plugin: board
+---
+
+# Board
+
+## Stack One
+
+### !!!include(includes/shared.md)!!! #red
+- [ ] Buy milk
+- [ ] Walk dog
+";
+        // Include file ALSO has the same two cards as slide blocks —
+        // the post-round-trip state that compounded on every save.
+        // generate_slides writes card content VERBATIM (no `#` prefix),
+        // so the round-trip format matches inline content exactly.
+        let ctx = ctx_with(
+            "/tmp/board",
+            &[("includes/shared.md", "Buy milk\n\n---\n\nWalk dog\n")],
+        );
+        let board = parse_markdown_with_includes(board_md, &ctx);
+        let include_col = board
+            .all_columns()
+            .into_iter()
+            .find(|c| c.title.contains("!!!include"))
+            .expect("include column present")
+            .clone();
+
+        // Without dedup: 2 inline + 2 slides = 4 (each card appears 2×).
+        // With dedup: 2 — each unique-content card kept once.
+        assert_eq!(
+            include_col.cards.len(),
+            2,
+            "duplicate content across inline + include must collapse to one entry per card; got {} entries: {:?}",
+            include_col.cards.len(),
+            include_col.cards.iter().map(|c| c.content.clone()).collect::<Vec<_>>()
+        );
+        // Inline copies kept (they sort first); include-only cards
+        // would be appended if they had distinct content.
+        assert!(
+            include_col.cards.iter().any(|c| c.content == "Buy milk"),
+            "Buy milk preserved"
+        );
+        assert!(
+            include_col.cards.iter().any(|c| c.content == "Walk dog"),
+            "Walk dog preserved"
+        );
     }
 
     #[test]
