@@ -1076,11 +1076,11 @@
       else if (dragKind === 'stack') focusTarget.stackId = entityId;
       else if (dragKind === 'row') focusTarget.rowId = entityId;
       else return;
-      // User report 2026-05-13: same include-card-shared-by-columns
-      // disambiguation that commit 7a967330 fixed for the burger-menu
-      // path. Mirror of the loop in hierarchy.js direct-click handler
-      // + both files' runEntityAction. See hierarchy.js for the full
-      // rationale.
+      // User report 2026-05-14: harvest stable disambiguators (title +
+      // position) alongside ids — `column.id` can drift between the
+      // workspace tree's cached hierarchy fetch and the kanban's
+      // current DOM after any board edit. Mirror of the loop in
+      // hierarchy.js — see that file for the full rationale.
       var ancestor = node && node.parentElement;
       while (ancestor) {
         if (ancestor.classList && ancestor.classList.contains('tree-entry')) {
@@ -1089,7 +1089,22 @@
             var ancKind = ancNode.getAttribute('data-drag-kind') || '';
             var ancId = ancNode.getAttribute('data-tree-id') || '';
             if (ancKind && ancId) {
-              if (ancKind === 'column' && !focusTarget.columnId) focusTarget.columnId = ancId;
+              if (ancKind === 'column' && !focusTarget.columnId) {
+                focusTarget.columnId = ancId;
+                var ancLabel = ancNode.querySelector(':scope > .tree-label');
+                if (ancLabel) focusTarget.columnTitle = (ancLabel.textContent || '').trim();
+                if (typeof focusTarget.columnIndex !== 'number') {
+                  var parentChildren = ancestor.parentElement;
+                  if (parentChildren) {
+                    var siblings = parentChildren.children;
+                    var ci = 0;
+                    for (var sk = 0; sk < siblings.length; sk++) {
+                      if (siblings[sk] === ancestor) { focusTarget.columnIndex = ci; break; }
+                      if (siblings[sk].classList && siblings[sk].classList.contains('tree-entry')) ci++;
+                    }
+                  }
+                }
+              }
               else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
               else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
             }

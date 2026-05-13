@@ -241,10 +241,32 @@ var LexeraBoardSearch = (function () {
       // card lookup into the matching ancestor's subtree when those
       // hints are present; fall back to the board-wide lookup when
       // they aren't (legacy search-result path, dashboard click, etc.).
+      // User report 2026-05-14: "ITS NOT FOCUSSING THE RIGHT CARDS!"
+      // followed by "we are about 3 stacks left of where the view
+      // should focus!". Same-kid-in-multiple-columns case — the scope
+      // lookup must find the RIGHT column, otherwise the kid query
+      // falls through to board-wide and returns the FIRST DOM match
+      // (the leftmost copy). Try every stable disambiguator the
+      // workspace tree's harvest passes through, in priority order:
+      //   1. column.id — exact backend id (drifts on re-parse though)
+      //   2. data-col-index — position in tree, stable across edits
+      //   3. data-col-title — column header text (not always unique
+      //      but useful when ids drift)
+      //   4. stack.id / row.id — last-resort ancestor anchors
       var scopeEl = null;
       if (target.columnId) {
         scopeEl = getElColumnsContainer().querySelector(
           '.column[data-column-id="' + escapeAttr(String(target.columnId)) + '"]'
+        );
+      }
+      if (!scopeEl && typeof target.columnIndex === 'number') {
+        scopeEl = getElColumnsContainer().querySelector(
+          '.column[data-col-index="' + target.columnIndex + '"]'
+        );
+      }
+      if (!scopeEl && target.columnTitle) {
+        scopeEl = getElColumnsContainer().querySelector(
+          '.column[data-col-title="' + escapeAttr(String(target.columnTitle)) + '"]'
         );
       }
       if (!scopeEl && target.stackId) {

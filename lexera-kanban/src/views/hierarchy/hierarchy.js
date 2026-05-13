@@ -235,13 +235,40 @@
     // ActionRegistry — same path the kanban's own native context
     // menu uses. Board must be open in a tab (we focus first so
     // the kanban frame is alive + has the right active board).
-    LexeraSubApp.navigate({ type: 'focus-hierarchy-target', target: {
-      boardId: boardId,
-      cardId:   dragKind === 'card'   ? entityId : null,
-      columnId: dragKind === 'column' ? entityId : null,
-      stackId:  dragKind === 'stack'  ? entityId : null,
-      rowId:    dragKind === 'row'    ? entityId : null
-    } });
+    //
+    // User report 2026-05-14 with trace `columnId:null`: the focus
+    // precursor was sending bare `{boardId, cardId, columnId:null,
+    // ...}` so the kanban-side scope-by-ancestor lookup had nothing
+    // to scope by → board-wide first match → wrong card copy. Harvest
+    // ancestor ids/title the SAME way the focus action does.
+    var precursorTarget = { boardId: boardId };
+    if (dragKind === 'card')        precursorTarget.cardId   = entityId;
+    else if (dragKind === 'column') precursorTarget.columnId = entityId;
+    else if (dragKind === 'stack')  precursorTarget.stackId  = entityId;
+    else if (dragKind === 'row')    precursorTarget.rowId    = entityId;
+    var precursorAncestor = node && node.parentElement;
+    while (precursorAncestor) {
+      if (precursorAncestor.classList && precursorAncestor.classList.contains('tree-entry')) {
+        var precAncNode = precursorAncestor.querySelector(':scope > .tree-node[data-tree-id]');
+        if (precAncNode) {
+          var precAncKind = precAncNode.getAttribute('data-drag-kind') || '';
+          var precAncId   = precAncNode.getAttribute('data-tree-id')  || '';
+          if (precAncKind && precAncId) {
+            if (precAncKind === 'column' && !precursorTarget.columnId) {
+              precursorTarget.columnId = precAncId;
+              var precAncLabel = precAncNode.querySelector(':scope > .tree-label');
+              if (precAncLabel) precursorTarget.columnTitle = (precAncLabel.textContent || '').trim();
+            } else if (precAncKind === 'stack' && !precursorTarget.stackId) {
+              precursorTarget.stackId = precAncId;
+            } else if (precAncKind === 'row' && !precursorTarget.rowId) {
+              precursorTarget.rowId = precAncId;
+            }
+          }
+        }
+      }
+      precursorAncestor = precursorAncestor.parentElement;
+    }
+    LexeraSubApp.navigate({ type: 'focus-hierarchy-target', target: precursorTarget });
     if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
       window.LexeraSubApp.broadcast('hierarchy-entity-menu-action', {
         boardId: boardId,
@@ -1180,18 +1207,23 @@
       else if (dragKind === 'stack') focusTarget.stackId = entityId;
       else if (dragKind === 'row') focusTarget.rowId = entityId;
       else return;
-      // User report 2026-05-13: "the element focus (mostly cards)
-      // still doesnt focus the item in the kanban view!"  Commit
-      // 7a967330 added the ancestor harvest to `runEntityAction`
-      // (burger-menu path) but this DIRECT-click handler builds its
-      // own focus target without harvesting ancestors. When an
-      // include file is referenced from > 1 column on the same board,
-      // each copy of a card shares the same data-card-kid, so the
-      // kanban-side board-wide selector returns the FIRST DOM match
-      // — wrong column. The fix: walk `.tree-entry` ancestors to
-      // harvest column/stack/row ids so `findBoardEntityElement` can
-      // scope by ancestor. Mirror of the loop in
-      // workspaces.js:click-handler + this file's runEntityAction.
+      // User report 2026-05-14: "ITS NOT FOCUSSING THE RIGHT CARDS!".
+      // Commit 8485d300 added the id-based ancestor harvest, but the
+      // workspace tree's cached hierarchy and the kanban's freshly-
+      // rendered DOM CAN HAVE DRIFTED `column.id` values — the parser
+      // assigns each column a process-wide-incrementing id on every
+      // parse, and any board edit / file-watcher reload between
+      // hierarchy fetch and kanban render rotates them. When ids drift
+      // `findBoardEntityElement`'s scope lookup misses, falls back to
+      // board-wide first match → wrong card.
+      //
+      // Fix: ALSO harvest stable disambiguators alongside ids — column
+      // TITLE (from the tree-node's .tree-label text) and POSITION
+      // (the column's index among its tree-children siblings). The
+      // kanban renders `.column[data-col-title]` + `.column[data-col-index]`
+      // — boardSearch tries them in priority order
+      // (data-column-id → data-col-title → data-col-index → board-wide).
+      // At least one stable identifier will match.
       var ancestor = node && node.parentElement;
       while (ancestor) {
         if (ancestor.classList && ancestor.classList.contains('tree-entry')) {
@@ -1200,7 +1232,20 @@
             var ancKind = ancNode.getAttribute('data-drag-kind') || '';
             var ancId = ancNode.getAttribute('data-tree-id') || '';
             if (ancKind && ancId) {
-              if (ancKind === 'column' && !focusTarget.columnId) focusTarget.columnId = ancId;
+              if (ancKind === 'column' && !focusTarget.columnId) {
+                focusTarget.columnId = ancId;
+                // Title from the .tree-label child (mirrors data-col-title).
+                // DO NOT emit a `columnIndex` from tree position: tree
+                // siblings are STACK-LOCAL but the kanban's data-col-index
+                // is BOARD-FLAT (counts every column across every stack /
+                // row). Passing a stack-local index made
+                // findBoardEntityElement match a column N positions in
+                // from the LEFT edge of the board (the user's "3 stacks
+                // left" symptom 2026-05-14). Title is the stable backup
+                // signal; the kanban renders data-col-title verbatim.
+                var ancLabel = ancNode.querySelector(':scope > .tree-label');
+                if (ancLabel) focusTarget.columnTitle = (ancLabel.textContent || '').trim();
+              }
               else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
               else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
             }
