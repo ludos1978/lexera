@@ -4704,6 +4704,13 @@ declare global {
     LexeraHierarchyContract: LexeraHierarchyContractApi;
     LexeraMarkdownRenderer: LexeraMarkdownRendererApi;
     LexeraExportTauriInvoke: LexeraExportTauriInvokeApi;
+    /** Export-service surface — pluggable export pipeline registered by
+     *  app.js; consumed by plugins/exports/*.js via `window.ExportService`.
+     *  Loose `any` for now since the surface evolves and consumers call
+     *  several distinct methods (register/export/checkStatus/etc); a
+     *  follow-up slice can promote to a concrete interface as the
+     *  caller set stabilises. */
+    ExportService: any;
     /** Backend-discovery transport hook — typed via `LexeraBackendDiscoveryApi`.
      *  tauriInvoke.js reads `window.LexeraBackendDiscovery?.invokeTauri` to
      *  let a shared abstraction layer interpose on the IPC. */
