@@ -193,6 +193,34 @@
       else if (dragKind === 'stack') focusTarget.stackId = entityId;
       else if (dragKind === 'row') focusTarget.rowId = entityId;
       else return;
+      // User report 2026-05-13: "the card focus system STILL doesnt
+      // focus the correct card!!!". Root cause: when the same include
+      // file is referenced from multiple columns of the same board (or
+      // when the same card-kid appears in multiple DOM positions for
+      // any other reason), `findBoardEntityElement` does a board-wide
+      // `data-card-kid=<id>` query that returns the FIRST match — which
+      // can be a different column's copy than the one the user actually
+      // clicked. Fix: harvest ancestor column / stack / row ids from
+      // the tree DOM so the kanban-side lookup can scope to the right
+      // subtree. Each tree-entry's `.tree-node` carries its own
+      // data-drag-kind + data-tree-id; walking up `.tree-entry` parents
+      // collects the chain.
+      var ancestor = node && node.parentElement;
+      while (ancestor) {
+        if (ancestor.classList && ancestor.classList.contains('tree-entry')) {
+          var ancNode = ancestor.querySelector(':scope > .tree-node[data-tree-id]');
+          if (ancNode) {
+            var ancKind = ancNode.getAttribute('data-drag-kind') || '';
+            var ancId = ancNode.getAttribute('data-tree-id') || '';
+            if (ancKind && ancId) {
+              if (ancKind === 'column' && !focusTarget.columnId) focusTarget.columnId = ancId;
+              else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
+              else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
+            }
+          }
+        }
+        ancestor = ancestor.parentElement;
+      }
       LexeraSubApp.navigate({ type: 'focus-hierarchy-target', target: focusTarget });
       return;
     }

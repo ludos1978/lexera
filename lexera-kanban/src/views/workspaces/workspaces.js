@@ -173,6 +173,27 @@
       else if (dragKind === 'stack') focusTarget.stackId = entityId;
       else if (dragKind === 'row') focusTarget.rowId = entityId;
       else return;
+      // User report 2026-05-13: same kid can appear under multiple
+      // columns when an include file is referenced from > 1 column on
+      // the same board. Harvest ancestor column / stack / row ids from
+      // the tree DOM so the kanban-side `findBoardEntityElement` can
+      // scope its lookup. Mirror of the same fix in hierarchy.js.
+      var ancestor = node && node.parentElement;
+      while (ancestor) {
+        if (ancestor.classList && ancestor.classList.contains('tree-entry')) {
+          var ancNode = ancestor.querySelector(':scope > .tree-node[data-tree-id]');
+          if (ancNode) {
+            var ancKind = ancNode.getAttribute('data-drag-kind') || '';
+            var ancId = ancNode.getAttribute('data-tree-id') || '';
+            if (ancKind && ancId) {
+              if (ancKind === 'column' && !focusTarget.columnId) focusTarget.columnId = ancId;
+              else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
+              else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
+            }
+          }
+        }
+        ancestor = ancestor.parentElement;
+      }
       LexeraSubApp.navigate({ type: 'focus-hierarchy-target', target: focusTarget });
       return;
     }

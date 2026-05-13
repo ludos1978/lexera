@@ -34,6 +34,9 @@ const navigationBridgeSrc = readFileSync(
 const orderHelpersSrc = readFileSync(
   resolve(repoRoot, 'src', 'board', 'orderHelpers.js'), 'utf8'
 );
+const boardSearchSrc = readFileSync(
+  resolve(repoRoot, 'src', 'search', 'boardSearch.js'), 'utf8'
+);
 
 function pinSubAppClickWiring(label, src) {
   describe(label + ' — click handler routes non-board tree-nodes to focus-hierarchy-target', () => {
@@ -152,6 +155,55 @@ describe('workspace tree click → focus kanban entity (user contract 2026-05-11
         /function\s+attempt\s*\(\s*n\s*\)\s*\{[\s\S]{0,800}?findBoardEntityElement/
       );
       expect(attemptFnMatch).not.toBeNull();
+    });
+  });
+
+  describe('focus the RIGHT card when the same kid appears in multiple DOM positions', () => {
+    // User report 2026-05-13: "the card focus system STILL doesnt
+    // focus the correct card!!!". Root cause: when an include file is
+    // referenced from > 1 column on the same board, slide cards parsed
+    // independently per column all share the same kid → the board-wide
+    // `data-card-kid=X` selector returns the FIRST match, which may be
+    // a different column's copy than the user clicked. Fix is two-part:
+    // (a) workspace tree click harvests ancestor column / stack / row
+    // ids from the DOM and threads them into the focus target;
+    // (b) boardSearch.findBoardEntityElement uses those hints to scope
+    // the card lookup into the matching ancestor's subtree.
+
+    it('hierarchy.js focus click walks tree-entry ancestors and writes ids onto target', () => {
+      // The harvest loop must climb past every tree-entry and copy the
+      // tree-node's data-tree-id into the matching target field by
+      // data-drag-kind. Ancestors only fill the field if not already
+      // set (the clicked node's own kind got the original assignment).
+      expect(hierarchySrc).toMatch(/while\s*\(\s*ancestor\s*\)/);
+      expect(hierarchySrc).toMatch(/ancestor\.classList\.contains\(['"]tree-entry['"]\)/);
+      expect(hierarchySrc).toMatch(/:scope\s*>\s*\.tree-node\[data-tree-id\]/);
+      expect(hierarchySrc).toMatch(/ancKind\s*===\s*['"]column['"][\s\S]{0,80}!focusTarget\.columnId/);
+      expect(hierarchySrc).toMatch(/ancKind\s*===\s*['"]stack['"][\s\S]{0,80}!focusTarget\.stackId/);
+      expect(hierarchySrc).toMatch(/ancKind\s*===\s*['"]row['"][\s\S]{0,80}!focusTarget\.rowId/);
+    });
+
+    it('workspaces.js mirrors the same ancestor-harvest loop', () => {
+      // workspaces.js + hierarchy.js are independent sub-apps; both
+      // must apply the same fix or the bug repros from one of them.
+      expect(workspacesSrc).toMatch(/while\s*\(\s*ancestor\s*\)/);
+      expect(workspacesSrc).toMatch(/ancestor\.classList\.contains\(['"]tree-entry['"]\)/);
+      expect(workspacesSrc).toMatch(/ancKind\s*===\s*['"]column['"][\s\S]{0,80}!focusTarget\.columnId/);
+    });
+
+    it('boardSearch.findBoardEntityElement scopes card lookup to the ancestor subtree when columnId/stackId/rowId is provided', () => {
+      // Card lookup needs to query within the ancestor's subtree first
+      // — without this scoping, a board-wide querySelector returns the
+      // FIRST `data-card-kid=X` element which may be the wrong column.
+      expect(boardSearchSrc).toMatch(/target\.columnId[\s\S]{0,200}\.column\[data-column-id=/);
+      // searchRoot picks an Element-shaped scope when one exists, else
+      // falls back to the board container. The exact shape can be
+      // `scopeEl ||` OR a type-guard `(scopeEl && typeof ...) ?` —
+      // both are valid; pin the fall-back-when-no-scope behavior.
+      expect(boardSearchSrc).toMatch(/searchRoot[\s\S]{0,200}getElColumnsContainer\(\)/);
+      // The defensive fallback must still query the whole container if
+      // the ancestor wasn't rendered yet (DOM-not-ready race).
+      expect(boardSearchSrc).toMatch(/byKidGlobal\s*=\s*getElColumnsContainer\(\)\.querySelector/);
     });
   });
 });

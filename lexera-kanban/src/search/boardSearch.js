@@ -227,10 +227,55 @@ var LexeraBoardSearch = (function () {
       // (workspace-click + most other callers), fall back to the
       // Loro id (legacy search-result path). Same id-OR-kid fallback
       // `findColumnRefByStablePath` uses for kanban-internal moves.
-      var byCardKid = getElColumnsContainer().querySelector('.card[data-card-kid="' + cardIdStr + '"]');
+      //
+      // User report 2026-05-13: "the card focus system STILL doesnt
+      // focus the correct card!!!". Root cause: when the SAME card-kid
+      // appears in multiple DOM positions on the same board (e.g. an
+      // include file referenced from > 1 column, slide cards parsed
+      // independently per column so each gets the same kid), the
+      // board-wide `querySelector('.card[data-card-kid=X]')` returns
+      // the FIRST match — which can be a different column's copy than
+      // the one the user actually clicked in the workspace tree. The
+      // workspace tree's click handler now harvests ancestor column /
+      // stack / row ids and passes them in `target`. Here we scope the
+      // card lookup into the matching ancestor's subtree when those
+      // hints are present; fall back to the board-wide lookup when
+      // they aren't (legacy search-result path, dashboard click, etc.).
+      var scopeEl = null;
+      if (target.columnId) {
+        scopeEl = getElColumnsContainer().querySelector(
+          '.column[data-column-id="' + escapeAttr(String(target.columnId)) + '"]'
+        );
+      }
+      if (!scopeEl && target.stackId) {
+        scopeEl = getElColumnsContainer().querySelector(
+          '.board-stack[data-stack-id="' + escapeAttr(String(target.stackId)) + '"]'
+        );
+      }
+      if (!scopeEl && target.rowId) {
+        scopeEl = getElColumnsContainer().querySelector(
+          '.board-row[data-row-id="' + escapeAttr(String(target.rowId)) + '"]'
+        );
+      }
+      // Pick a search root that ACTUALLY exposes querySelector. The
+      // ancestor scope might be a non-Element object (e.g. test mocks)
+      // or null when the ancestor wasn't rendered yet; fall back to
+      // the board's column container in either case.
+      var searchRoot = (scopeEl && typeof scopeEl.querySelector === 'function')
+        ? scopeEl
+        : getElColumnsContainer();
+      var byCardKid = searchRoot.querySelector('.card[data-card-kid="' + cardIdStr + '"]');
       if (byCardKid) return byCardKid;
-      var byCardId = getElColumnsContainer().querySelector('.card[data-card-id="' + cardIdStr + '"]');
+      var byCardId = searchRoot.querySelector('.card[data-card-id="' + cardIdStr + '"]');
       if (byCardId) return byCardId;
+      // Defensive fallback: if scoping found nothing (ancestor not yet
+      // rendered, or DOM out of sync), try board-wide before giving up.
+      if (scopeEl && searchRoot !== getElColumnsContainer()) {
+        var byKidGlobal = getElColumnsContainer().querySelector('.card[data-card-kid="' + cardIdStr + '"]');
+        if (byKidGlobal) return byKidGlobal;
+        var byIdGlobal = getElColumnsContainer().querySelector('.card[data-card-id="' + cardIdStr + '"]');
+        if (byIdGlobal) return byIdGlobal;
+      }
     }
 
     if (typeof target.columnIndex === 'number' && typeof target.cardIndex === 'number') {
