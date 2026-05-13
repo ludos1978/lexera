@@ -1283,6 +1283,79 @@ interface LexeraBackendDiscoveryApi {
 }
 
 /**
+ * Source: src/menu/contextMenuBuilders.js (IIFE; both
+ * `window.ContextMenuBuilders` and a bare-name reference). Builds
+ * the Tag / Marp submenu trees consumed by the card / column / stack
+ * / row context menus. Per-scope tag groups persist via
+ * `LexeraSettings.getScoped('tagGroups', scope)`.
+ */
+interface LexeraContextMenuBuildersMenuItem {
+  id: string;
+  label: string;
+  items?: Array<LexeraContextMenuBuildersMenuItem>;
+  separator?: boolean;
+}
+
+/**
+ * Entity scope for tag-group persistence ('card' / 'column' / 'stack'
+ * / 'row'). Each scope keeps its own ordered group list in
+ * `LexeraSettings.getScoped('tagGroups', scope)`.
+ */
+type LexeraContextMenuBuildersScope = 'card' | 'column' | 'stack' | 'row';
+
+interface LexeraContextMenuBuildersDeps {
+  hasTag?: (text: string, tagName: string) => boolean;
+  extractAllTags?: (text: string) => Array<string>;
+  TAG_CATEGORIES?: Record<string, Array<string>>;
+  [key: string]: unknown;
+}
+
+interface LexeraContextMenuBuildersApi {
+  init(deps: LexeraContextMenuBuildersDeps): void;
+  /** Build a submenu listing every tag in `tags`, checkmarked when
+   *  the tag is present in `text`. */
+  buildTagSubmenu(
+    label: string,
+    tags: ReadonlyArray<string>,
+    text: string,
+    idPrefix: string
+  ): LexeraContextMenuBuildersMenuItem;
+  /** Build per-category tag submenus in the configured order. */
+  buildTagCategorySubmenus(
+    text: string,
+    idPrefix: string,
+    order?: ReadonlyArray<string>
+  ): Array<LexeraContextMenuBuildersMenuItem>;
+  /** Build a 'Custom Tags' submenu from tags present in `text` but
+   *  not in any known category. */
+  buildCustomTagsSubmenu(text: string, idPrefix: string): LexeraContextMenuBuildersMenuItem;
+  /** Build a 'value' submenu for a single Marp directive. */
+  buildMarpDirectiveValueSubmenu(
+    headerText: string,
+    directive: string
+  ): LexeraContextMenuBuildersMenuItem;
+  /** Build a 'class scope' submenu for Marp class assignments. */
+  buildMarpClassScopeSubmenu(
+    headerText: string,
+    classScope: string
+  ): LexeraContextMenuBuildersMenuItem;
+  /** Build the full set of Marp-related menu items for a card. */
+  buildMarpMenuItems(headerText: string): Array<LexeraContextMenuBuildersMenuItem>;
+  /** Read the per-scope ordered tag-group list — persisted via
+   *  `LexeraSettings.getScoped('tagGroups', scope)` with a localStorage
+   *  fallback. Falls back to DEFAULT_TAG_GROUPS[scope] when nothing
+   *  is stored. */
+  getTagGroupsForScope(scope: LexeraContextMenuBuildersScope | string): Array<string>;
+  setTagGroupsForScope(
+    scope: LexeraContextMenuBuildersScope | string,
+    groups: ReadonlyArray<string>
+  ): void;
+  readonly TAG_CATEGORY_MENU_ORDER: ReadonlyArray<string>;
+  readonly TAG_CATEGORY_MENU_LABELS: Readonly<Record<string, string>>;
+  readonly DEFAULT_TAG_GROUPS: Readonly<Record<LexeraContextMenuBuildersScope, ReadonlyArray<string>>>;
+}
+
+/**
  * Source: src/keyboard/keyboardNavigation.js (IIFE;
  * window.LexeraKeyboardNavigation = api). Keyboard navigation +
  * selection state for the board: arrow-key card navigation,
@@ -4387,7 +4460,7 @@ declare global {
     LEXERA_VISUAL_THEMES: Array<LexeraVisualTheme>;
     getLexeraCurrentVisualThemeId(): string;
     applyLexeraVisualTheme(themeId: string | null | undefined, options?: Record<string, unknown>): LexeraVisualTheme;
-    ContextMenuBuilders: any;
+    ContextMenuBuilders: LexeraContextMenuBuildersApi;
     LexeraInspectorTestApi: LexeraInspectorTestApi;
     LexeraLogTestApi: LexeraLogTestApi;
     LexeraDebugWindow: LexeraDebugWindowTestApi;
@@ -4549,8 +4622,10 @@ declare global {
   function lexeraLog(level: LexeraLogLevel, message: string): void;
   // Vendor IIFE bound to bare-name access in settingsRuntime.js
   // (loaded via plain <script> tag, doesn't carry `window.` prefix
-  // at every call site).
-  const ContextMenuBuilders: any;
+  // at every call site). Pinned to the typed
+  // `LexeraContextMenuBuildersApi` so bare-name access mirrors
+  // `window.ContextMenuBuilders`.
+  const ContextMenuBuilders: LexeraContextMenuBuildersApi;
   // Settings store IIFE — loaded before sidebarSync.js, accessed by
   // bare name via `typeof LexeraSettings !== 'undefined'`. Pinned to
   // the typed `LexeraSettingsApi` so bare-name access carries the
