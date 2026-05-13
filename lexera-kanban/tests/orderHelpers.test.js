@@ -376,6 +376,65 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
     expect(focusBoardEntity).not.toHaveBeenCalled();
   });
 
+  it('handler still focuses when init has not yet wired the embeddedMode dep, as long as URL has ?embedded=1', async () => {
+    // Regression fence (paired with the IIFE-load listener fix at
+    // 9bea04a3). Even if the listener is registered at module load,
+    // the handler body's internal `embeddedMode` gate could still
+    // silently bail if `_dep('embeddedMode')` hasn't been populated
+    // by OrderHelpers.init yet. Stage 3b: when the dep is missing,
+    // fall back to the URL param the shell uses to identify the
+    // board webview (`?embedded=1` per app.js:636).
+    const focusCard = vi.fn();
+    function makeClassList(classes) {
+      const set = new Set(classes);
+      return {
+        contains(name) { return set.has(name); },
+        add(name) { set.add(name); },
+        remove(name) { set.delete(name); }
+      };
+    }
+    const cardEl = {
+      classList: makeClassList(['card']),
+      scrollIntoView: vi.fn(),
+      parentNode: null
+    };
+    const documentMock = { getElementById() { return { querySelector: () => null }; } };
+    const EmbeddedOrderHelpers = loadIIFE('board/orderHelpers.js', 'LexeraOrderHelpers', {
+      window: {
+        // No `LexeraSubApp` / `__TAURI__` — same shape as a board webview
+        // mid-bootstrap before deps wire up.
+        location: { search: '?embedded=1&pane=test-pane' }
+      },
+      document: documentMock
+    });
+    // init() with NO embeddedMode key — simulates the init-time race
+    // where the dep is missing.
+    EmbeddedOrderHelpers.init({
+      // No embeddedMode property — falsy via _dep.
+      getBoardNavigationApi() {
+        return {
+          navigateToHierarchyTarget(target, options) {
+            return Promise.resolve(options.focusHierarchyTargetLocally(target));
+          }
+        };
+      },
+      getActiveBoardData() { return { id: 'board-1' }; },
+      focusCard,
+      findBoardEntityElement() { return cardEl; }
+    });
+
+    // Drive the handler directly with a focus message — the URL-fallback
+    // gate should let it through even though the dep is undefined.
+    EmbeddedOrderHelpers.handleEmbeddedHierarchyFocusMessage({
+      data: {
+        type: 'lexera-focus-hierarchy-target',
+        target: { boardId: 'board-1', cardId: 'kid-abc' }
+      }
+    });
+
+    await vi.waitFor(() => expect(focusCard).toHaveBeenCalledWith(cardEl));
+  });
+
   it('registers handleEmbeddedHierarchyFocusMessage on window.message at module load (bootstrap-time, not init-time)', () => {
     // Regression fence (user report 2026-05-13: "focussing a card in the
     // kanban view by selecting it in the workspace still doesnt work").

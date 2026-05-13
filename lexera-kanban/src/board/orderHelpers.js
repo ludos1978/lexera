@@ -857,6 +857,27 @@ var LexeraOrderHelpers = (function () {
     });
   }
 
+  // URL-param fallback for the embeddedMode gate. The dep-resolution
+  // path (`_dep('embeddedMode')`) reads from `_deps` which is
+  // populated by `OrderHelpers.init(...)` — and that init runs
+  // lazily through the app.js Proxy. If a message arrives before
+  // init has been resolved (the very race that bit the listener
+  // wire-up in commit 9bea04a3), the dep returns undefined and the
+  // handler silently bails. The URL is the canonical source app.js
+  // itself reads at line 636 (`urlParams.get('embedded') === '1'`)
+  // — match it here as a fallback so the handler stays correct even
+  // when the dep is mid-init.
+  function isEmbeddedModeActive() {
+    if (_dep('embeddedMode')) return true;
+    try {
+      if (typeof window !== 'undefined' && window.location && window.location.search) {
+        var params = new URLSearchParams(window.location.search);
+        return params.get('embedded') === '1';
+      }
+    } catch (_) { /* non-fatal — return false */ }
+    return false;
+  }
+
   function handleEmbeddedHierarchyFocusMessage(event) {
     var data = event && event.data;
     // Diagnostic — chain trace 2026-05-11 stopped here without
@@ -879,6 +900,7 @@ var LexeraOrderHelpers = (function () {
         window.lexeraLog('debug', '[focus-trace] orderHelpers.handlerEnter ' +
           JSON.stringify({
             embeddedMode: !!_dep('embeddedMode'),
+            embeddedModeViaUrl: isEmbeddedModeActive(),
             type: t,
             ours: isOurs,
             hasTarget: !!(data && data.target),
@@ -887,7 +909,7 @@ var LexeraOrderHelpers = (function () {
           }));
       } catch (_) { /* non-fatal */ }
     }
-    if (!_dep('embeddedMode')) return;
+    if (!isEmbeddedModeActive()) return;
     if (!data || !data.type) return;
     if (data.type === 'lexera-workspace-catalog') {
       if (typeof _deps.setBoards === 'function') {
