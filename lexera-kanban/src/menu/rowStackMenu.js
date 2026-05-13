@@ -1177,7 +1177,14 @@ var LexeraRowStackMenu = (function () {
     if (nextTitle === stack.title) return;
     deps.pushUndo();
     stack.title = nextTitle;
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    // Soft-delete/archive/park: parent row stays visible — only this stack
+    // gets filtered out. Targeting the row avoids the full-board renderColumns()
+    // path. Dashboard counts change (hidden cards drop from stats), so force a
+    // dashboard refresh that the 'row' target alone would not schedule.
+    await deps.persistBoardMutation({
+      targets: [{ type: 'row', rowIndex: displayRowIdx }, { type: 'sidebar' }],
+      forceDashboardRefresh: true
+    });
   }
 
   async function deleteStack(rowIdx, stackIdx) {

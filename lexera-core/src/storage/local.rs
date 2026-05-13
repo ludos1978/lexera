@@ -1080,14 +1080,17 @@ impl LocalStorage {
                 // never be derived from current disk state, or we'd refuse to
                 // write a brand-new include the user just added by editing the
                 // column title.
-                let missing = match column.include_source.as_ref() {
-                    Some(prior) if prior.raw_path == raw_path => prior.missing,
-                    _ => false,
+                let (missing, baseline_kids) = match column.include_source.as_ref() {
+                    Some(prior) if prior.raw_path == raw_path => {
+                        (prior.missing, prior.baseline_kids.clone())
+                    }
+                    _ => (false, None),
                 };
                 column.include_source = Some(IncludeSource {
                     raw_path,
                     resolved_path,
                     missing,
+                    baseline_kids,
                 });
             } else {
                 column.include_source = None;

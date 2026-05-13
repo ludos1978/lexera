@@ -54,6 +54,18 @@ pub struct IncludeSource {
     /// True when the include file could not be read (missing, permission error, etc.)
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub missing: bool,
+    /// Kid sequence of the cards last loaded from this include — the "clean
+    /// baseline" the user-visible cards started from. Used by the include-
+    /// reload conflict-detection path to distinguish two cases when the
+    /// include changes on disk:
+    ///   (a) `current_kids == baseline_kids` → user has no unsaved edits
+    ///       to these cards → safe to silently apply the new disk content
+    ///   (b) `current_kids != baseline_kids` → user has unsaved in-memory
+    ///       edits → emit a conflict event so the frontend can prompt
+    /// Skipped during serialization (in-memory only); populated after each
+    /// load / save / reload-apply.
+    #[serde(skip)]
+    pub baseline_kids: Option<Vec<String>>,
 }
 
 impl IncludeSource {
@@ -62,7 +74,24 @@ impl IncludeSource {
             raw_path,
             resolved_path,
             missing: false,
+            baseline_kids: None,
         }
+    }
+
+    /// Helper: derive the kid sequence from a slice of cards. Cards without
+    /// a `kid` contribute their position so two identical-content cards in
+    /// different positions don't accidentally compare equal. Used by the
+    /// reload conflict check.
+    pub fn cards_kid_signature(cards: &[KanbanCard]) -> Vec<String> {
+        cards
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                c.kid
+                    .clone()
+                    .unwrap_or_else(|| format!("@{}", i))
+            })
+            .collect()
     }
 
     /// Whether cards for this column should round-trip into the include file.

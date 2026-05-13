@@ -28,14 +28,17 @@ fn sync_include_sources_for_render(
     for column in board.all_columns_mut() {
         if let Some(raw_path) = syntax::extract_include_path(&column.title) {
             let resolved_path = resolver::resolve_include_path(&raw_path, board_dir);
-            let missing = match column.include_source.as_ref() {
-                Some(prior) if prior.raw_path == raw_path => prior.missing,
-                _ => false,
+            let (missing, baseline_kids) = match column.include_source.as_ref() {
+                Some(prior) if prior.raw_path == raw_path => {
+                    (prior.missing, prior.baseline_kids.clone())
+                }
+                _ => (false, None),
             };
             column.include_source = Some(IncludeSource {
                 raw_path,
                 resolved_path,
                 missing,
+                baseline_kids,
             });
         }
 

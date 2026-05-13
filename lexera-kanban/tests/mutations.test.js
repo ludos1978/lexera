@@ -1579,6 +1579,18 @@ describe('Stack mutations', () => {
     expect(stack.title).toContain('Active');
   });
 
+  it('setStackHiddenTag uses row-targeted persist (not full board)', async () => {
+    // Soft-delete/archive/park on a stack only filters that stack from its
+    // row — the parent row is still visible. Targeting the row avoids the
+    // full-board renderColumns() in refreshTargetedElements (see
+    // app.js:5948 full-render warning).
+    M.resetRefreshTracking();
+    await M.setStackHiddenTag(0, 0, '#hidden-internal-deleted');
+    var targets = M.getLastPersistTargets();
+    expect(targets).toEqual(['row', 'sidebar']);
+    expect(targets).not.toContain('board');
+  });
+
   it('moveStack within same row reorders correctly', async () => {
     // First add a second visible stack to row-main
     await M.addStackToRow(0);

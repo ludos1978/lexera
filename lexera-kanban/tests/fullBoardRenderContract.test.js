@@ -18,18 +18,25 @@ describe('full-board-render contract', () => {
   // (b) demote one of these to a targeted refresh (correctness bug —
   // hidden display indices and class derivations would not refresh).
 
-  it('row/stack hidden-tag mutations request a full board render', () => {
-    // Hiding a row or stack changes which display rows/stacks are
-    // visible at all — display indices for everything below shift, so a
-    // per-row or per-stack target would write to the wrong slot. The
-    // comment in setRowHiddenTag explicitly calls this out.
+  it('row hidden-tag mutation requests a full board render', () => {
+    // Hiding a row changes which display rows are visible at all — display
+    // indices for every row below shift, so a per-row target would write
+    // to the wrong slot. The comment in setRowHiddenTag explicitly calls
+    // this out.
     const setRowHiddenTagBlock = rowStackMenuJs.match(/async function setRowHiddenTag[\s\S]*?\n  \}/);
     expect(setRowHiddenTagBlock, 'setRowHiddenTag function must exist in rowStackMenu.js').toBeTruthy();
     expect(setRowHiddenTagBlock[0]).toMatch(/persistBoardMutation\(\s*\{\s*targets:\s*\[\s*\{\s*type:\s*['"]board['"]\s*\}\s*,\s*\{\s*type:\s*['"]sidebar['"]\s*\}/);
+  });
 
+  it('stack hidden-tag mutation uses a row-targeted refresh (not full board)', () => {
+    // Hiding a stack does NOT remove the parent row — the row's
+    // displayRowIdx stays stable, so targeting the row is correct and
+    // avoids the full-board renderColumns() path. Soft-delete / archive /
+    // park on a stack all share this code path.
     const setStackHiddenTagBlock = rowStackMenuJs.match(/async function setStackHiddenTag[\s\S]*?\n  \}/);
     expect(setStackHiddenTagBlock, 'setStackHiddenTag function must exist in rowStackMenu.js').toBeTruthy();
-    expect(setStackHiddenTagBlock[0]).toMatch(/persistBoardMutation\(\s*\{\s*targets:\s*\[\s*\{\s*type:\s*['"]board['"]\s*\}\s*,\s*\{\s*type:\s*['"]sidebar['"]\s*\}/);
+    expect(setStackHiddenTagBlock[0]).toMatch(/persistBoardMutation\(\s*\{[\s\S]*targets:\s*\[\s*\{\s*type:\s*['"]row['"]/);
+    expect(setStackHiddenTagBlock[0]).not.toMatch(/targets:\s*\[\s*\{\s*type:\s*['"]board['"]/);
   });
 
   it('board frontmatter changes request a full board render', () => {
