@@ -131,16 +131,19 @@ fn board_identity_stats(a: &KanbanBoard, b: &KanbanBoard) -> (usize, usize, usiz
     (a_ids.len(), b_ids.len(), overlap)
 }
 
-/// Typed error for live-sync session operations. Starts narrow with the
-/// version-vector encode failure path (`oplog_vv_result` returns
-/// `io::Result<_>`); future slices can extend it with variants for
-/// `apply_board` / `import_updates` / etc. without rewriting call sites.
-/// Display passes through the wrapped error's Display so `format!()` /
-/// `log!()` output remains byte-identical to the prior `Result<_, String>`.
+/// Typed error for live-sync session operations. All variants Display
+/// passthrough the wrapped error's Display so `format!("{}", err)` /
+/// `log!()` output remains byte-identical to the prior `Result<_, String>`
+/// API. Variants are kept matchable so future call-site refactors can
+/// pattern-match on transport / CRDT / serialize failures.
 #[derive(Debug, thiserror::Error)]
 pub enum LiveSyncError {
+    /// Any CRDT-bridge operation that returns `io::Result<_>` — covers
+    /// `CrdtStore::load`, `from_board`, `to_board_result`,
+    /// `oplog_vv_result`, `set_peer_id`. `#[from]` lets `?` auto-convert
+    /// at every call site without `.map_err(|e| e.to_string())` boilerplate.
     #[error("{0}")]
-    CrdtVersionVector(#[from] std::io::Error),
+    Crdt(#[from] std::io::Error),
 }
 
 // Keeps every existing `Result<_, String>` outer signature working
@@ -171,7 +174,7 @@ pub fn open_session(
     board: KanbanBoard,
     board_dir: PathBuf,
     snapshot: Option<Vec<u8>>,
-) -> Result<LiveSessionSnapshot, String> {
+) -> Result<LiveSessionSnapshot, LiveSyncError> {
     log::info!(
         target: "lexera.live_sync",
         "Opening live sync session (has_snapshot={})",
@@ -182,7 +185,7 @@ pub fn open_session(
     let session_id = session_uuid.to_string();
     let normalized_ids = card_id_map(&normalized);
     let (mut crdt, current_board) = if let Some(bytes) = snapshot {
-        let loaded = CrdtStore::load(&bytes).map_err(|e| e.to_string())?;
+        let loaded = CrdtStore::load(&bytes)?;
         match loaded.to_board_result() {
             Ok(snapshot_from_crdt) => {
                 let mut snapshot_board = normalize_board(snapshot_from_crdt, &board_dir);
@@ -212,7 +215,7 @@ pub fn open_session(
                         "Snapshot diverged from board markdown during session open; rebuilding session CRDT"
                     );
                     (
-                        CrdtStore::from_board(&normalized).map_err(|e| e.to_string())?,
+                        CrdtStore::from_board(&normalized)?,
                         normalized.clone(),
                     )
                 }
@@ -224,19 +227,18 @@ pub fn open_session(
                     error
                 );
                 (
-                    CrdtStore::from_board(&normalized).map_err(|e| e.to_string())?,
+                    CrdtStore::from_board(&normalized)?,
                     normalized.clone(),
                 )
             }
         }
     } else {
         (
-            CrdtStore::from_board(&normalized).map_err(|e| e.to_string())?,
+            CrdtStore::from_board(&normalized)?,
             normalized.clone(),
         )
     };
-    crdt.set_peer_id(session_peer_id(&session_uuid))
-        .map_err(|e| e.to_string())?;
+    crdt.set_peer_id(session_peer_id(&session_uuid))?;
     crdt.set_metadata(
         normalized.yaml_header.clone(),
         normalized.kanban_footer.clone(),
@@ -251,7 +253,7 @@ pub fn open_session(
                 "[open_session] FAILED to read CRDT version vector after session open; rebuilding session CRDT: {}",
                 error
             );
-            crdt = CrdtStore::from_board(&current_board).map_err(|e| e.to_string())?;
+            crdt = CrdtStore::from_board(&current_board)?;
             encode_vv(&crdt)?
         }
     };
@@ -593,17 +595,24 @@ mod tests {
 
     #[test]
     fn live_sync_error_display_passes_through_io_error() {
-        // The previous `.map_err(|e| e.to_string())` produced the io::Error
-        // Display verbatim. The typed enum's Display must do the same so
-        // the four match-callers (open_session / apply_board / import_updates
-        // / etc.) emit identical log text via `"... {}"` formatting.
+        // The previous `.map_err(|e| e.to_string())` at every CRDT call
+        // produced the io::Error Display verbatim. The typed enum's
+        // Display must do the same so all 7 ?-converted call sites in
+        // open_session (CrdtStore::load / from_board ×3 / set_peer_id /
+        // encode_vv ×2) emit identical text upstream.
         let io_err = std::io::Error::new(std::io::ErrorKind::Other, "vv read failed");
         let typed: LiveSyncError = io_err.into();
         assert_eq!(typed.to_string(), "vv read failed");
 
-        // From<LiveSyncError> for String preserves upstream `?` boundary.
+        // From<LiveSyncError> for String preserves upstream `?` boundary
+        // for the api::board callers that still return Result<_, String>.
         let s: String = typed.into();
         assert_eq!(s, "vv read failed");
+
+        // Variant is matchable for future callers wanting to distinguish
+        // CRDT failures from (eventual) transport / serialize failures.
+        let again = LiveSyncError::Crdt(std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert!(matches!(again, LiveSyncError::Crdt(_)));
     }
 
     #[test]
