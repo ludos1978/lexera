@@ -980,6 +980,67 @@ interface LexeraCanvasModeApi {
 }
 
 /**
+ * Source: src/backendDiscovery.js (IIFE;
+ * window.LexeraBackendDiscovery = api). Backend-discovery transport
+ * hook — probes `/status` against a preferred URL, Tauri-supplied URL,
+ * and a port-scan fallback. The shared `tauriInvoke.js` reads
+ * `LexeraBackendDiscovery?.invokeTauri` to let a shim interpose on IPC.
+ */
+interface LexeraBackendDiscoveryStatusPayload {
+  status: string;
+  port?: number;
+  [key: string]: unknown;
+}
+
+interface LexeraBackendDiscoveryProbeResult {
+  baseUrl: string;
+  status: LexeraBackendDiscoveryStatusPayload;
+}
+
+interface LexeraBackendDiscoveryOptions {
+  preferredUrl?: string;
+  /** Alias for preferredUrl; both supported for back-compat. */
+  url?: string;
+  /** Per-probe HTTP timeout in ms. Default 1200. */
+  timeoutMs?: number;
+  /** Override the default port-scan list. */
+  ports?: ReadonlyArray<number>;
+  /** Default `true`. Set `false` to skip the Tauri `get_backend_url`
+   *  probe and go straight to the port scan. */
+  useTauri?: boolean;
+}
+
+interface LexeraBackendDiscoveryApi {
+  /** Built-in list of ports to scan as fallback when neither the
+   *  preferred URL nor Tauri returns a hit. */
+  DEFAULT_PORT_CANDIDATES: ReadonlyArray<number>;
+  canUseTauriInvoke(): boolean;
+  /** Returns the Promise from whichever Tauri invoke surface is live
+   *  (`__TAURI_INTERNALS__.invoke` or `__TAURI__.core.invoke`).
+   *  Rejects with `'Tauri invoke unavailable: <cmd>'` when neither is. */
+  invokeTauri(command: string, args?: Record<string, unknown>): Promise<unknown>;
+  fetchWithTimeout(
+    url: string,
+    options?: RequestInit,
+    timeoutMs?: number
+  ): Promise<Response>;
+  /** Normalize a URL to `<protocol>//<hostname>(:<port>)` form.
+   *  Returns `''` for invalid input. */
+  normalizeBackendUrl(url: string | null | undefined): string;
+  /** Generates URL variants by swapping localhost ↔ 127.0.0.1
+   *  (so probing succeeds even when the user's preferred form
+   *  doesn't match the OS's bind). Returns `[]` for invalid input. */
+  buildBackendUrlVariants(url: string | null | undefined): Array<string>;
+  probeBackendCandidate(
+    url: string,
+    timeoutMs?: number
+  ): Promise<LexeraBackendDiscoveryProbeResult | null>;
+  /** Walks preferredUrl → Tauri get_backend_url → port-scan. Returns
+   *  the discovered base URL or `null` if nothing answered. */
+  discoverBackend(options?: LexeraBackendDiscoveryOptions): Promise<string | null>;
+}
+
+/**
  * Source: src/interaction/controlsDispatcher.js (IIFE;
  * window.LexeraControlsDispatcher = api). Central event dispatcher for
  * scroll / drag / mouse interactions on the board. Modules (canvasPan,
@@ -4004,11 +4065,10 @@ declare global {
     LexeraHierarchyContract: LexeraHierarchyContractApi;
     LexeraMarkdownRenderer: LexeraMarkdownRendererApi;
     LexeraExportTauriInvoke: LexeraExportTauriInvokeApi;
-    // Backend-discovery transport hook — declared as `any` here
-    // because the discovery module itself isn't in the typedef gate
-    // yet. tauriInvoke.js reads `window.LexeraBackendDiscovery?.invokeTauri`
-    // to let a shared abstraction layer interpose on the IPC.
-    LexeraBackendDiscovery: any;
+    /** Backend-discovery transport hook — typed via `LexeraBackendDiscoveryApi`.
+     *  tauriInvoke.js reads `window.LexeraBackendDiscovery?.invokeTauri` to
+     *  let a shared abstraction layer interpose on the IPC. */
+    LexeraBackendDiscovery: LexeraBackendDiscoveryApi;
     __TAURI_INTERNALS__: any;
     LexeraTagColors: any;
     tagColors: any;
