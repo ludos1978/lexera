@@ -105,6 +105,7 @@
     "src/plugins/formats/media.js",
     "src/plugins/exports/filterExport.js",
     "src/plugins/exports/marpExport.js",
-    "src/plugins/exports/pandocExport.js"
+    "src/plugins/exports/pandocExport.js",
+    "src/plugins/diagrams/plantuml.js"
   ]
 }

@@ -2682,11 +2682,32 @@ interface LexeraViewStateApi {
 interface LexeraDiagramPlugin {
   id: string;
   languages: Array<string>;
-  render(elementId: string, code: string, boardId?: string | null): Promise<string>;
+  /** Returns the rendered HTML / SVG string for `code`. Plantuml's
+   *  implementation delegates to `requestRenderedPlantUmlSvg` which
+   *  is currently typed as `unknown`-returning — declared here as
+   *  `unknown | Promise<string>` to accommodate that until the
+   *  delegate is tightened. */
+  render(elementId: string, code: string, boardId?: string | null): unknown | Promise<string>;
   isReady(): boolean;
   init(): Promise<unknown>;
   kind?: string;
-  metadata?: { id: string; name: string; version: string };
+  metadata?: {
+    id: string;
+    name: string;
+    version: string;
+    /** Optional list of capability ids the plugin requires (e.g.
+     *  `['plantuml-backend']` for the PlantUML plugin). */
+    requires?: Array<string>;
+    [key: string]: unknown;
+  };
+  /** Optional placeholder HTML for unrendered code blocks. */
+  placeholder?: (elementId: string, code: string) => string;
+  /** Optional menu items for the plugin's context menu. */
+  menuItems?: () => Array<{ id: string; label: string }>;
+  /** Optional handler for menu actions. */
+  handleMenuAction?: (action: string, container: Element | HTMLElement) => void;
+  /** Internal ready flag — used by `isReady` impls. */
+  _ready?: boolean;
 }
 
 interface LexeraDiagramRegistryApi {
