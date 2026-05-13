@@ -4879,6 +4879,13 @@ declare global {
      *  follow-up slice can promote to a concrete interface as the
      *  caller set stabilises. */
     ExportService: any;
+    /** Vendored Excalidraw bundle requires an absolute URL pointing at
+     *  its asset folder. `excalidraw-overlay-bootstrap.js` sets this
+     *  global early in boot via `new URL('./vendor/excalidraw/...',
+     *  window.location.href).toString()` so the Excalidraw IIFE can
+     *  pick it up before its own scripts run. Pure string — no runtime
+     *  API surface to type. */
+    EXCALIDRAW_ASSET_PATH: string;
     /** Backend-discovery transport hook — typed via `LexeraBackendDiscoveryApi`.
      *  tauriInvoke.js reads `window.LexeraBackendDiscovery?.invokeTauri` to
      *  let a shared abstraction layer interpose on the IPC. */

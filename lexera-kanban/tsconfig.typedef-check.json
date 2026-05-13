@@ -118,6 +118,7 @@
     "src/plugins/exports/marpExport.js",
     "src/plugins/exports/pandocExport.js",
     "src/plugins/diagrams/plantuml.js",
-    "src/plugins/diagrams/mermaid.js"
+    "src/plugins/diagrams/mermaid.js",
+    "src/excalidraw-overlay-bootstrap.js"
   ]
 }
