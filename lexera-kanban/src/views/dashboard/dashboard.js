@@ -159,12 +159,25 @@
     if (!boardId) return null;
     var columnIndex = readNumericAttr(node, 'data-dashboard-column-index');
     if (columnIndex == null) columnIndex = readNumericAttr(node, 'data-dashboard-col-index');
+    // User report 2026-05-14: when the backend reports a stable
+    // `card_kid` (8-char hex), prefer it over the Loro container id
+    // for cardId. Loro ids drift across CRDT regenerations (file-watcher
+    // reload, save round-trip) so a stale dashboard cache + a fresh
+    // kanban DOM see different Loro ids for the same card. The kid is
+    // stable across re-parses; the kanban's `data-card-kid` lookup
+    // matches it directly.
+    var cardKid = (node.getAttribute('data-dashboard-card-kid') || '').trim() || null;
+    var cardLoroId = (node.getAttribute('data-dashboard-card-id') || '').trim() || null;
     return {
       boardId: boardId,
       rowId: (node.getAttribute('data-dashboard-row-id') || '').trim() || null,
       stackId: (node.getAttribute('data-dashboard-stack-id') || '').trim() || null,
       columnId: (node.getAttribute('data-dashboard-column-id') || '').trim() || null,
-      cardId: (node.getAttribute('data-dashboard-card-id') || '').trim() || null,
+      // Prefer kid as the primary cardId — findBoardEntityElement tries
+      // both data-card-kid and data-card-id, so sending the kid here
+      // hits the stable attribute first.
+      cardId: cardKid || cardLoroId,
+      cardKid: cardKid,
       columnIndex: columnIndex,
       rowIndex: readNumericAttr(node, 'data-dashboard-row-index'),
       stackIndex: readNumericAttr(node, 'data-dashboard-stack-index'),

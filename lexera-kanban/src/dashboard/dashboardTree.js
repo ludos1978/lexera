@@ -172,6 +172,11 @@
             'data-dashboard-target': 'result',
             'data-dashboard-board-id': boardId || null,
             'data-dashboard-card-id': item.cardId ? String(item.cardId) : null,
+            // Stable card identifier (8-char hex). Backend dashboard
+            // result now reports this alongside the Loro container id
+            // so the kanban-side lookup can prefer the stable kid over
+            // the drifty Loro id. See `dashboard.rs::UpcomingItem`.
+            'data-dashboard-card-kid': item.cardKid ? String(item.cardKid) : null,
             // Stable-id columns / stacks / rows — user report 2026-05-14:
             // these were missing, so dashboard nav targets carried only
             // position-based hints (columnIndex etc.), and when those

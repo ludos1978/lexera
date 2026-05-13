@@ -39,6 +39,16 @@ pub struct UpcomingItem {
     pub column_index: usize,
     pub column_title: String,
     pub card_index: usize,
+    /// User report 2026-05-14: dashboard clicks landed on the wrong card
+    /// because `card_id` carries the Loro container id which DRIFTS
+    /// across CRDT regenerations (file-watcher reload, save round-trip).
+    /// The kanban's `data-card-kid` attribute carries the persistent
+    /// 8-char hex kid; the dashboard now reports BOTH so the frontend's
+    /// findBoardEntityElement can prefer the stable kid lookup over the
+    /// drifty Loro-id lookup. `kid` is None for cards that haven't been
+    /// kid-stamped yet (parser-fresh slide-include cards before first save).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub card_kid: Option<String>,
     pub card_id: String,
     /// First non-empty line of the card content.
     pub card_title: String,
@@ -388,6 +398,7 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
                                     column_title: col_title.clone(),
                                     card_index: card_idx,
                                     card_id: card.id.clone(),
+                                    card_kid: card.kid.clone(),
                                     card_title: card_title.clone(),
                                     temporal_tag: tag.clone(),
                                     date,
@@ -414,6 +425,7 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
                                         column_title: col_title.clone(),
                                         card_index: card_idx,
                                         card_id: card.id.clone(),
+                                    card_kid: card.kid.clone(),
                                         card_title: card_title.clone(),
                                         temporal_tag: tag.clone(),
                                         date: adj_date,
@@ -445,6 +457,7 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
                                 column_title: col_title.clone(),
                                 card_index: card_idx,
                                 card_id: card.id.clone(),
+                                card_kid: card.kid.clone(),
                                 card_title: card_title.clone(),
                                 temporal_tag: tag.clone(),
                                 date,
