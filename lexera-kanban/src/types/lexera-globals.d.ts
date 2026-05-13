@@ -1283,6 +1283,91 @@ interface LexeraBackendDiscoveryApi {
 }
 
 /**
+ * Source: src/keyboard/keyboardNavigation.js (IIFE;
+ * window.LexeraKeyboardNavigation = api). Keyboard navigation +
+ * selection state for the board: arrow-key card navigation,
+ * shift-range / cmd-toggle selection, and a transient "focus
+ * highlight" on the row/stack/column/card under the cursor for
+ * 1.6s after a context-menu action.
+ */
+type LexeraKeyboardEntityScope = 'card' | 'column' | 'stack' | 'row';
+
+/**
+ * Description of the focused/targeted entity. Built from DOM
+ * `data-{row,stack,column,card}-id` attributes + index attributes
+ * — exactly enough to re-resolve the entity in the latest board
+ * state after a save/reload cycle.
+ */
+interface LexeraKeyboardFocusTarget {
+  scope: LexeraKeyboardEntityScope;
+  rowId?: string;
+  stackId?: string;
+  columnId?: string;
+  cardId?: string;
+  rowIndex?: number;
+  stackIndex?: number;
+  colLocalIndex?: number;
+  columnIndex?: number;
+  cardIndex?: number;
+}
+
+/**
+ * Resolved entity context — pointers into the live board data
+ * matching the IDs in a focus target. Returned by
+ * `resolveFocusedBoardEntityContext`. Entity objects are typed as
+ * `unknown` because the board's row/stack/column/card shapes live
+ * in app.js types that aren't yet declared here.
+ */
+interface LexeraKeyboardEntityContext {
+  row?: unknown;
+  rowIndex?: number;
+  stack?: unknown;
+  stackIndex?: number;
+  column?: unknown;
+  colLocalIndex?: number;
+  card?: unknown;
+  cardIndex?: number;
+}
+
+interface LexeraKeyboardNavigationApi {
+  /** Wire host accessors. Deps shape is opaque (impl reads many
+   *  helpers like getActiveBoardData / setActiveCardId / etc). */
+  init(deps: Record<string, unknown>): void;
+  /** Handle a keydown event. Returns `true` when the event was
+   *  consumed (the caller should `preventDefault`). */
+  handleKeyNavigation(e: KeyboardEvent): boolean;
+  /** Navigate the focused card by one cell in the given direction.
+   *  `key` is one of 'ArrowUp'/'ArrowDown'/'ArrowLeft'/'ArrowRight'. */
+  navigateCards(key: string): void;
+  focusCard(cardEl: HTMLElement | null): void;
+  unfocusCard(): void;
+  selectCard(cardEl: HTMLElement): void;
+  toggleCardSelection(cardEl: HTMLElement): void;
+  /** Shift-click range select between the previous anchor and
+   *  `cardEl` in the flattened all-cards order. */
+  selectCardRange(cardEl: HTMLElement): void;
+  clearSelection(): void;
+  getSelectedCardEls(): Array<HTMLElement>;
+  /** Derive a focus-target record from a DOM element by walking
+   *  closest('.board-row') / .board-stack / .column / .card and
+   *  reading data-*-id / data-*-index attributes. Returns null
+   *  when the element isn't in a recognised scope. */
+  buildBoardEntityFocusTarget(el: Element | null | undefined): LexeraKeyboardFocusTarget | null;
+  /** Paint a transient 1.6s 'board-focus-highlight' on `el`. Returns
+   *  `true` when applied, `false` when `el` was null. */
+  focusBoardEntity(el: HTMLElement | null | undefined): boolean;
+  getFocusedCardEl(): HTMLElement | null;
+  /** Returns a defensive copy of the active board-entity focus target. */
+  getFocusedBoardEntityTarget(): LexeraKeyboardFocusTarget | null;
+  /** Resolve a focus-target's ids against the live board data and
+   *  return the matching row / stack / column / card + their indices,
+   *  or null when nothing matches (e.g. the entity was deleted). */
+  resolveFocusedBoardEntityContext(
+    rawTarget: LexeraKeyboardFocusTarget | unknown
+  ): LexeraKeyboardEntityContext | null;
+}
+
+/**
  * Source: src/sync/pollingService.js (IIFE;
  * window.LexeraPollingService = api). Periodic backend polling loop —
  * compares fingerprints (workspaces / boards catalog / boards content)
@@ -4319,7 +4404,7 @@ declare global {
     LexeraControlsDispatcher: LexeraControlsDispatcherApi;
     LexeraCanvasLayout: LexeraCanvasLayoutApi;
     LexeraColumnContextMenu: any;
-    LexeraKeyboardNavigation: any;
+    LexeraKeyboardNavigation: LexeraKeyboardNavigationApi;
     LexeraAppShellShortcuts: LexeraAppShellShortcutsApi;
     LexeraBoardList: any;
     LexeraSidebarSync: LexeraSidebarSyncApi;
