@@ -37,6 +37,20 @@ pub struct CrashsaveEntry {
     pub timestamp: String,
 }
 
+/// A conflict-backup entry written beside the original board file when an
+/// external change to an include file diverges from the in-memory board
+/// state. Used by the include-watcher reload path to preserve whichever
+/// side is about to be overwritten — never silently drop user data.
+#[derive(Debug, Clone)]
+pub struct ConflictBackupEntry {
+    /// Full path to the backup file (`{stem}-conflict-{ts}.md`).
+    pub path: PathBuf,
+    /// Filename only.
+    pub filename: String,
+    /// Timestamp embedded in the filename.
+    pub timestamp: String,
+}
+
 /// Manages creation, rotation, listing, and restoration of board backups.
 pub struct BackupManager {
     /// Maximum number of backups to keep per board file.
@@ -101,6 +115,19 @@ impl BackupManager {
         format!("{}-crashsave-{}.md", file_stem, timestamp)
     }
 
+    /// Build the conflict-backup filename for a board file. Mirrors
+    /// `crashsave_filename` but uses the `-conflict-` slug per the user's
+    /// requested naming scheme `{mainFilename}-conflict-{timeAndDate}`.
+    ///
+    /// Example: `board.md` + `20260513-114530` -> `board-conflict-20260513-114530.md`
+    fn conflict_backup_filename(board_path: &Path, timestamp: &str) -> String {
+        let file_stem = board_path
+            .file_stem()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "board".to_string());
+        format!("{}-conflict-{}.md", file_stem, timestamp)
+    }
+
     /// Atomically write text content to a file path.
     fn atomic_write_text(path: &Path, content: &str) -> Result<(), std::io::Error> {
         super::persistence::atomic_write_text(
@@ -145,6 +172,42 @@ impl BackupManager {
         fs::copy(board_path, &backup_path)?;
 
         Ok(backup_path)
+    }
+
+    /// Write a conflict-backup file beside the main board file. Used by the
+    /// include-watcher reload path when an external change to an include
+    /// file diverges from the in-memory column cards — instead of silently
+    /// overwriting either side, the LOSING side is written to a backup
+    /// file with this naming scheme so no user data is ever discarded.
+    ///
+    /// The filename follows the user-requested format
+    /// `{mainFilename}-conflict-{YYYYMMDD-HHmmss}.md` (parallel to the
+    /// `-crashsave-` scheme). Caller chooses `board_path` as the MAIN
+    /// board's `.md` path (not the include file's path) so the backup
+    /// lives alongside the file the user is looking at.
+    ///
+    /// Atomic write via the same persistence path used by crashsaves;
+    /// returns the resolved path so the caller can surface it in logs /
+    /// notifications.
+    pub fn create_conflict_backup(
+        board_path: &Path,
+        content: &str,
+    ) -> Result<ConflictBackupEntry, std::io::Error> {
+        let parent = board_path.parent().unwrap_or(Path::new("."));
+        if !parent.exists() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let timestamp = Self::crashsave_timestamp_now();
+        let filename = Self::conflict_backup_filename(board_path, &timestamp);
+        let backup_path = parent.join(&filename);
+        Self::atomic_write_text(&backup_path, content)?;
+
+        Ok(ConflictBackupEntry {
+            path: backup_path,
+            filename,
+            timestamp,
+        })
     }
 
     /// Create a crashsave file beside the original board file using the

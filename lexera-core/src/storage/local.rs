@@ -2844,6 +2844,43 @@ impl LocalStorage {
             }
             let next_cards = slide_parser::parse_slides(&include_content);
             if column.cards != next_cards {
+                // ────── Data-safety contract ──────
+                // The watcher fired because the include changed on disk.
+                // If the in-memory `column.cards` ALSO has content (i.e.
+                // not just an empty placeholder from a first-time load),
+                // the silent replacement we used to do here would discard
+                // whatever the user had typed under that include column
+                // since the last sync. User contract 2026-05-13: NEVER
+                // delete user data, on either side of the conflict. So
+                // we write a conflict backup of the in-memory state to
+                // `{board_stem}-conflict-{timestamp}.md` beside the main
+                // board file BEFORE applying the disk change. The user
+                // can recover the lost cards from that backup file.
+                //
+                // Empty in-memory means there's nothing to lose (first
+                // load of a previously-missing include, or a column that
+                // had no cards yet) — skip the backup write in that case.
+                if !column.cards.is_empty() {
+                    let pre_overwrite_content =
+                        slide_parser::generate_slides(&column.cards);
+                    match super::backup::BackupManager::create_conflict_backup(
+                        &state.file_path,
+                        &pre_overwrite_content,
+                    ) {
+                        Ok(entry) => log::warn!(
+                            "[lexera.storage.include] External change to {:?} diverged from in-memory cards on board {}; wrote conflict backup {:?}",
+                            path_check,
+                            board_id,
+                            entry.path
+                        ),
+                        Err(e) => log::error!(
+                            "[lexera.storage.include] FAILED to write conflict backup for board {} (include {:?}): {} — applying disk change anyway, in-memory cards will be lost",
+                            board_id,
+                            path_check,
+                            e
+                        ),
+                    }
+                }
                 column.cards = next_cards;
                 changed = true;
             }
@@ -5627,6 +5664,140 @@ kanban-plugin: board
             cards_after[0].content.contains("Newly created include"),
             "post-condition: first card should carry the new include's content; got {:?}",
             cards_after[0].content
+        );
+    }
+
+    #[test]
+    fn test_reload_writes_conflict_backup_when_inmemory_diverges_from_disk() {
+        // User contract 2026-05-13: "it must be safe to not delete user
+        // data at any time, neither in the kanban nor changes that are
+        // done externally". When an include changes on disk AND the
+        // in-memory col.cards already has user content that differs from
+        // the new disk content, `reload_board_include_path` MUST write
+        // the in-memory state to a `{stem}-conflict-{ts}.md` backup
+        // beside the main board file before applying the disk change.
+        // Empty-in-memory case (first load, previously-missing include)
+        // is unchanged — nothing to back up.
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let include_path = dir.path().join("slides.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./slides.md)!!!\n",
+        )
+        .unwrap();
+        // Seed include with INITIAL slide content. Parser will merge these
+        // into col.cards on load.
+        fs::write(
+            &include_path,
+            "# Slide A\n\nUser-initial content\n",
+        )
+        .unwrap();
+
+        let storage = LocalStorage::new();
+        let board_id = storage.add_board(&board_path).unwrap();
+        let board = storage.read_board(&board_id).unwrap();
+        let cols = board.all_columns();
+        assert_eq!(cols.len(), 1);
+        assert!(
+            !cols[0].cards.is_empty(),
+            "precondition: in-memory col.cards must be populated from the initial include load"
+        );
+        drop(cols);
+
+        // External actor rewrites the include with completely different
+        // content. The watcher would fire `IncludeFileChanged`; we
+        // simulate by calling the reload path directly.
+        fs::write(
+            &include_path,
+            "# Slide A\n\nEXTERNAL EDIT — overwriting user content\n",
+        )
+        .unwrap();
+
+        let changed = storage
+            .reload_board_include_path(&board_id, &include_path)
+            .expect("reload must not error");
+        assert!(changed, "reload must report changed=true on divergent disk change");
+
+        // Post-condition #1: main .md is unchanged on disk (we only
+        // touched the include).
+        // Post-condition #2: a `{stem}-conflict-{YYYYMMDD-HHmmss}.md`
+        // backup file exists beside board.md containing the OLD cards.
+        let entries: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        let backup_name = entries
+            .iter()
+            .find(|n| n.starts_with("board-conflict-") && n.ends_with(".md"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "no `board-conflict-<ts>.md` backup found in dir; entries: {:?}",
+                    entries
+                )
+            });
+
+        let backup_content =
+            fs::read_to_string(dir.path().join(backup_name)).unwrap();
+        assert!(
+            backup_content.contains("User-initial content"),
+            "conflict backup must preserve the in-memory cards' content; got:\n{}",
+            backup_content
+        );
+
+        // Post-condition #3: after the backup write, the disk change IS
+        // applied — the user sees the latest external content. (Future
+        // slice may surface a dialog that lets the user roll back to the
+        // backup, but the safety property is: no data deleted from either
+        // side without a backup trail.)
+        let board_after = storage.read_board(&board_id).unwrap();
+        assert!(
+            board_after.all_columns()[0].cards[0]
+                .content
+                .contains("EXTERNAL EDIT"),
+            "post-condition: new disk content is applied after the backup write"
+        );
+    }
+
+    #[test]
+    fn test_reload_skips_conflict_backup_when_inmemory_is_empty() {
+        // Empty-in-memory case (first load of a previously-missing
+        // include): no user data to preserve, so NO conflict backup
+        // should be written. Counterpart to the divergence test above.
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let include_path = dir.path().join("late.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./late.md)!!!\n",
+        )
+        .unwrap();
+        // Do NOT create the include file yet — col.cards loads empty.
+
+        let storage = LocalStorage::new();
+        let board_id = storage.add_board(&board_path).unwrap();
+
+        // Now the include appears.
+        fs::write(&include_path, "# Slide A\n\nFirst content\n").unwrap();
+        storage
+            .reload_board_include_path(&board_id, &include_path)
+            .unwrap();
+
+        let entries: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        let has_backup = entries
+            .iter()
+            .any(|n| n.starts_with("board-conflict-"));
+        assert!(
+            !has_backup,
+            "empty-in-memory case must NOT write a conflict backup; entries: {:?}",
+            entries
         );
     }
 
