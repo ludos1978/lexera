@@ -31,6 +31,9 @@ const workspacesSrc = readFileSync(
 const navigationBridgeSrc = readFileSync(
   resolve(repoRoot, 'src', 'shell', 'bridges', 'navigationBridge.js'), 'utf8'
 );
+const orderHelpersSrc = readFileSync(
+  resolve(repoRoot, 'src', 'board', 'orderHelpers.js'), 'utf8'
+);
 
 function pinSubAppClickWiring(label, src) {
   describe(label + ' — click handler routes non-board tree-nodes to focus-hierarchy-target', () => {
@@ -100,6 +103,55 @@ describe('workspace tree click → focus kanban entity (user contract 2026-05-11
       // could be empty for malformed tree-nodes. Without the gate,
       // shell.focusHierarchyTarget would be called with undefined boardId.
       expect(navigationBridgeSrc).toMatch(/payload\.target\s*&&\s*payload\.target\.boardId/);
+    });
+  });
+
+  describe('orderHelpers.js — focusHierarchyTargetLocally retries on board-data load race', () => {
+    // User report 2026-05-13: "focussing a card from the workspace view
+    // still doesnt work". Root cause: shell delivers the focus message
+    // at 60ms/220ms after openBoard + on lexera-pane-activated, but for
+    // a cross-board click the destination board's async data load can
+    // take > 220ms. All three deliveries can fire BEFORE col.cards are
+    // populated and the DOM is built, so findBoardEntityElement returns
+    // null and the focus silently falls off. The shell deletes the
+    // pending target at 220ms so later pane-activated has nothing to
+    // deliver. Fix: retry the lookup inside the iframe via setTimeout
+    // for up to ~3s so the focus survives the load race.
+
+    it('schedules deferred retries via setTimeout when the lookup misses', () => {
+      // The retry mechanism MUST exist for the cross-board focus to
+      // survive the load race — without it the focus is lost forever.
+      expect(orderHelpersSrc).toMatch(/function\s+attempt\s*\(\s*n\s*\)/);
+      expect(orderHelpersSrc).toMatch(
+        /setTimeout\(\s*function\s*\(\)\s*\{\s*attempt\(\s*n\s*\+\s*1\s*\)/
+      );
+    });
+
+    it('caps retries to ~3s so we do not loop forever on a permanently-missing entity', () => {
+      // The bounded-retry contract — without a cap, a deleted card or
+      // a target on a board that never loads would spin a setTimeout
+      // loop indefinitely.
+      expect(orderHelpersSrc).toMatch(/FOCUS_RETRY_MAX_ATTEMPTS\s*=\s*30/);
+      expect(orderHelpersSrc).toMatch(/FOCUS_RETRY_INTERVAL_MS\s*=\s*100/);
+    });
+
+    it('still applies focus immediately on the first successful attempt (no extra delay for the common case)', () => {
+      // When the board is already loaded (same-board focus, or a board
+      // that loaded fast), the first attempt finds the element and
+      // applies focus synchronously. Pin this by asserting the SYNC
+      // return path inside `attempt(0)`.
+      expect(orderHelpersSrc).toMatch(/applyFocusToEl\(el\)/);
+      expect(orderHelpersSrc).toMatch(/if\s*\(el\)\s*\{\s*applyFocusToEl/);
+    });
+
+    it('uses the canonical findBoardEntityElement on every retry attempt', () => {
+      // Each retry must re-invoke the canonical lookup; calling it once
+      // and caching the null result would defeat the retry.
+      // The findBoardEntityElement call must be INSIDE the attempt fn.
+      var attemptFnMatch = orderHelpersSrc.match(
+        /function\s+attempt\s*\(\s*n\s*\)\s*\{[\s\S]{0,800}?findBoardEntityElement/
+      );
+      expect(attemptFnMatch).not.toBeNull();
     });
   });
 });

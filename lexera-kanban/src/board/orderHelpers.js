@@ -774,54 +774,88 @@ var LexeraOrderHelpers = (function () {
         // function to focus something already? where is it, is it
         // used everywhere where we need to focus something". Yes —
         // and now it is.
-        var el = _callDep('findBoardEntityElement', t);
-        if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
-          try {
-            window.lexeraLog('debug', '[focus-trace] focusLocally.lookup ' +
-              JSON.stringify({
-                found: !!el,
-                tag: el && el.tagName,
-                classes: el && el.className,
-                cardId: t && t.cardId,
-                columnId: t && t.columnId,
-                hasFindFn: typeof _deps.findBoardEntityElement === 'function'
-              }));
-          } catch (_) { /* non-fatal */ }
-        }
-        if (!el) return false;
-        // User report 2026-05-13: focussing a card from the workspace
-        // view doesn't work. Root cause: the workspace tree click
-        // only knows the entity id (cardId / columnId / etc.) — no
-        // ancestor ids. `unfoldSearchTarget` upstream needs at least
-        // one of result.rowId / result.stackId / result.columnId /
-        // result.rowIndex to unfold ancestors; with only cardId, it
-        // unfolds nothing and the card stays hidden inside any folded
-        // column / stack / row even after scrollIntoView fires.
         //
-        // Fix: now that `findBoardEntityElement` has returned the
-        // actual DOM element, walk up ANY .folded ancestor chain
-        // and unfold them so the target becomes visible. Saves the
-        // fold state so the unfold persists across reload.
-        var unfolded = false;
-        var ancestor = el && el.parentNode;
-        while (ancestor && ancestor.classList) {
-          if (ancestor.classList.contains('folded')) {
-            ancestor.classList.remove('folded');
-            unfolded = true;
+        // User report 2026-05-13: "focussing a card from the workspace
+        // view still doesnt work". Second root cause beyond the kid
+        // lookup: the workspace shell delivers the focus message at
+        // 60ms / 220ms after openBoard, and on lexera-pane-activated.
+        // For a CROSS-BOARD click (workspace tree → board not yet
+        // loaded), the board data fetch is async — for a large board
+        // it can take seconds. All three delivery attempts can fire
+        // BEFORE col.cards are populated and the DOM is built, so
+        // findBoardEntityElement returns null and the focus is lost
+        // (no retry mechanism existed). After 220ms the shell deletes
+        // the pending focus target so even a later pane-activated has
+        // nothing to deliver.
+        //
+        // Fix: when the lookup misses, schedule deferred retries via
+        // setTimeout for up to ~3s. Multiple parallel retry loops are
+        // safe (each only mutates DOM once the element appears, and
+        // the unfold/focus operations are idempotent). The synchronous
+        // return value still reflects the first attempt — the navigation
+        // API caller doesn't rely on it for anything other than logging.
+        var FOCUS_RETRY_INTERVAL_MS = 100;
+        var FOCUS_RETRY_MAX_ATTEMPTS = 30; // 30 × 100ms = 3s
+        function applyFocusToEl(el) {
+          // Walk up ANY .folded ancestor chain and unfold so the
+          // target becomes visible. Save fold state so the unfold
+          // persists across reload.
+          var unfolded = false;
+          var ancestor = el && el.parentNode;
+          while (ancestor && ancestor.classList) {
+            if (ancestor.classList.contains('folded')) {
+              ancestor.classList.remove('folded');
+              unfolded = true;
+            }
+            ancestor = ancestor.parentNode;
           }
-          ancestor = ancestor.parentNode;
+          if (unfolded) {
+            try { _callDep('saveFoldState'); } catch (_) { /* non-fatal */ }
+          }
+          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          if (el.classList.contains('card')) {
+            _callDep('focusCard', el);
+            if (!el.classList.contains('focused') && typeof el.classList.add === 'function') el.classList.add('focused');
+          } else {
+            _callDep('focusBoardEntity', el);
+          }
         }
-        if (unfolded) {
-          try { _callDep('saveFoldState'); } catch (_) { /* non-fatal */ }
+        function attempt(n) {
+          var el = _callDep('findBoardEntityElement', t);
+          if (n === 0 && typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+            try {
+              window.lexeraLog('debug', '[focus-trace] focusLocally.lookup ' +
+                JSON.stringify({
+                  found: !!el,
+                  tag: el && el.tagName,
+                  classes: el && el.className,
+                  cardId: t && t.cardId,
+                  columnId: t && t.columnId,
+                  hasFindFn: typeof _deps.findBoardEntityElement === 'function'
+                }));
+            } catch (_) { /* non-fatal */ }
+          }
+          if (el) {
+            applyFocusToEl(el);
+            if (n > 0 && typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+              try {
+                window.lexeraLog('debug', '[focus-trace] focusLocally.retried-hit ' +
+                  JSON.stringify({ attempt: n, ms: n * FOCUS_RETRY_INTERVAL_MS }));
+              } catch (_) { /* non-fatal */ }
+            }
+            return true;
+          }
+          if (n < FOCUS_RETRY_MAX_ATTEMPTS) {
+            setTimeout(function () { attempt(n + 1); }, FOCUS_RETRY_INTERVAL_MS);
+          } else if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+            try {
+              window.lexeraLog('debug', '[focus-trace] focusLocally.retries-exhausted ' +
+                JSON.stringify({ attempts: FOCUS_RETRY_MAX_ATTEMPTS }));
+            } catch (_) { /* non-fatal */ }
+          }
+          return false;
         }
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        if (el.classList.contains('card')) {
-          _callDep('focusCard', el);
-          if (!el.classList.contains('focused') && typeof el.classList.add === 'function') el.classList.add('focused');
-        } else {
-          _callDep('focusBoardEntity', el);
-        }
-        return true;
+        return attempt(0);
       }
     });
   }
