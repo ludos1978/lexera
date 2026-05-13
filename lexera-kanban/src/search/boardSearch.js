@@ -298,6 +298,29 @@ var LexeraBoardSearch = (function () {
         var byIdGlobal = getElColumnsContainer().querySelector('.card[data-card-id="' + cardIdStr + '"]');
         if (byIdGlobal) return byIdGlobal;
       }
+      // Last-resort cardIndex+columnIndex fallback for sources that
+      // captured position-based hints (dashboard search results carry
+      // them; workspace tree clicks don't). Still constrained to .card
+      // — so we never return a column when the user asked for a card.
+      if (typeof target.columnIndex === 'number' && typeof target.cardIndex === 'number') {
+        var byVisibleCardIndex = getElColumnsContainer().querySelector(
+          '.card[data-col-index="' + target.columnIndex + '"][data-card-index="' + target.cardIndex + '"]'
+        );
+        if (byVisibleCardIndex) return byVisibleCardIndex;
+      }
+      // User report 2026-05-14: dashboard search results carry a
+      // possibly-stale columnIndex (from a cached dashboard snapshot).
+      // When the cardId lookup misses AND the cardIndex slot has been
+      // shifted (board edited since dashboard cached), the function
+      // used to fall through to a columnIndex-ONLY check below and
+      // return the `.column` at that flat-position — leaving the user
+      // looking at a column far from the desired card ("totally off").
+      // When the user asked for a CARD (target.cardId set), never
+      // return a non-card. Returning null lets the orderHelpers retry
+      // loop attempt again as the DOM stabilises; if the card truly
+      // doesn't exist, focus silently fails instead of picking the
+      // wrong target.
+      return null;
     }
 
     if (typeof target.columnIndex === 'number' && typeof target.cardIndex === 'number') {

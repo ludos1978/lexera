@@ -172,6 +172,16 @@
             'data-dashboard-target': 'result',
             'data-dashboard-board-id': boardId || null,
             'data-dashboard-card-id': item.cardId ? String(item.cardId) : null,
+            // Stable-id columns / stacks / rows — user report 2026-05-14:
+            // these were missing, so dashboard nav targets carried only
+            // position-based hints (columnIndex etc.), and when those
+            // hints went stale relative to the kanban DOM the focus
+            // chain landed "totally off" the desired card. Including
+            // the ids lets boardSearch.findBoardEntityElement scope the
+            // cardId lookup to the matching column subtree.
+            'data-dashboard-column-id': item.columnId ? String(item.columnId) : null,
+            'data-dashboard-row-id': item.rowId ? String(item.rowId) : null,
+            'data-dashboard-stack-id': item.stackId ? String(item.stackId) : null,
             'data-dashboard-column-index': item.columnIndex != null ? String(item.columnIndex) : null,
             'data-dashboard-row-index': item.rowIndex != null ? String(item.rowIndex) : null,
             'data-dashboard-stack-index': item.stackIndex != null ? String(item.stackIndex) : null,
