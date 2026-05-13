@@ -16,7 +16,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Test Status
 
-**Last run:** ✓ 2904 frontend passed | 2 skipped (237 files via `npx vitest run` from `lexera-kanban/`, last verified 2026-05-12); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`, last verified 2026-05-11); ✓ 802 lexera-core passed (`cargo test -p lexera-core --lib`, last verified 2026-05-13); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-12). `--typedefs` gate: OK (63 files — adds `fold/foldState`, `interaction/scrollBehavior`, `hierarchy/hierarchyContract` on top of the prior iterations).
+**Last run:** ✓ 2912 frontend passed | 2 skipped (238 files via `npx vitest run` from `lexera-kanban/`, last verified 2026-05-13); ✓ 161 in-app frontend passed | 0 failed (`./run-lexera-tests.sh`, last verified 2026-05-11); ✓ 802 lexera-core passed (`cargo test -p lexera-core --lib`, last verified 2026-05-13); ✓ 283 backend passed (`cargo test -p lexera-backend --lib`, last verified 2026-05-12). `--typedefs` gate: OK (63 files — typedef-paydown thread continues with `LexeraSubAppApi` (end-to-end), `LexeraControlsDispatcher`, `LexeraBackendDiscovery`, `LexeraCardContentRenderer`, `LexeraSettings`, `LexeraControlsSettings`, `LexeraPollingService`, `LexeraKeyboardNavigation`, `ContextMenuBuilders`, `__TAURI_INTERNALS__`, `LexeraDiagramDeps` (split), `tagColors`, and 6 bare-name function decls all flipped from `any` to typed shapes).
 
 ## Current Open TODO Snapshot (2026-05-12)
 
