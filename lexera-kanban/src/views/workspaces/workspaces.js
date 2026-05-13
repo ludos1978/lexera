@@ -186,7 +186,20 @@
             var ancKind = ancNode.getAttribute('data-drag-kind') || '';
             var ancId = ancNode.getAttribute('data-tree-id') || '';
             if (ancKind && ancId) {
-              if (ancKind === 'column' && !focusTarget.columnId) focusTarget.columnId = ancId;
+              if (ancKind === 'column' && !focusTarget.columnId) {
+                focusTarget.columnId = ancId;
+                var ancLabel = ancNode.querySelector(':scope > .tree-label');
+                if (ancLabel) focusTarget.columnTitle = (ancLabel.textContent || '').trim();
+                var parentChildren = ancestor.parentElement;
+                if (parentChildren && parentChildren.classList && parentChildren.classList.contains('tree-children')) {
+                  var siblings = parentChildren.children;
+                  var ci = 0;
+                  for (var sk = 0; sk < siblings.length; sk++) {
+                    if (siblings[sk] === ancestor) { focusTarget.colLocalIndex = ci; break; }
+                    if (siblings[sk].classList && siblings[sk].classList.contains('tree-entry')) ci++;
+                  }
+                }
+              }
               else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
               else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
             }
@@ -224,6 +237,15 @@
               precursorTarget.columnId = precAncId;
               var precAncLabel = precAncNode.querySelector(':scope > .tree-label');
               if (precAncLabel) precursorTarget.columnTitle = (precAncLabel.textContent || '').trim();
+              var precParentChildren = precursorAncestor.parentElement;
+              if (precParentChildren && precParentChildren.classList && precParentChildren.classList.contains('tree-children')) {
+                var precSiblings = precParentChildren.children;
+                var precCi = 0;
+                for (var precSk = 0; precSk < precSiblings.length; precSk++) {
+                  if (precSiblings[precSk] === precursorAncestor) { precursorTarget.colLocalIndex = precCi; break; }
+                  if (precSiblings[precSk].classList && precSiblings[precSk].classList.contains('tree-entry')) precCi++;
+                }
+              }
             } else if (precAncKind === 'stack' && !precursorTarget.stackId) {
               precursorTarget.stackId = precAncId;
             } else if (precAncKind === 'row' && !precursorTarget.rowId) {
@@ -1118,12 +1140,21 @@
             if (ancKind && ancId) {
               if (ancKind === 'column' && !focusTarget.columnId) {
                 focusTarget.columnId = ancId;
-                // DO NOT emit a `columnIndex` from tree position: tree
-                // siblings are STACK-LOCAL but the kanban's data-col-index
-                // is BOARD-FLAT. Passing the stack-local value matched
-                // the WRONG column (user's "3 stacks left" symptom).
+                // Position is STACK-LOCAL (matches data-col-local-index,
+                // NOT data-col-index). Pin both title and stack-local
+                // position so boardSearch can find the right column
+                // even after column.id drift.
                 var ancLabel = ancNode.querySelector(':scope > .tree-label');
                 if (ancLabel) focusTarget.columnTitle = (ancLabel.textContent || '').trim();
+                var parentChildren = ancestor.parentElement;
+                if (parentChildren && parentChildren.classList && parentChildren.classList.contains('tree-children')) {
+                  var siblings = parentChildren.children;
+                  var ci = 0;
+                  for (var sk = 0; sk < siblings.length; sk++) {
+                    if (siblings[sk] === ancestor) { focusTarget.colLocalIndex = ci; break; }
+                    if (siblings[sk].classList && siblings[sk].classList.contains('tree-entry')) ci++;
+                  }
+                }
               }
               else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
               else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;

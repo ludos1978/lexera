@@ -254,9 +254,26 @@ var LexeraBoardSearch = (function () {
       //      but useful when ids drift)
       //   4. stack.id / row.id — last-resort ancestor anchors
       var scopeEl = null;
+      // Priority order matters here. The workspace tree's `column.id`
+      // and the kanban's `data-column-id` DO match in a single session
+      // BUT both can drift after a re-parse (parser re-generates ids
+      // every parse). Stack-local position (`colLocalIndex` within
+      // `stackId` ancestor) is far more stable: as long as columns
+      // don't reorder within their stack, this combo identifies the
+      // exact column even when ids rotate.
       if (target.columnId) {
         scopeEl = getElColumnsContainer().querySelector(
           '.column[data-column-id="' + escapeAttr(String(target.columnId)) + '"]'
+        );
+      }
+      // stack-local column position — workspace tree harvests this
+      // from `.tree-children` siblings, dashboard reports it as
+      // `colLocalIndex`. Scoped via the stack ancestor so two stacks
+      // with col-local-index=0 don't collide.
+      if (!scopeEl && target.stackId && typeof target.colLocalIndex === 'number') {
+        scopeEl = getElColumnsContainer().querySelector(
+          '.board-stack[data-stack-id="' + escapeAttr(String(target.stackId)) + '"] ' +
+          '.column[data-col-local-index="' + target.colLocalIndex + '"]'
         );
       }
       if (!scopeEl && typeof target.columnIndex === 'number') {

@@ -213,7 +213,20 @@
             var ancKind = ancNode.getAttribute('data-drag-kind') || '';
             var ancId = ancNode.getAttribute('data-tree-id') || '';
             if (ancKind && ancId) {
-              if (ancKind === 'column' && !focusTarget.columnId) focusTarget.columnId = ancId;
+              if (ancKind === 'column' && !focusTarget.columnId) {
+                focusTarget.columnId = ancId;
+                var ancLabel = ancNode.querySelector(':scope > .tree-label');
+                if (ancLabel) focusTarget.columnTitle = (ancLabel.textContent || '').trim();
+                var parentChildren = ancestor.parentElement;
+                if (parentChildren && parentChildren.classList && parentChildren.classList.contains('tree-children')) {
+                  var siblings = parentChildren.children;
+                  var ci = 0;
+                  for (var sk = 0; sk < siblings.length; sk++) {
+                    if (siblings[sk] === ancestor) { focusTarget.colLocalIndex = ci; break; }
+                    if (siblings[sk].classList && siblings[sk].classList.contains('tree-entry')) ci++;
+                  }
+                }
+              }
               else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
               else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
             }
@@ -258,6 +271,15 @@
               precursorTarget.columnId = precAncId;
               var precAncLabel = precAncNode.querySelector(':scope > .tree-label');
               if (precAncLabel) precursorTarget.columnTitle = (precAncLabel.textContent || '').trim();
+              var precParentChildren = precursorAncestor.parentElement;
+              if (precParentChildren && precParentChildren.classList && precParentChildren.classList.contains('tree-children')) {
+                var precSiblings = precParentChildren.children;
+                var precCi = 0;
+                for (var precSk = 0; precSk < precSiblings.length; precSk++) {
+                  if (precSiblings[precSk] === precursorAncestor) { precursorTarget.colLocalIndex = precCi; break; }
+                  if (precSiblings[precSk].classList && precSiblings[precSk].classList.contains('tree-entry')) precCi++;
+                }
+              }
             } else if (precAncKind === 'stack' && !precursorTarget.stackId) {
               precursorTarget.stackId = precAncId;
             } else if (precAncKind === 'row' && !precursorTarget.rowId) {
@@ -1235,16 +1257,24 @@
               if (ancKind === 'column' && !focusTarget.columnId) {
                 focusTarget.columnId = ancId;
                 // Title from the .tree-label child (mirrors data-col-title).
-                // DO NOT emit a `columnIndex` from tree position: tree
-                // siblings are STACK-LOCAL but the kanban's data-col-index
-                // is BOARD-FLAT (counts every column across every stack /
-                // row). Passing a stack-local index made
-                // findBoardEntityElement match a column N positions in
-                // from the LEFT edge of the board (the user's "3 stacks
-                // left" symptom 2026-05-14). Title is the stable backup
-                // signal; the kanban renders data-col-title verbatim.
+                // Position: stack-LOCAL column index (matches the
+                // kanban's `data-col-local-index`, NOT the board-flat
+                // `data-col-index`). Computed by counting earlier
+                // .tree-entry siblings under this node's parent
+                // .tree-children. boardSearch uses (stackId +
+                // colLocalIndex) as a stable scope fallback when
+                // `column.id` drifts after a re-parse.
                 var ancLabel = ancNode.querySelector(':scope > .tree-label');
                 if (ancLabel) focusTarget.columnTitle = (ancLabel.textContent || '').trim();
+                var parentChildren = ancestor.parentElement;
+                if (parentChildren && parentChildren.classList && parentChildren.classList.contains('tree-children')) {
+                  var siblings = parentChildren.children;
+                  var ci = 0;
+                  for (var sk = 0; sk < siblings.length; sk++) {
+                    if (siblings[sk] === ancestor) { focusTarget.colLocalIndex = ci; break; }
+                    if (siblings[sk].classList && siblings[sk].classList.contains('tree-entry')) ci++;
+                  }
+                }
               }
               else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
               else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
