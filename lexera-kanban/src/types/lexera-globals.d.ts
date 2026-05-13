@@ -980,6 +980,83 @@ interface LexeraCanvasModeApi {
 }
 
 /**
+ * Source: src/render/cardContentRenderer.js (IIFE;
+ * window.LexeraCardContentRenderer = api). Markdown-to-HTML rendering
+ * pipeline for card content (headings / lists / code blocks / tables /
+ * footnotes / blockquotes / HTML comments / abbreviations / etc.).
+ * Delegates inline rendering to an external helper set the host
+ * supplies via `getInlineRendererHelpers`. Mutates `renderState`
+ * to thread footnote/abbreviation state across nested renders.
+ */
+interface LexeraCardRenderState {
+  /** Recursion depth — incremented by `options.nested`. */
+  nestedDepth?: number;
+  footnoteDefs?: Record<string, unknown>;
+  footnoteOrder?: Array<string>;
+  abbrDefs?: Record<string, string>;
+  /** Renderers stash other transient state on this object freely. */
+  [key: string]: unknown;
+}
+
+interface LexeraCardRenderOptions {
+  /** When true, bumps `renderState.nestedDepth` for the duration of
+   *  the call (used by `![[ ]]` includes that render inline). */
+  nested?: boolean;
+  [key: string]: unknown;
+}
+
+/** Helpers the host supplies via `getInlineRendererHelpers` for
+ *  inline rendering. Optional methods degrade to `escapeHtml(text)`. */
+interface LexeraInlineRendererHelpers {
+  renderInline?: (text: string, boardId: string, renderState: LexeraCardRenderState) => string;
+  renderTitleInline?: (text: string, boardId: string, options?: unknown) => string;
+}
+
+interface LexeraCardContentRendererDeps {
+  getInlineRendererHelpers?: () => LexeraInlineRendererHelpers | null;
+  escapeHtml?: (s: unknown) => string;
+  escapeAttr?: (s: unknown) => string;
+  getActiveBoardId?: () => string;
+  DiagramRegistry?: LexeraDiagramRegistryApi;
+  /** Wraps an inner HTML fragment in a tag with line-source styling
+   *  applied. `opts.selfClosing` for void elements. */
+  buildTagStyledLineHtml?: (
+    tag: string,
+    innerHtml: string,
+    lineStyleSource: string,
+    opts?: { selfClosing?: boolean; [k: string]: unknown }
+  ) => string;
+  /** Wraps a multi-line block fragment in a styled container. */
+  wrapRenderedLineBlockHtml?: (html: string, lineStyleSource: string) => string;
+}
+
+interface LexeraCardContentRendererApi {
+  init(deps: LexeraCardContentRendererDeps): void;
+  /** Render a full card body (markdown-flavour) into HTML. */
+  renderCardContent(
+    content: string,
+    boardId: string,
+    renderState?: LexeraCardRenderState | null,
+    options?: LexeraCardRenderOptions | null
+  ): string;
+  /** Render a markdown table starting at `lines[startIdx]`. */
+  renderTable(
+    lines: Array<string>,
+    startIdx: number,
+    boardId: string,
+    renderState: LexeraCardRenderState
+  ): string;
+  /** Inline render — delegates to host helpers; HTML-escape fallback. */
+  renderInline(text: string, boardId: string, renderState: LexeraCardRenderState): string;
+  /** Inline render for titles — same delegation pattern as renderInline. */
+  renderTitleInline(text: string, boardId: string, options?: unknown): string;
+  /** Post-process rendered HTML to insert visible whitespace markers
+   *  (¶ before `<br>`, · for spaces, → for tabs). Used when the user
+   *  enables the "show special characters" setting. */
+  decorateSpecialChars(html: string): string;
+}
+
+/**
  * Source: src/backendDiscovery.js (IIFE;
  * window.LexeraBackendDiscovery = api). Backend-discovery transport
  * hook — probes `/status` against a preferred URL, Tauri-supplied URL,
@@ -4074,7 +4151,7 @@ declare global {
     tagColors: any;
     markdownit: any;
     LexeraControlsSettings: any;
-    LexeraCardContentRenderer: any;
+    LexeraCardContentRenderer: LexeraCardContentRendererApi;
     LexeraDiagramDeps: LexeraAppUtilsDeps;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
