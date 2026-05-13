@@ -43,7 +43,7 @@
       return formatId === 'presentation';
     },
     checkStatus: function () {
-      return invokeOrReject('check_marp_available').then(function (r) {
+      return invokeOrReject('check_marp_available').then(function (/** @type {any} */ r) {
         return { available: !!(r && r.available), version: (r && r.version) || null };
       });
     },

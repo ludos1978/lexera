@@ -41,7 +41,7 @@
       return formatId === 'document';
     },
     checkStatus: function () {
-      return invokeOrReject('check_pandoc_available').then(function (r) {
+      return invokeOrReject('check_pandoc_available').then(function (/** @type {any} */ r) {
         return { available: !!(r && r.available), version: (r && r.version) || null };
       });
     },

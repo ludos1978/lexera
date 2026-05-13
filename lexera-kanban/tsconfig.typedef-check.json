@@ -103,6 +103,8 @@
     "src/plugins/formats/xlsx.js",
     "src/plugins/formats/excalidraw.js",
     "src/plugins/formats/media.js",
-    "src/plugins/exports/filterExport.js"
+    "src/plugins/exports/filterExport.js",
+    "src/plugins/exports/marpExport.js",
+    "src/plugins/exports/pandocExport.js"
   ]
 }
