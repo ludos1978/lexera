@@ -63,6 +63,18 @@ describe('full-board-render contract', () => {
     expect(tagCardBlock[0]).not.toMatch(/targets:\s*\[\s*\{\s*type:\s*['"]board['"]/);
   });
 
+  it('parkCopyCard appends the hidden clone with empty targets (no visible refresh)', () => {
+    // parkCopyCard appends a clone tagged #hidden-internal-parked — the
+    // clone is invisible immediately, so the persist call must not ask
+    // for any DOM refresh. Empty targets keep this a pure save-only
+    // mutation; any non-empty target here would force an unneeded
+    // re-render of an invisible card slot. (Plain duplicateCard, which
+    // makes a visible clone, uses 'card-insert' and is not pinned here.)
+    const parkCopyBlock = cardContextMenuJs.match(/function parkCopyCard\([^)]*\)[\s\S]*?persistBoardMutation\([^)]*\)/);
+    expect(parkCopyBlock, 'parkCopyCard must call persistBoardMutation').toBeTruthy();
+    expect(parkCopyBlock[0]).toMatch(/targets:\s*\[\s*\]/);
+  });
+
   it('board frontmatter changes request a full board render', () => {
     // Frontmatter drives valid-flag, MARP rendering, and per-board
     // settings via the YAML header — mass display behavior change.
