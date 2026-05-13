@@ -4538,7 +4538,17 @@ declare global {
       [key: string]: unknown;
     };
     LexeraTagColors: any;
-    tagColors: any;
+    /** Lowercase global — tag name → CSS color map consumed by the
+     *  markdown-it tag-browser plugin (vendor/markdown-it/markdown-it-tag-browser.js
+     *  reads `options.tagColors` which the plugin manifests fill from
+     *  this global). Set by app.js after LexeraTagColors initializes;
+     *  read by `plugins/markdown/markdownPluginManifest.js` + by
+     *  `render/markdownRenderer.js`. */
+    tagColors?: Record<string, string>;
+    /** Vendor markdown-it parser global. Untyped — pulling
+     *  `@types/markdown-it` in just for this would be an outsized
+     *  addition; consumers use it via narrow facades
+     *  (markdownRenderer.js / markdownPluginManifest.js). */
     markdownit: any;
     LexeraControlsSettings: LexeraControlsSettingsApi;
     LexeraCardContentRenderer: LexeraCardContentRendererApi;
