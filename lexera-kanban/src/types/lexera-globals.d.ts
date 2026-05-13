@@ -4738,6 +4738,13 @@ declare global {
      *  CDN URL + theme overrides. Loose `any` — future slice can
      *  tighten once the API stabilises. */
     LexeraPluginConfig?: any;
+    /** External-embed allowlist plugin — exposes the known patterns
+     *  + URL classification helpers (registered by plugins/embed/embedPlugin.js). */
+    LexeraEmbedPlugin?: {
+      getKnownPatterns(): Array<string>;
+      isKnownExternalEmbedUrl(url: string | null | undefined): boolean;
+      normalizeEmbedHandling(mode: unknown): 'iframe' | 'remove' | 'fallback' | 'keep';
+    };
     // First-pass `any` declarations — future slices can tighten.
     // Added 2026-05-10 (Stage 17l) so embeddedBoardBridge.js can
     // type-check; the actual public surfaces live in their respective
