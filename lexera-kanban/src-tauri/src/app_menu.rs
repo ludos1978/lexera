@@ -277,29 +277,6 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .item(&layout_preset_sub)
         .build()?;
 
-    // ── Board menu ──
-    let sort_sub = SubmenuBuilder::new(app, "Sort All Cards")
-        .item(&MenuItemBuilder::with_id("board-sort-title", "By Title").build(app)?)
-        .item(&MenuItemBuilder::with_id("board-sort-tag", "By Tag Value").build(app)?)
-        .item(&MenuItemBuilder::with_id("board-sort-due", "By Due Date").build(app)?)
-        .build()?;
-
-    let board_menu = SubmenuBuilder::new(app, "Board")
-        .item(&MenuItemBuilder::with_id("board-new-row", "New Row").build(app)?)
-        .item(&MenuItemBuilder::with_id("board-new-stack", "New Stack").build(app)?)
-        .item(&MenuItemBuilder::with_id("board-new-column", "New Column").build(app)?)
-        .item(&MenuItemBuilder::with_id("board-new-card", "New Card").build(app)?)
-        .separator()
-        .item(&sort_sub)
-        .separator()
-        .item(&MenuItemBuilder::with_id("board-show-parked", "Show Parked Items").build(app)?)
-        .item(&MenuItemBuilder::with_id("board-show-archived", "Show Archived Items").build(app)?)
-        .item(&MenuItemBuilder::with_id("board-show-trash", "Show Trash").build(app)?)
-        .separator()
-        .item(&MenuItemBuilder::with_id("board-statistics", "Board Statistics").build(app)?)
-        .item(&MenuItemBuilder::with_id("board-processes", "Running Processes").build(app)?)
-        .build()?;
-
     // ── Help menu ──
     let help_menu = SubmenuBuilder::new(app, "Help")
         .item(&MenuItemBuilder::with_id("help-keyboard-shortcuts", "Keyboard Shortcuts…").accelerator("Shift+?").build(app)?)
@@ -312,7 +289,6 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .item(&edit_menu)
         .item(&view_menu)
         .item(&format_menu)
-        .item(&board_menu)
         .item(&help_menu)
         .build()?;
 
@@ -472,19 +448,6 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     // Format – layout preset
     ("fmt-preset-normal", "set-layout-preset:normal"),
     ("fmt-preset-spacious", "set-layout-preset:spacious"),
-    // Board
-    ("board-new-row", "add-row"),
-    ("board-new-stack", "add-stack"),
-    ("board-new-column", "add-column"),
-    ("board-new-card", "add-card"),
-    ("board-sort-title", "sort-all-cards:title"),
-    ("board-sort-tag", "sort-all-cards:tag"),
-    ("board-sort-due", "sort-all-cards:duedate"),
-    ("board-show-parked", "show-parked"),
-    ("board-show-archived", "show-archived"),
-    ("board-show-trash", "show-trash"),
-    ("board-statistics", "toggle-board-stats"),
-    ("board-processes", "show-processes"),
     // Help
     ("help-keyboard-shortcuts", "show-keyboard-shortcuts"),
 ];
