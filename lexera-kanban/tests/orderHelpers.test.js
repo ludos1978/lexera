@@ -468,7 +468,12 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
     // ancestor chain from the found card element and remove `.folded`
     // from any ancestor that has it.
     const focusCard = vi.fn();
-    const saveFoldState = vi.fn();
+    // The local `saveFoldState(boardId)` in orderHelpers calls
+    // `_callDep('getFoldStateApi').saveFoldState(boardId, {...})` — so
+    // to observe persistence we mock the FoldStateApi here, not a
+    // top-level _deps.saveFoldState (which doesn't exist).
+    const foldStateApiSave = vi.fn();
+    const foldStateApi = { saveFoldState: foldStateApiSave };
     function makeClassList(classes) {
       const set = new Set(classes);
       return {
@@ -510,8 +515,10 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
         };
       },
       getActiveBoardData() { return { id: 'board-1' }; },
+      activeBoardId: 'board-1',
       focusCard,
-      saveFoldState,
+      getFoldStateApi: () => foldStateApi,
+      getElColumnsContainer: () => null,
       // Workspace-tree click target has only { boardId, cardId } —
       // mirror findBoardEntityElement returning the cardEl from the kid lookup.
       findBoardEntityElement(target) {
@@ -532,14 +539,17 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
     expect(rowEl.classList.contains('folded')).toBe(false);
     expect(cardEl.scrollIntoView).toHaveBeenCalledTimes(1);
     expect(focusCard).toHaveBeenCalledWith(cardEl);
-    expect(saveFoldState).toHaveBeenCalledTimes(1);
+    // saveFoldState calls _callDep('getFoldStateApi').saveFoldState(boardId, ...)
+    // — so the fold-state-api save is what we assert on.
+    expect(foldStateApiSave).toHaveBeenCalledTimes(1);
+    expect(foldStateApiSave.mock.calls[0][0]).toBe('board-1');
   });
 
   it('does not call saveFoldState when no folded ancestor was found', async () => {
     // Negative case: if all ancestors are already unfolded the saveFoldState
-    // hook stays untouched so we don't churn localStorage unnecessarily.
+    // path stays untouched so we don't churn localStorage unnecessarily.
     const focusCard = vi.fn();
-    const saveFoldState = vi.fn();
+    const foldStateApiSave = vi.fn();
     function makeClassList(classes) {
       const set = new Set(classes);
       return {
@@ -569,8 +579,10 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
         };
       },
       getActiveBoardData() { return { id: 'board-1' }; },
+      activeBoardId: 'board-1',
       focusCard,
-      saveFoldState,
+      getFoldStateApi: () => ({ saveFoldState: foldStateApiSave }),
+      getElColumnsContainer: () => null,
       findBoardEntityElement() { return cardEl; }
     });
 
@@ -580,7 +592,7 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
     });
 
     expect(result).toBe(true);
-    expect(saveFoldState).not.toHaveBeenCalled();
+    expect(foldStateApiSave).not.toHaveBeenCalled();
     expect(cardEl.scrollIntoView).toHaveBeenCalledTimes(1);
   });
 });

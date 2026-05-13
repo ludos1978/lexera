@@ -756,7 +756,11 @@ var LexeraOrderHelpers = (function () {
           nav.unfoldSearchTarget(t, {
             getActiveBoardId: function () { return target.boardId; },
             getColumnsContainer: function () { return document.getElementById('columns-container'); },
-            saveFoldState: function () { _callDep('saveFoldState'); }
+            // `saveFoldState` is a LOCAL function (defined above at line
+            // 246) — calling `_callDep('saveFoldState')` would look it up
+            // in _deps where it isn't wired, so the persist silently
+            // no-ops. Invoke the local with the active board id.
+            saveFoldState: function () { saveFoldState(_dep('activeBoardId')); }
           });
         }
       },
@@ -807,7 +811,11 @@ var LexeraOrderHelpers = (function () {
             ancestor = ancestor.parentNode;
           }
           if (unfolded) {
-            try { _callDep('saveFoldState'); } catch (_) { /* non-fatal */ }
+            // Local function (line 246) — not a wired dep. f6935916
+            // called this via _callDep but `saveFoldState` is the
+            // LOCAL function above, not a wired dep — so the persist
+            // silently no-op'd. Invoke directly with the active board id.
+            try { saveFoldState(_dep('activeBoardId')); } catch (_) { /* non-fatal */ }
           }
           el.scrollIntoView({ block: 'center', behavior: 'smooth' });
           if (el.classList.contains('card')) {

@@ -1191,6 +1191,17 @@ var LexeraDashboard = (function () {
     },
     renderColumns: function () { return renderColumns(); },
     getFoldStateApi: function () { return getFoldStateApi(); },
+    // Workspace-tree card focus chain (commits f6935916 + 9bea04a3 + e2d1cf0d
+    // + this fix) terminates here: orderHelpers.navigateHierarchyTargetInIframe
+    // calls `_callDep('getBoardNavigationApi')`. Without this wiring the focus
+    // chain bailed with `skip(no-nav-api) {hasNav:false, hasFn:false}` because
+    // the dep was never wired into orderHelpersInitConfig — only BoardSearch.init
+    // received it. Wrapped in try/catch because `getBoardNavigationApi()` at
+    // line 7532 throws when LexeraBoardNavigation hasn't loaded yet; the
+    // null-return matches orderHelpers's existing `if (!nav)` guard.
+    getBoardNavigationApi: function () {
+      try { return getBoardNavigationApi(); } catch (_) { return null; }
+    },
     getElColumnsContainer: function () { return getElColumnsContainer(); },
     saveCardCollapseState: function (bid) { return saveCardCollapseState(bid); },
     refreshBoardHeaderActionStates: function () { return refreshBoardHeaderActionStates(); },
