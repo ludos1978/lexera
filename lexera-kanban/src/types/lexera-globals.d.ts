@@ -4809,6 +4809,13 @@ declare global {
     markdownitHtmlComment?: any;
     markdownitEmoji?: any;
     markdownitFootnote?: any;
+    // Vendor bundles loaded by excalidraw-overlay.html — Excalidraw
+    // React + DOM bundle from src/vendor/excalidraw/.
+    ExcalidrawLib?: { Excalidraw?: any; [key: string]: any };
+    /** Older / fallback Excalidraw global name read by getLibraryApi(). */
+    Excalidraw?: any;
+    React?: any;
+    ReactDOM?: any;
     // First-pass `any` declarations — future slices can tighten.
     // Added 2026-05-10 (Stage 17l) so embeddedBoardBridge.js can
     // type-check; the actual public surfaces live in their respective
