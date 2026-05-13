@@ -789,6 +789,31 @@ var LexeraOrderHelpers = (function () {
           } catch (_) { /* non-fatal */ }
         }
         if (!el) return false;
+        // User report 2026-05-13: focussing a card from the workspace
+        // view doesn't work. Root cause: the workspace tree click
+        // only knows the entity id (cardId / columnId / etc.) — no
+        // ancestor ids. `unfoldSearchTarget` upstream needs at least
+        // one of result.rowId / result.stackId / result.columnId /
+        // result.rowIndex to unfold ancestors; with only cardId, it
+        // unfolds nothing and the card stays hidden inside any folded
+        // column / stack / row even after scrollIntoView fires.
+        //
+        // Fix: now that `findBoardEntityElement` has returned the
+        // actual DOM element, walk up ANY .folded ancestor chain
+        // and unfold them so the target becomes visible. Saves the
+        // fold state so the unfold persists across reload.
+        var unfolded = false;
+        var ancestor = el && el.parentNode;
+        while (ancestor && ancestor.classList) {
+          if (ancestor.classList.contains('folded')) {
+            ancestor.classList.remove('folded');
+            unfolded = true;
+          }
+          ancestor = ancestor.parentNode;
+        }
+        if (unfolded) {
+          try { _callDep('saveFoldState'); } catch (_) { /* non-fatal */ }
+        }
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         if (el.classList.contains('card')) {
           _callDep('focusCard', el);

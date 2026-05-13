@@ -375,6 +375,130 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
     expect(focusCard).toHaveBeenCalledWith(cardEl);
     expect(focusBoardEntity).not.toHaveBeenCalled();
   });
+
+  it('unfolds any folded ancestors before scrollIntoView so a workspace-tree card click reveals the card', async () => {
+    // User report 2026-05-13: focussing a card from the workspace view
+    // doesn't work because workspace tree clicks only carry the card id
+    // (no row/stack/column ancestor ids), so the upstream
+    // `unfoldSearchTarget` can't unfold anything. Fix: walk up the DOM
+    // ancestor chain from the found card element and remove `.folded`
+    // from any ancestor that has it.
+    const focusCard = vi.fn();
+    const saveFoldState = vi.fn();
+    function makeClassList(classes) {
+      const set = new Set(classes);
+      return {
+        contains(name) { return set.has(name); },
+        add(name) { set.add(name); },
+        remove(name) { set.delete(name); }
+      };
+    }
+    // DOM chain: rowEl (folded) > stackEl (folded) > columnEl (folded) > cardEl
+    const cardEl = {
+      classList: makeClassList(['card']),
+      scrollIntoView: vi.fn(),
+      parentNode: null
+    };
+    const columnEl = { classList: makeClassList(['column', 'folded']), parentNode: null };
+    const stackEl = { classList: makeClassList(['board-stack', 'folded']), parentNode: null };
+    const rowEl = { classList: makeClassList(['board-row', 'folded']), parentNode: null };
+    cardEl.parentNode = columnEl;
+    columnEl.parentNode = stackEl;
+    stackEl.parentNode = rowEl;
+    // rowEl.parentNode left null — loop terminates naturally.
+    const documentMock = {
+      getElementById(id) {
+        return id === 'columns-container'
+          ? { querySelector: () => null }
+          : null;
+      }
+    };
+    const EmbeddedOrderHelpers = loadIIFE('board/orderHelpers.js', 'LexeraOrderHelpers', {
+      window: {},
+      document: documentMock
+    });
+    EmbeddedOrderHelpers.init({
+      getBoardNavigationApi() {
+        return {
+          navigateToHierarchyTarget(target, options) {
+            return Promise.resolve(options.focusHierarchyTargetLocally(target));
+          }
+        };
+      },
+      getActiveBoardData() { return { id: 'board-1' }; },
+      focusCard,
+      saveFoldState,
+      // Workspace-tree click target has only { boardId, cardId } —
+      // mirror findBoardEntityElement returning the cardEl from the kid lookup.
+      findBoardEntityElement(target) {
+        return target && target.cardId === 'kid-abc123' ? cardEl : null;
+      }
+    });
+
+    const result = await EmbeddedOrderHelpers.navigateHierarchyTargetInIframe({
+      boardId: 'board-1',
+      cardId: 'kid-abc123'
+      // no rowId / stackId / columnId — matches workspace tree click shape
+    });
+
+    expect(result).toBe(true);
+    // All three folded ancestors were unfolded before scrollIntoView fired
+    expect(columnEl.classList.contains('folded')).toBe(false);
+    expect(stackEl.classList.contains('folded')).toBe(false);
+    expect(rowEl.classList.contains('folded')).toBe(false);
+    expect(cardEl.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(focusCard).toHaveBeenCalledWith(cardEl);
+    expect(saveFoldState).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call saveFoldState when no folded ancestor was found', async () => {
+    // Negative case: if all ancestors are already unfolded the saveFoldState
+    // hook stays untouched so we don't churn localStorage unnecessarily.
+    const focusCard = vi.fn();
+    const saveFoldState = vi.fn();
+    function makeClassList(classes) {
+      const set = new Set(classes);
+      return {
+        contains(name) { return set.has(name); },
+        add(name) { set.add(name); },
+        remove(name) { set.delete(name); }
+      };
+    }
+    const cardEl = {
+      classList: makeClassList(['card']),
+      scrollIntoView: vi.fn(),
+      parentNode: { classList: makeClassList(['column']), parentNode: null }
+    };
+    const documentMock = {
+      getElementById() { return { querySelector: () => null }; }
+    };
+    const EmbeddedOrderHelpers = loadIIFE('board/orderHelpers.js', 'LexeraOrderHelpers', {
+      window: {},
+      document: documentMock
+    });
+    EmbeddedOrderHelpers.init({
+      getBoardNavigationApi() {
+        return {
+          navigateToHierarchyTarget(target, options) {
+            return Promise.resolve(options.focusHierarchyTargetLocally(target));
+          }
+        };
+      },
+      getActiveBoardData() { return { id: 'board-1' }; },
+      focusCard,
+      saveFoldState,
+      findBoardEntityElement() { return cardEl; }
+    });
+
+    const result = await EmbeddedOrderHelpers.navigateHierarchyTargetInIframe({
+      boardId: 'board-1',
+      cardId: 'any'
+    });
+
+    expect(result).toBe(true);
+    expect(saveFoldState).not.toHaveBeenCalled();
+    expect(cardEl.scrollIntoView).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('orderHelpers dashboard scope filtering', () => {
