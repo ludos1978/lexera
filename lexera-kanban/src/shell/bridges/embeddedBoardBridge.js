@@ -377,8 +377,22 @@
     var EXTERNAL_DROP_RETRY_MS = 40;
     var EXTERNAL_DROP_MAX_RETRIES = 25;
     function isKanbanDropSurfaceBootingForSource(source) {
+      // Boot-state heuristic for the cold-destination retry: when a
+      // cross-view drop arrives before the destination kanban has
+      // finished rendering board data, the cursor's resolveCrossView-
+      // TreeTarget hit-test misses every selector. Retrying ~40ms
+      // later usually catches the first paint. We branch on the
+      // source's kind because each drag-kind needs a different DOM
+      // structure available to land — a card needs columns, a column
+      // needs stacks/columns, a stack needs rows/stacks, a row needs
+      // a row container.
+      //
+      // Returns true iff "the board hasn't rendered the structure the
+      // source needs to land on yet" — caller treats true as "retry".
       var kind = source && source.kind;
-      if (kind !== 'card' && kind !== 'column' && kind !== 'stack') return false;
+      if (kind !== 'card' && kind !== 'column' && kind !== 'stack' && kind !== 'row') {
+        return false;
+      }
       var container = document.getElementById('columns-container');
       if (!container || typeof container.querySelector !== 'function') return true;
       if (kind === 'card') {
@@ -389,6 +403,14 @@
       }
       if (kind === 'stack') {
         return !container.querySelector('.board-stack[data-stack-id], .board-row[data-row-id]');
+      }
+      if (kind === 'row') {
+        // Row drops need the board container itself to be populated.
+        // A row-drag to a cold board previously fell through to the
+        // legacy `relayExternalDnd('drop')` path on the FIRST attempt
+        // and only the SECOND drag succeeded (TODO line 38). Adding
+        // row to the retry path closes that gap.
+        return !container.querySelector('.board-row[data-row-id]');
       }
       return false;
     }

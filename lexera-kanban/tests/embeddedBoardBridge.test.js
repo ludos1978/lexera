@@ -324,9 +324,28 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     // the listener is registered but the handler arg-shape changes)
     // and "drag from workspace to board" stops working with no
     // outward sign in JS — exactly the user-reported failure mode.
-    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
-      url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1'
-    });
+    // Seed minimal kanban DOM so `isKanbanDropSurfaceBootingForSource`
+    // returns false for ALL drag kinds — without these elements, the
+    // row branch would re-enter the boot-retry path and dropFn wouldn't
+    // fire synchronously. Each branch needs:
+    //   card   → .column[data-column-id] or .column-cards
+    //   column → .column[data-column-id] or .board-stack[data-stack-id]
+    //   stack  → .board-stack or .board-row[data-row-id]
+    //   row    → .board-row[data-row-id]
+    const dom = new JSDOM(
+      '<!doctype html><html><head></head><body>' +
+        '<div id="columns-container">' +
+          '<div class="board-row" data-row-id="r1">' +
+            '<div class="board-stack" data-stack-id="s1">' +
+              '<div class="column" data-column-id="c1">' +
+                '<div class="column-cards"></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '</body></html>',
+      { url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1' }
+    );
     const { window } = dom;
     const handlers = {};
     const hoverFn = vi.fn();

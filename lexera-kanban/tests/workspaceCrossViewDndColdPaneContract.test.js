@@ -63,4 +63,22 @@ describe('cross-view DnD cold-pane startup', () => {
     expect(embeddedBoardBridge).toMatch(/receive\.drop\.retry\(waiting-for-surface\)/);
     expect(embeddedBoardBridge).toMatch(/setTimeout\([\s\S]{0,160}handleExternalDndDrop\(event,\s*attempt\s*\+\s*1\)/);
   });
+
+  it('boot-state heuristic covers all four drag kinds (card / column / stack / row)', () => {
+    // User TODO line 38: "Fix any remaining first-drag failure where a
+    // cold destination board loads first and only the second drag
+    // succeeds". The boot-state heuristic previously early-returned
+    // `false` for kind === 'row', so row-drags bypassed the retry
+    // path entirely and a row dropped on a cold pane was lost on the
+    // first attempt every time. Each branch must check that the DOM
+    // structure the source needs to land on is present; missing → retry.
+    expect(embeddedBoardBridge).toMatch(
+      /kind\s*!==\s*['"]card['"]\s*&&\s*kind\s*!==\s*['"]column['"]\s*&&\s*kind\s*!==\s*['"]stack['"]\s*&&\s*kind\s*!==\s*['"]row['"]/
+    );
+    // Row branch checks for a `.board-row[data-row-id]` element — the
+    // minimum signal that the destination's board data has rendered.
+    expect(embeddedBoardBridge).toMatch(
+      /if\s*\(kind\s*===\s*['"]row['"]\)\s*\{[\s\S]{0,400}\.board-row\[data-row-id\]/
+    );
+  });
 });
