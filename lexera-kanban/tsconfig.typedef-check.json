@@ -106,6 +106,7 @@
     "src/plugins/exports/filterExport.js",
     "src/plugins/exports/marpExport.js",
     "src/plugins/exports/pandocExport.js",
-    "src/plugins/diagrams/plantuml.js"
+    "src/plugins/diagrams/plantuml.js",
+    "src/plugins/diagrams/mermaid.js"
   ]
 }

@@ -2708,6 +2708,25 @@ interface LexeraDiagramPlugin {
   handleMenuAction?: (action: string, container: Element | HTMLElement) => void;
   /** Internal ready flag — used by `isReady` impls. */
   _ready?: boolean;
+  /** Internal loading flag / promise — mermaid stashes either a
+   *  bool sentinel (initialised `false`, set `true` while a load is
+   *  in flight) or a Promise depending on the plugin's deduplication
+   *  strategy. */
+  _loading?: boolean | Promise<unknown> | null;
+  /** Internal activation context — captured by activate() so handlers
+   *  fired later (e.g. menu actions) can reach the host environment. */
+  _activationCtx?: unknown;
+  /** Optional config-schema descriptor consumed by LexeraPluginConfig
+   *  when the plugin is registered. */
+  configSchema?: unknown;
+  /** Optional config-change callback — invoked by LexeraPluginConfig
+   *  with the new config values when the user updates this plugin's
+   *  settings. */
+  onConfigChange?: (values: Record<string, unknown>) => void;
+  /** Optional activate hook — fires during registry activate(). */
+  activate?: (ctx: unknown) => unknown | Promise<unknown>;
+  /** Optional deactivate hook — fires during registry deactivate(). */
+  deactivate?: () => unknown | Promise<unknown>;
 }
 
 interface LexeraDiagramRegistryApi {
@@ -4713,6 +4732,12 @@ declare global {
     LexeraSharedPanels: LexeraSharedPanelsApi;
     LexeraSubApp: LexeraSubAppApi;
     LexeraTreeCrossViewDrop: LexeraTreeCrossViewDropApi;
+    /** Per-plugin config store — set by `core/pluginConfig.js`. Each
+     *  plugin registers its schema and reads typed values back via
+     *  `get(pluginId)` / `getSchema(pluginId)`. Used by mermaid for the
+     *  CDN URL + theme overrides. Loose `any` — future slice can
+     *  tighten once the API stabilises. */
+    LexeraPluginConfig?: any;
     // First-pass `any` declarations — future slices can tighten.
     // Added 2026-05-10 (Stage 17l) so embeddedBoardBridge.js can
     // type-check; the actual public surfaces live in their respective
@@ -4918,6 +4943,10 @@ declare global {
   // Plugin registry IIFE — accessed by bare name via `typeof
   // LexeraPluginRegistry !== 'undefined'` in contentEnhancerRegistry.js.
   const LexeraPluginRegistry: any;
+  // Mermaid global from the vendored bundle (`src/vendor/mermaid/mermaid.min.js`).
+  // Loaded lazily by `plugins/diagrams/mermaid.js`'s init() then accessed
+  // by bare name (`mermaid.initialize(...)`, `mermaid.render(...)`).
+  const mermaid: any;
   // File-format-plugin helper bundle IIFE — accessed by bare name via
   // `typeof LexeraFileFormatHelpers !== 'undefined'` in every
   // plugins/formats/*.js registration. Aliased to `H` per format
