@@ -5,47 +5,41 @@ fontSize: 0_9x
 boardColorDark: "#10141b"
 boardColorLight: "#fbfaf7"
 stickyStackMode: off
+generation: 11
+contentHash: aa0e7b357d6bae35410cbb83944ec58ea0c4bd4b048864789a460343bed99870
+dependencyHash: ce3518b82c60d54ef04f0f0ec64b6c2e9ec5b7a38252abac9ac7511bfea2075f
+resolvedHash: 7937ede4946f827a208b82275772680857efaa6540b7464cb82db8b899e5d2df
+writerId: 871fd1a5-80f1-4908-a5c1-021af960b979
 ---
 
 # Scale Stress — 1 Row, 20 Stacks
 
-## Stack 01 — Portraits #red
+## Stack 01 — Portraits #red #hidden-internal-deleted
+
+## Stack 02 — Landscapes #orange #hidden-internal-deleted
+
+## Stack 03 — Diagrams #yellow
 
 ### S01·C01 — Portraits col 1 #orange
 - [ ] Card 00001 — S01C01K01
-
-## Stack 02 — Landscapes #orange
 
 ### S02·C01 — Landscapes col 1 #yellow
 - [ ] Card 00002 — S02C01K01
   ![image-1](Media/fixture-1.png)
 - [ ] Card 00003 — S02C01K02
 - [ ] Card 00004 — S02C01K03
-  ![image-2](Media/fixture-2.png)
+  ![image-2](Media/fixture-2.png) #important
 - [x] Card 00005 — S02C01K04
 
 ### S02·C02 — Landscapes col 2 #green
 - [ ] Card 00006 — S02C02K01
-  ![image-3](Media/fixture-3.png)
+  ![image-3](Media/fixture-3.png) #todo
 - [ ] Card 00007 — S02C02K02 #todo
 - [ ] Card 00008 — S02C02K03 #hidden-internal-archived
   ![image-4](Media/fixture-4.png){width=160}
 - [ ] Card 00009 — S02C02K04 #hidden-internal-parked
 
-## Stack 03 — Diagrams #yellow
-
 ### !!!include(includes/slides-basic.md)!!! #green
-- [x] Card 00010 — S03C01K01
-  ![image-5](Media/fixture-5.png)
-- [ ] Card 00011 — S03C01K02 @2026-12-12
-- [ ] Card 00012 — S03C01K03
-  ![image-6](Media/fixture-0.png)
-- [ ] Card 00013 — S03C01K04
-- [ ] Card 00014 — S03C01K05 #todo
-  ![image-7](Media/fixture.svg)
-- [x] Card 00015 — S03C01K06
-- [ ] Card 00016 — S03C01K07
-  ![image-8](Media/pixel.gif){width=160}
 
 ### S03·C02 — Diagrams col 2 #blue
 - [ ] Card 00017 — S03C02K01
@@ -320,33 +314,6 @@ stickyStackMode: off
   ![audio-88](Media/silent.wav)
 
 ### !!!include(includes/slides-marp-presentation.md)!!! #green
-- [ ] Card 00177 — S06C03K01
-- [ ] Card 00178 — S06C03K02 #hidden-internal-archived
-  ![doc-89](Media/sample-doc.pdf)
-- [ ] Card 00179 — S06C03K03 #hidden-internal-parked
-- [x] Card 00180 — S06C03K04
-  ![sheet-90](Media/sample-spreadsheet.xlsx)
-- [ ] Card 00181 — S06C03K05
-- [ ] Card 00182 — S06C03K06 #todo
-  ![drawio-91](Media/sample.drawio)
-- [ ] Card 00183 — S06C03K07
-- [ ] Card 00184 — S06C03K08
-  ![excalidraw-92](Media/sample.excalidraw)
-- [x] Card 00185 — S06C03K09
-- [ ] Card 00186 — S06C03K10
-  ![image-93](Media/fixture-1.png)
-- [ ] Card 00187 — S06C03K11 @2026-08-20
-- [ ] Card 00188 — S06C03K12 #hidden-internal-archived
-  ![image-94](Media/fixture-2.png)
-- [ ] Card 00189 — S06C03K13 #hidden-internal-parked #todo
-- [x] Card 00190 — S06C03K14
-  ![image-95](Media/fixture-3.png)
-- [ ] Card 00191 — S06C03K15
-- [ ] Card 00192 — S06C03K16
-  ![image-96](Media/fixture-4.png){width=160}
-- [ ] Card 00193 — S06C03K17
-- [ ] Card 00194 — S06C03K18
-  ![image-97](Media/fixture-5.png)
 
 ### S06·C04 — Video Clips col 4 #orange
 - [x] Card 00195 — S06C04K01
@@ -1203,51 +1170,6 @@ stickyStackMode: off
   ![doc-365](Media/sample-doc.pdf)
 
 ### !!!include(includes/with%20spaces%20in%20name.md)!!! #green
-- [ ] Card 00731 — S09C05K01
-- [ ] Card 00732 — S09C05K02
-  ![sheet-366](Media/sample-spreadsheet.xlsx)
-- [ ] Card 00733 — S09C05K03
-- [ ] Card 00734 — S09C05K04
-  ![drawio-367](Media/sample.drawio)
-- [x] Card 00735 — S09C05K05 #todo
-- [ ] Card 00736 — S09C05K06
-  ![excalidraw-368](Media/sample.excalidraw)
-- [ ] Card 00737 — S09C05K07 @2026-06-10
-- [ ] Card 00738 — S09C05K08 #hidden-internal-archived
-  ![image-369](Media/fixture-1.png)
-- [ ] Card 00739 — S09C05K09 #hidden-internal-parked
-- [x] Card 00740 — S09C05K10
-  ![image-370](Media/fixture-2.png)
-- [ ] Card 00741 — S09C05K11
-- [ ] Card 00742 — S09C05K12 #todo
-  ![image-371](Media/fixture-3.png)
-- [ ] Card 00743 — S09C05K13
-- [ ] Card 00744 — S09C05K14
-  ![image-372](Media/fixture-4.png){width=160}
-- [x] Card 00745 — S09C05K15
-- [ ] Card 00746 — S09C05K16
-  ![image-373](Media/fixture-5.png)
-- [ ] Card 00747 — S09C05K17
-- [ ] Card 00748 — S09C05K18 #hidden-internal-archived @2026-05-21
-  ![image-374](Media/fixture-0.png)
-- [ ] Card 00749 — S09C05K19 #hidden-internal-parked #todo
-- [x] Card 00750 — S09C05K20
-  ![image-375](Media/fixture.svg)
-- [ ] Card 00751 — S09C05K21
-- [ ] Card 00752 — S09C05K22
-  ![image-376](Media/pixel.gif){width=160}
-- [ ] Card 00753 — S09C05K23
-- [ ] Card 00754 — S09C05K24
-  ![image-377](Media/pixel.webp)
-- [x] Card 00755 — S09C05K25
-- [ ] Card 00756 — S09C05K26 #todo
-  ![image-378](Media/sample-map.jpg)
-- [ ] Card 00757 — S09C05K27
-- [ ] Card 00758 — S09C05K28 #hidden-internal-archived
-  ![image-379](Media/sample-photo.jpeg)
-- [ ] Card 00759 — S09C05K29 #hidden-internal-parked @2026-04-04
-- [x] Card 00760 — S09C05K30
-  ![image-380](Media/sample-photo.avif){width=160}
 
 ### S09·C06 — Vector Art col 6 #cyan
 - [ ] Card 00761 — S09C06K01
@@ -1502,66 +1424,6 @@ stickyStackMode: off
   ![excalidraw-460](Media/sample.excalidraw)
 
 ### !!!include(includes/single-slide.md)!!! #green
-- [ ] Card 00921 — S10C02K01
-- [ ] Card 00922 — S10C02K02
-  ![image-461](Media/fixture-1.png)
-- [ ] Card 00923 — S10C02K03
-- [ ] Card 00924 — S10C02K04 #todo @2026-01-01
-  ![image-462](Media/fixture-2.png)
-- [x] Card 00925 — S10C02K05
-- [ ] Card 00926 — S10C02K06
-  ![image-463](Media/fixture-3.png)
-- [ ] Card 00927 — S10C02K07
-- [ ] Card 00928 — S10C02K08 #hidden-internal-archived
-  ![image-464](Media/fixture-4.png){width=160}
-- [ ] Card 00929 — S10C02K09 #hidden-internal-parked
-- [x] Card 00930 — S10C02K10
-  ![image-465](Media/fixture-5.png)
-- [ ] Card 00931 — S10C02K11 #todo
-- [ ] Card 00932 — S10C02K12
-  ![image-466](Media/fixture-0.png)
-- [ ] Card 00933 — S10C02K13
-- [ ] Card 00934 — S10C02K14
-  ![image-467](Media/fixture.svg)
-- [x] Card 00935 — S10C02K15 @2026-12-12
-- [ ] Card 00936 — S10C02K16
-  ![image-468](Media/pixel.gif){width=160}
-- [ ] Card 00937 — S10C02K17
-- [ ] Card 00938 — S10C02K18 #hidden-internal-archived #todo
-  ![image-469](Media/pixel.webp)
-- [ ] Card 00939 — S10C02K19 #hidden-internal-parked
-- [x] Card 00940 — S10C02K20
-  ![image-470](Media/sample-map.jpg)
-- [ ] Card 00941 — S10C02K21
-- [ ] Card 00942 — S10C02K22
-  ![image-471](Media/sample-photo.jpeg)
-- [ ] Card 00943 — S10C02K23
-- [ ] Card 00944 — S10C02K24
-  ![image-472](Media/sample-photo.avif){width=160}
-- [x] Card 00945 — S10C02K25 #todo
-- [ ] Card 00946 — S10C02K26 @2026-11-23
-  ![image-473](Media/square-512.png)
-- [ ] Card 00947 — S10C02K27
-- [ ] Card 00948 — S10C02K28 #hidden-internal-archived
-  ![image-474](Media/unsplash-1.jpg)
-- [ ] Card 00949 — S10C02K29 #hidden-internal-parked
-- [x] Card 00950 — S10C02K30
-  ![image-475](Media/unsplash-2.jpg)
-- [ ] Card 00951 — S10C02K31
-- [ ] Card 00952 — S10C02K32 #todo
-  ![image-476](Media/unsplash-3.jpg){width=160}
-- [ ] Card 00953 — S10C02K33
-- [ ] Card 00954 — S10C02K34
-  ![video-477](Media/sample-video.mp4)
-- [x] Card 00955 — S10C02K35
-- [ ] Card 00956 — S10C02K36
-  ![audio-478](Media/silent.mp3)
-- [ ] Card 00957 — S10C02K37 @2026-10-06
-- [ ] Card 00958 — S10C02K38 #hidden-internal-archived
-  ![audio-479](Media/silent.wav)
-- [ ] Card 00959 — S10C02K39 #hidden-internal-parked #todo
-- [x] Card 00960 — S10C02K40
-  ![doc-480](Media/sample-doc.pdf)
 
 ### S10·C03 — Bulk Tasks col 3 #blue
 - [ ] Card 00961 — S10C03K01
@@ -3157,45 +3019,6 @@ stickyStackMode: off
   ![excalidraw-989](Media/sample.excalidraw)
 
 ### !!!include(includes/slides.marp.md)!!! #green
-- [ ] Card 01979 — S13C04K01 #hidden-internal-parked
-- [x] Card 01980 — S13C04K02 @2026-01-21
-  ![image-990](Media/fixture-1.png)
-- [ ] Card 01981 — S13C04K03 #todo
-- [ ] Card 01982 — S13C04K04
-  ![image-991](Media/fixture-2.png)
-- [ ] Card 01983 — S13C04K05
-- [ ] Card 01984 — S13C04K06
-  ![image-992](Media/fixture-3.png){width=160}
-- [x] Card 01985 — S13C04K07
-- [ ] Card 01986 — S13C04K08
-  ![image-993](Media/fixture-4.png)
-- [ ] Card 01987 — S13C04K09
-- [ ] Card 01988 — S13C04K10 #hidden-internal-archived #todo
-  ![image-994](Media/fixture-5.png)
-- [ ] Card 01989 — S13C04K11 #hidden-internal-parked
-- [x] Card 01990 — S13C04K12
-  ![image-995](Media/fixture-0.png)
-- [ ] Card 01991 — S13C04K13 @2026-12-04
-- [ ] Card 01992 — S13C04K14
-  ![image-996](Media/fixture.svg){width=160}
-- [ ] Card 01993 — S13C04K15
-- [ ] Card 01994 — S13C04K16
-  ![image-997](Media/pixel.gif)
-- [x] Card 01995 — S13C04K17 #todo
-- [ ] Card 01996 — S13C04K18
-  ![image-998](Media/pixel.webp)
-- [ ] Card 01997 — S13C04K19
-- [ ] Card 01998 — S13C04K20 #hidden-internal-archived
-  ![image-999](Media/sample-map.jpg)
-- [ ] Card 01999 — S13C04K21 #hidden-internal-parked
-- [x] Card 02000 — S13C04K22
-  ![image-1000](Media/sample-photo.jpeg){width=160}
-- [ ] Card 02001 — S13C04K23
-- [ ] Card 02002 — S13C04K24 #todo @2026-11-15
-  ![image-1001](Media/sample-photo.avif)
-- [ ] Card 02003 — S13C04K25
-- [ ] Card 02004 — S13C04K26
-  ![image-1002](Media/square-512.png)
 
 ### S13·C05 — Queue C col 5 #orange
 - [x] Card 02005 — S13C05K01
@@ -3787,27 +3610,6 @@ stickyStackMode: off
 ## Stack 16 — Drafts #pink
 
 ### !!!include(includes/chained-include.md)!!! #green
-- [ ] Card 02371 — S16C01K01
-- [ ] Card 02372 — S16C01K02
-  ![image-1186](Media/square-512.png)
-- [ ] Card 02373 — S16C01K03 #todo
-- [ ] Card 02374 — S16C01K04
-  ![image-1187](Media/unsplash-1.jpg)
-- [x] Card 02375 — S16C01K05
-- [ ] Card 02376 — S16C01K06 @2026-01-25
-  ![image-1188](Media/unsplash-2.jpg){width=160}
-- [ ] Card 02377 — S16C01K07
-- [ ] Card 02378 — S16C01K08 #hidden-internal-archived
-  ![image-1189](Media/unsplash-3.jpg)
-- [ ] Card 02379 — S16C01K09 #hidden-internal-parked
-- [x] Card 02380 — S16C01K10 #todo
-  ![video-1190](Media/sample-video.mp4)
-- [ ] Card 02381 — S16C01K11
-- [ ] Card 02382 — S16C01K12
-  ![audio-1191](Media/silent.mp3)
-- [ ] Card 02383 — S16C01K13
-- [ ] Card 02384 — S16C01K14
-  ![audio-1192](Media/silent.wav)
 
 ### S16·C02 — Drafts col 2 #orange
 - [x] Card 02385 — S16C02K01
@@ -4091,3 +3893,5 @@ stickyStackMode: off
 - [ ] Card 02548 — S20C01K39 #hidden-internal-archived #todo
   ![image-1274](Media/pixel.webp)
 - [ ] Card 02549 — S20C01K40 #hidden-internal-parked
+
+
