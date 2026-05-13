@@ -1283,6 +1283,47 @@ interface LexeraBackendDiscoveryApi {
 }
 
 /**
+ * Source: src/sync/pollingService.js (IIFE;
+ * window.LexeraPollingService = api). Periodic backend polling loop —
+ * compares fingerprints (workspaces / boards catalog / boards content)
+ * and delegates to host helpers (setBoards / setWorkspaces / loadBoard /
+ * etc.) when something changed. Maintains the connection-status button
+ * + dot in the header.
+ */
+type LexeraPollingConnectionState =
+  | 'none'
+  | 'busy'
+  | 'ready'
+  | 'testing';
+
+interface LexeraPollingServiceApi {
+  /** Wire host accessors / mutators. Deps shape is opaque — the impl
+   *  reads ~30 keys via `_dep`/`_callDep` (logFrontendIssue, loadBoard,
+   *  setBoards, refreshHeaderFileControls, …). Listed as
+   *  `Record<string, unknown>` so callers can keep the existing
+   *  inline-object pattern without per-key typing churn. */
+  init(deps: Record<string, unknown>): void;
+  /** One poll cycle — sets state to 'busy' while running, then 'ready'
+   *  or 'none' depending on the discovery / fetch outcome. */
+  poll(): Promise<void>;
+  /** Mark the connection state. Accepts legacy boolean for backward
+   *  compat (`true`→'ready', `false`→'none'). Updates the status
+   *  button + dot, fires `loadTemplatesOnce` on first reconnect. */
+  setConnected(state: LexeraPollingConnectionState | boolean): void;
+  /** Re-paint the connection status button + dot to match `state`.
+   *  Exposed so external callers (e.g. test-runner status pill) can
+   *  drive the UI without invoking a real poll cycle. */
+  syncConnectionStatusButton(
+    buttonEl: HTMLElement | null,
+    dotEl: HTMLElement | null,
+    state: LexeraPollingConnectionState | boolean | null | undefined
+  ): void;
+  /** Force the next poll to treat all data as changed (e.g. after
+   *  user-triggered refresh). */
+  resetFingerprints(): void;
+}
+
+/**
  * Source: src/interaction/controlsDispatcher.js (IIFE;
  * window.LexeraControlsDispatcher = api). Central event dispatcher for
  * scroll / drag / mouse interactions on the board. Modules (canvasPan,
@@ -4272,7 +4313,7 @@ declare global {
     LexeraContentEnhancerRegistry: LexeraContentEnhancerRegistryApi;
     LexeraTagSystem: LexeraTagSystemApi;
     LexeraDropZoneIndicators: LexeraDropZoneIndicatorsApi;
-    LexeraPollingService: any;
+    LexeraPollingService: LexeraPollingServiceApi;
     LexeraCanvasMode: LexeraCanvasModeApi;
     LexeraCanvasPan: LexeraCanvasPanApi;
     LexeraControlsDispatcher: LexeraControlsDispatcherApi;
