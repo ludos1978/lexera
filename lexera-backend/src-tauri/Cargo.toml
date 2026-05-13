@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-lexera-core = { path = "../../lexera-core" }
+lexera-core = { path = "../../lexera-core", default-features = false, features = ["file-watcher"] }
 lexera-local-ipc = { path = "../../lexera-local-ipc" }
 tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
 axum = { version = "0.8", features = ["multipart", "ws"] }
@@ -40,6 +40,8 @@ tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
 
 [features]
+default = ["crdt"]
+crdt = ["lexera-core/crdt"]
 test = ["tauri/test"]
 
 [build-dependencies]

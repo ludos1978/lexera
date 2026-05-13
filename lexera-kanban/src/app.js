@@ -28,6 +28,12 @@ var LexeraDashboard = (function () {
     _rt.defineState('fullBoardData', null);
     _rt.defineState('connected', false);
     _rt.defineState('liveSyncState', null);
+    _rt.defineState('backendCapabilities', {
+      crdtSync: true,
+      liveSync: true,
+      remoteSync: true,
+      disabledReason: null
+    });
     _rt.defineState('boardPresenceCache', {});
     _rt.defineState('workspaceShellEnabled', false);
     _rt.defineState('workspaceShellBoardHostEnabled', false);
@@ -2199,6 +2205,46 @@ var LexeraDashboard = (function () {
   var syncUserName = null;
   var boardPresenceCache = {}; // boardId -> [user_id, ...]
   var editingPresenceMap = {}; // user_id -> { card_kid, user_name, cursor_pos, is_typing }
+  var backendCapabilities = {
+    crdtSync: true,
+    liveSync: true,
+    remoteSync: true,
+    disabledReason: null
+  };
+
+  function normalizeBackendCapabilities(capabilities) {
+    capabilities = capabilities || {};
+    var crdtSync = capabilities.crdtSync !== false;
+    return {
+      crdtSync: crdtSync,
+      liveSync: crdtSync && capabilities.liveSync !== false,
+      remoteSync: crdtSync && capabilities.remoteSync !== false,
+      disabledReason: typeof capabilities.disabledReason === 'string' && capabilities.disabledReason
+        ? capabilities.disabledReason
+        : (crdtSync ? null : 'CRDT sync is disabled in this build')
+    };
+  }
+
+  function isCrdtSyncEnabled() {
+    return !backendCapabilities || backendCapabilities.crdtSync !== false;
+  }
+
+  function getCrdtSyncDisabledMessage() {
+    return backendCapabilities && backendCapabilities.disabledReason
+      ? backendCapabilities.disabledReason
+      : 'CRDT sync is disabled in this build';
+  }
+
+  async function refreshBackendCapabilities(options) {
+    if (!LexeraApi || typeof LexeraApi.getBackendCapabilities !== 'function') return backendCapabilities;
+    try {
+      backendCapabilities = normalizeBackendCapabilities(await LexeraApi.getBackendCapabilities(options || {}));
+      syncRuntimeState('backendCapabilities', backendCapabilities);
+    } catch (err) {
+      logFrontendIssue('warn', 'backend.capabilities', 'Failed to load backend capabilities', err);
+    }
+    return backendCapabilities;
+  }
 
   function getLiveSyncSession(boardId) {
     if (!liveSyncState) return null;
@@ -2213,6 +2259,7 @@ var LexeraDashboard = (function () {
   function canUseLiveSync(boardId) {
     return !!(
       boardId &&
+      isCrdtSyncEnabled() &&
       hasLiveSyncSession(boardId) &&
       LexeraApi.isSyncConnected() &&
       LexeraApi.getSyncBoardId() === boardId
@@ -2237,6 +2284,7 @@ var LexeraDashboard = (function () {
   function shouldBroadcastEditingPresence(boardId) {
     return !!(
       boardId &&
+      isCrdtSyncEnabled() &&
       LexeraApi.isSyncConnected() &&
       getRemoteBoardPresenceCount(boardId) > 0
     );
@@ -2246,6 +2294,7 @@ var LexeraDashboard = (function () {
     var session = getLiveSyncSession(boardId);
     if (!session) return;
     liveSyncState = null;
+    if (!isCrdtSyncEnabled()) return;
     try {
       await LexeraApi.closeLiveSyncSession(session.sessionId);
     } catch (e) {
@@ -2255,6 +2304,8 @@ var LexeraDashboard = (function () {
 
   async function ensureLiveSyncSession(boardId) {
     if (!boardId) return null;
+    var capabilities = await refreshBackendCapabilities();
+    if (capabilities && capabilities.crdtSync === false) return null;
     var existing = getLiveSyncSession(boardId);
     if (existing) return existing;
     if (liveSyncState && liveSyncState.boardId !== boardId) {
@@ -2530,6 +2581,16 @@ var LexeraDashboard = (function () {
     if (!boardId) {
       LexeraApi.disconnectSync();
       await closeLiveSyncSession();
+      return;
+    }
+    var capabilities = await refreshBackendCapabilities();
+    if (capabilities && capabilities.crdtSync === false) {
+      LexeraApi.disconnectSync();
+      await closeLiveSyncSession();
+      boardPresenceCache[boardId] = [];
+      syncRuntimeState('boardPresenceCache', boardPresenceCache);
+      syncFoldedLogStatusBadges();
+      updateBoardPresenceIndicator(boardId);
       return;
     }
     try {
@@ -6799,7 +6860,18 @@ var LexeraDashboard = (function () {
 
   // ── Collaboration ────────────────────────────────────────────────
 
-  function openConnectionWindow() { ManagementWiring.openConnectionWindow(); }
+  function openConnectionWindow() {
+    refreshBackendCapabilities({ force: true }).then(function (capabilities) {
+      if (capabilities && capabilities.crdtSync === false) {
+        showNotification(getCrdtSyncDisabledMessage(), { variant: 'warn' });
+        return;
+      }
+      ManagementWiring.openConnectionWindow();
+    }).catch(function (err) {
+      logFrontendIssue('warn', 'backend.capabilities', 'Failed to check collaboration capability before opening connection window', err);
+      ManagementWiring.openConnectionWindow();
+    });
+  }
 
   var _notificationQueue = [];
   var _notificationActive = null;

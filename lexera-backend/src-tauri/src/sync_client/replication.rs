@@ -21,6 +21,7 @@ use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use lexera_core::media::{compute_media_manifest, diff_media_manifests, media_folder_for_board};
 use lexera_core::storage::local::LocalStorage;
+use lexera_core::storage::{CrdtSyncStorage, CRDT_SYNC_DISABLED_MESSAGE};
 use lexera_core::sync::{ClientMessage, ServerMessage};
 use lexera_core::watcher::types::BoardChangeEvent;
 use std::sync::Arc;
@@ -49,6 +50,16 @@ pub(super) async fn run_sync_client_with_reconnect(
     remote_board_id: String,
     auth_token: Option<String>,
 ) {
+    if !CrdtSyncStorage::crdt_sync_available(storage.as_ref()) {
+        log::warn!(
+            "[sync_client] {} - remote sync disabled for board={}",
+            CRDT_SYNC_DISABLED_MESSAGE,
+            local_board_id
+        );
+        let _ = event_tx.send(BoardChangeEvent::CollabConnectionChanged);
+        return;
+    }
+
     let mut attempt: u32 = 0;
     loop {
         attempt = attempt.saturating_add(1);
@@ -114,6 +125,10 @@ async fn run_sync_client(
 ) -> Result<(), String> {
     use tokio_tungstenite::tungstenite::Message;
 
+    if !CrdtSyncStorage::crdt_sync_available(storage.as_ref()) {
+        return Err(CRDT_SYNC_DISABLED_MESSAGE.to_string());
+    }
+
     let (ws_stream, _) = tokio_tungstenite::connect_async(&ws_url)
         .await
         .map_err(|e| {
@@ -152,7 +167,7 @@ async fn run_sync_client(
         .map_err(|e| format!("Send ClientHello failed: {}", e))?;
 
     let mut event_rx = event_tx.subscribe();
-    let mut last_sent_vv = match storage.get_crdt_vv(&local_board_id) {
+    let mut last_sent_vv = match CrdtSyncStorage::get_crdt_vv(storage.as_ref(), &local_board_id) {
         Some(vv) => vv,
         None => {
             log::warn!(
@@ -272,7 +287,11 @@ async fn run_sync_client(
                             }
                         };
                         if !bytes.is_empty() {
-                            if let Err(e) = storage.import_crdt_updates(&local_board_id, &bytes) {
+                            if let Err(e) = CrdtSyncStorage::import_crdt_updates(
+                                storage.as_ref(),
+                                &local_board_id,
+                                &bytes,
+                            ) {
                                 log::error!(
                                     "[sync_client] Failed to import ServerHello updates for {}: {}",
                                     local_board_id,
@@ -285,7 +304,9 @@ async fn run_sync_client(
                                     local_board_id,
                                     bytes.len()
                                 );
-                                if let Some(vv_after_import) = storage.get_crdt_vv(&local_board_id) {
+                                if let Some(vv_after_import) =
+                                    CrdtSyncStorage::get_crdt_vv(storage.as_ref(), &local_board_id)
+                                {
                                     last_sent_vv = vv_after_import;
                                 }
                                 // Forward CRDT updates to local frontend peers via hub
@@ -331,7 +352,11 @@ async fn run_sync_client(
                             }
                         };
                         if !bytes.is_empty() {
-                            if let Err(e) = storage.import_crdt_updates(&local_board_id, &bytes) {
+                            if let Err(e) = CrdtSyncStorage::import_crdt_updates(
+                                storage.as_ref(),
+                                &local_board_id,
+                                &bytes,
+                            ) {
                                 log::error!(
                                     "[sync_client] Failed to import ServerUpdate for {}: {}",
                                     local_board_id,
@@ -344,7 +369,9 @@ async fn run_sync_client(
                                     local_board_id,
                                     bytes.len()
                                 );
-                                if let Some(vv_after_import) = storage.get_crdt_vv(&local_board_id) {
+                                if let Some(vv_after_import) =
+                                    CrdtSyncStorage::get_crdt_vv(storage.as_ref(), &local_board_id)
+                                {
                                     last_sent_vv = vv_after_import;
                                 }
                                 // Forward CRDT updates to local frontend peers via hub
@@ -431,7 +458,10 @@ async fn run_sync_client(
                                             );
                                             break;
                                         }
-                                        if let Some(vv) = storage.get_crdt_vv(&local_board_id) {
+                                        if let Some(vv) = CrdtSyncStorage::get_crdt_vv(
+                                            storage.as_ref(),
+                                            &local_board_id,
+                                        ) {
                                             last_sent_vv = vv;
                                         }
                                         log::info!(
@@ -490,7 +520,10 @@ async fn run_sync_client(
                         // If the event came from sync_ws (a WS peer), the hub
                         // path already forwarded the update. Only send here if
                         // the VV actually changed (covers REST-only writes).
-                        let current_vv = match storage.get_crdt_vv(&local_board_id) {
+                        let current_vv = match CrdtSyncStorage::get_crdt_vv(
+                            storage.as_ref(),
+                            &local_board_id,
+                        ) {
                             Some(vv) => vv,
                             None => {
                                 log::warn!(
@@ -508,9 +541,11 @@ async fn run_sync_client(
                         }
 
                         let mut used_full_resync = false;
-                        let mut updates = match storage
-                            .export_crdt_updates_since(&local_board_id, &last_sent_vv)
-                        {
+                        let mut updates = match CrdtSyncStorage::export_crdt_updates_since(
+                            storage.as_ref(),
+                            &local_board_id,
+                            &last_sent_vv,
+                        ) {
                             Some(bytes) => bytes,
                             None => {
                                 log::warn!(
@@ -528,7 +563,12 @@ async fn run_sync_client(
                                 "[sync_client] Empty delta with changed VV for {}; falling back to full delta export",
                                 local_board_id
                             );
-                            updates = storage.export_crdt_updates_since(&local_board_id, &[]).unwrap_or_default();
+                            updates = CrdtSyncStorage::export_crdt_updates_since(
+                                storage.as_ref(),
+                                &local_board_id,
+                                &[],
+                            )
+                            .unwrap_or_default();
                         }
                         if updates.is_empty() {
                             last_sent_vv = current_vv;
@@ -542,7 +582,9 @@ async fn run_sync_client(
                             .send(Message::Text(msg))
                         .await
                         .map_err(|e| format!("Failed to send ClientUpdate: {}", e))?;
-                        if let Some(vv_after_send) = storage.get_crdt_vv(&local_board_id) {
+                        if let Some(vv_after_send) =
+                            CrdtSyncStorage::get_crdt_vv(storage.as_ref(), &local_board_id)
+                        {
                             last_sent_vv = vv_after_send;
                         } else {
                             last_sent_vv = current_vv;

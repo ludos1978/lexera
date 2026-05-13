@@ -7,7 +7,6 @@
 /// - Mutex-guarded writes to prevent concurrent modification
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::SystemTime;
@@ -15,8 +14,9 @@ use std::time::SystemTime;
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use sha2::{Digest, Sha256};
 
+use super::merge_engine::{CrdtMergeEngine, MergeEngine, MergeRequest};
 use super::{BoardStorage, StorageError};
-use crate::crdt::bridge::CrdtStore;
+use crate::crdt::bridge::{decode_version_vector, empty_version_vector, CrdtStore};
 use crate::include::resolver::IncludeMap;
 use crate::include::slide_parser;
 use crate::include::syntax;
@@ -28,7 +28,7 @@ use crate::parser;
 use crate::search::{
     DueFilter, SearchCardMeta, SearchDocument, SearchEngine, SearchOptions, SearchPrefilter,
 };
-use crate::storage::registry::{BoardRegistry, BoardRegistryEntry, SearchEntry};
+use crate::storage::registry::{BoardRegistryEntry, BoardRegistryStore, SearchEntry};
 use crate::types::*;
 use crate::watcher::self_write::SelfWriteTracker;
 
@@ -198,10 +198,8 @@ pub struct LocalStorage {
     writer_id: String,
     /// Write-loop detection counters
     pub write_counters: WriteCounters,
-    /// Board registry (ordering, pinning, access history, search history).
-    registry: RwLock<BoardRegistry>,
-    /// Path where the registry is persisted. `None` until `init_registry` is called.
-    registry_path: Mutex<Option<PathBuf>>,
+    /// Board registry/index (ordering, pinning, access history, search history).
+    registry: BoardRegistryStore,
 }
 
 /// Check if two boards have different row/stack/column structure (count or IDs).
@@ -831,7 +829,7 @@ impl LocalStorage {
 
         state.crdt = hydrated;
         if let Some(crdt) = state.crdt.as_ref() {
-            if let Err(error) = crdt.save_to_file(&crdt_path) {
+            if let Err(error) = super::crdt_artifact::save_store_snapshot(&crdt_path, crdt) {
                 log::warn!(
                     "[lexera.crdt] Failed to persist hydrated .crdt file {:?}: {}",
                     crdt_path,
@@ -1174,7 +1172,7 @@ impl LocalStorage {
     }
 
     fn board_visible_signature(board: &KanbanBoard) -> String {
-        let mut normalized = Self::board_without_generation_meta(board);
+        let mut normalized = super::generation::board_without_generation_meta(board);
         normalized.reconcile_format_hint();
         parser::generate_markdown(&normalized)
     }
@@ -1552,26 +1550,21 @@ impl LocalStorage {
     }
 
     fn merge_boards_with_crdt(
+        board_id: &str,
         base: &KanbanBoard,
         current: &KanbanBoard,
         incoming: &KanbanBoard,
         board_dir: &Path,
     ) -> Result<(KanbanBoard, CrdtStore), StorageError> {
-        let base_store = CrdtStore::from_board(base)?;
-        let snapshot = base_store.save()?;
-
-        let mut current_store = CrdtStore::load(&snapshot)?;
-        current_store.apply_board(current, base)?;
-
-        let mut incoming_store = CrdtStore::load(&snapshot)?;
-        incoming_store.set_peer_id(2)?;
-        incoming_store.apply_board(incoming, base)?;
-
-        let current_vv = current_store.oplog_vv();
-        let incoming_delta = incoming_store.export_updates_since(&current_vv)?;
-        current_store.import_updates(&incoming_delta)?;
-
-        let mut merged_board = current_store.to_board_result()?;
+        let engine = CrdtMergeEngine;
+        let outcome = engine.merge_from_base(MergeRequest {
+            board_id,
+            base,
+            current,
+            incoming,
+        })?;
+        let mut merged_board = outcome.board;
+        let current_store = outcome.artifact;
         merged_board = Self::normalize_board_for_write(&merged_board, board_dir);
         Self::restore_include_sources(&mut merged_board, current);
         Self::restore_include_sources(&mut merged_board, incoming);
@@ -1597,37 +1590,6 @@ impl LocalStorage {
         Ok(crashsave)
     }
 
-    fn board_without_generation_meta(board: &KanbanBoard) -> KanbanBoard {
-        let mut normalized = board.clone();
-        normalized.generation_meta = None;
-        normalized
-    }
-
-    fn resolved_hash(board: &KanbanBoard) -> String {
-        let board = Self::board_without_generation_meta(board);
-        let serialized =
-            serde_json::to_string(&board).unwrap_or_else(|_| parser::generate_markdown(&board));
-        Self::content_hash(&serialized)
-    }
-
-    fn dependency_hash(board: &KanbanBoard) -> Option<String> {
-        let mut fingerprint_parts = Vec::new();
-        for column in board.all_columns() {
-            let Some(include_source) = column.include_source.as_ref() else {
-                continue;
-            };
-            fingerprint_parts.push(include_source.raw_path.clone());
-            fingerprint_parts.push(slide_parser::generate_slides(&column.cards));
-        }
-        if fingerprint_parts.is_empty() {
-            None
-        } else {
-            Some(Self::content_hash(
-                &fingerprint_parts.join("\n--lexera-include--\n"),
-            ))
-        }
-    }
-
     fn current_generation(&self, board_id: &str) -> u64 {
         self.boards
             .read()
@@ -1637,15 +1599,11 @@ impl LocalStorage {
     }
 
     fn next_generation_meta(&self, board_id: &str, board: &KanbanBoard) -> GenerationMeta {
-        let next_generation = self.current_generation(board_id) + 1;
-        let preview_markdown = parser::generate_markdown(board);
-        GenerationMeta {
-            generation: Some(next_generation),
-            content_hash: Some(parser::body_hash(&preview_markdown)),
-            dependency_hash: Self::dependency_hash(board),
-            resolved_hash: Some(Self::resolved_hash(board)),
-            writer_id: Some(self.writer_id.clone()),
-        }
+        super::generation::next_generation_meta(
+            self.current_generation(board_id),
+            &self.writer_id,
+            board,
+        )
     }
 
     fn commit_board_state(
@@ -1712,44 +1670,14 @@ impl LocalStorage {
 
         // CRDT save: best-effort after successful disk write.
         // If it fails, the CRDT will be rebuilt from markdown on next reload.
-        // Skip the write when the serialized bytes are identical to what is
-        // already on disk, avoiding unnecessary IO.
         if let Some(ref c) = crdt {
             let crdt_path = file_path.with_extension("md.crdt");
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.save()));
-            match result {
-                Ok(Ok(new_bytes)) => {
-                    let unchanged = crdt_path
-                        .exists()
-                        .then(|| fs::read(&crdt_path).ok())
-                        .flatten()
-                        .map(|existing| existing == new_bytes)
-                        .unwrap_or(false);
-
-                    if !unchanged {
-                        if let Err(e) = fs::write(&crdt_path, &new_bytes) {
-                            log::error!(
-                                "[lexera.crdt] Failed to save CRDT file for board {}: {}",
-                                board_id,
-                                e
-                            );
-                        }
-                    }
-                }
-                Ok(Err(e)) => {
-                    log::error!(
-                        "[lexera.crdt] Failed to serialize CRDT for board {}: {}",
-                        board_id,
-                        e
-                    );
-                }
-                Err(panic_payload) => {
-                    log::error!(
-                        "[lexera.crdt] Loro panicked during save for board {}: {}",
-                        board_id,
-                        panic_payload_to_string(panic_payload.as_ref())
-                    );
-                }
+            if let Err(e) = super::crdt_artifact::save_store_snapshot_if_changed(&crdt_path, c) {
+                log::error!(
+                    "[lexera.crdt] Failed to save CRDT file for board {}: {}",
+                    board_id,
+                    e
+                );
             }
         }
 
@@ -2103,8 +2031,13 @@ impl LocalStorage {
                 });
             }
 
-            let (board_to_write, crdt) =
-                Self::merge_boards_with_crdt(&base, &current, &normalized_board, &board_dir)?;
+            let (board_to_write, crdt) = Self::merge_boards_with_crdt(
+                board_id,
+                &base,
+                &current,
+                &normalized_board,
+                &board_dir,
+            )?;
             log::info!(
                 "[lexera.storage.write] board={} crdt_merged_output={}",
                 board_id,
@@ -2195,13 +2128,21 @@ impl LocalStorage {
             board_card_summary(&board_to_write)
         );
 
-        // Legacy-format boards: redirect writes to a new file so the original
-        // v1 file is never overwritten.  We use `originally_legacy` (captured
-        // before reconcile_format_hint promotes Legacy→New) so the redirect
-        // fires even after the frontend migrates the board to row/stack
-        // hierarchy.  Subsequent saves already target the `-lexera2.md` path.
+        // Legacy-format boards: redirect hierarchy upgrades to a new file so
+        // the original v1 file is never overwritten. Flat include boards save
+        // in place because include files are updated as part of the same save;
+        // redirecting only the main file would leave the original include graph
+        // stale while mutating its include targets.
         let file_path_str = file_path.to_string_lossy();
-        let is_legacy_redirect = originally_legacy && !file_path_str.contains("-lexera2");
+        let has_include_columns = board_to_write
+            .all_columns()
+            .iter()
+            .any(|column| column.include_source.is_some() || syntax::is_include(&column.title));
+        let is_hierarchy_upgrade = board_to_write.format_hint == BoardFormat::New
+            || board_to_write.has_explicit_hierarchy();
+        let is_flat_include_save = has_include_columns && !is_hierarchy_upgrade;
+        let is_legacy_redirect =
+            originally_legacy && !file_path_str.contains("-lexera2") && !is_flat_include_save;
         let (actual_path, redirected_path) = if is_legacy_redirect {
             let stem = file_path.file_stem().unwrap_or_default().to_string_lossy();
             let new_name = format!("{}-lexera2.md", stem);
@@ -2341,6 +2282,7 @@ impl LocalStorage {
         }
 
         let (merged_board, _) = Self::merge_boards_with_crdt(
+            board_id,
             &normalized_base,
             &current,
             &normalized_board,
@@ -2359,8 +2301,7 @@ impl LocalStorage {
             remote_boards: RwLock::new(HashSet::new()),
             writer_id: uuid::Uuid::new_v4().to_string(),
             write_counters: WriteCounters::new(),
-            registry: RwLock::new(BoardRegistry::new()),
-            registry_path: Mutex::new(None),
+            registry: BoardRegistryStore::new(),
         }
     }
 
@@ -2372,10 +2313,7 @@ impl LocalStorage {
 
     /// Compute SHA-256 hash of content (for change detection).
     fn content_hash(content: &str) -> String {
-        use sha2::Digest;
-        let mut hasher = Sha256::new();
-        hasher.update(content.replace("\r\n", "\n").as_bytes());
-        hex::encode(hasher.finalize())
+        super::generation::normalized_content_hash(content)
     }
 
     /// Deterministic board ID from file path: SHA-256 first 12 hex chars.
@@ -2458,7 +2396,9 @@ impl LocalStorage {
                     log::warn!("[lexera.crdt] Failed to load .crdt file: {}", e);
                     match CrdtStore::from_board(&board) {
                         Ok(c) => {
-                            if let Err(error) = c.save_to_file(&crdt_path) {
+                            if let Err(error) =
+                                super::crdt_artifact::save_store_snapshot(&crdt_path, &c)
+                            {
                                 log::warn!(
                                     "[lexera.crdt] Failed to persist rebuilt .crdt file {:?}: {}",
                                     crdt_path,
@@ -2477,7 +2417,7 @@ impl LocalStorage {
         } else {
             match CrdtStore::from_board(&board) {
                 Ok(c) => {
-                    if let Err(error) = c.save_to_file(&crdt_path) {
+                    if let Err(error) = super::crdt_artifact::save_store_snapshot(&crdt_path, &c) {
                         log::warn!(
                             "[lexera.crdt] Failed to persist new .crdt file {:?}: {}",
                             crdt_path,
@@ -2527,12 +2467,8 @@ impl LocalStorage {
             .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?
             .insert(board_id.clone(), state);
 
-        // Keep registry in sync with boards
-        {
-            let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
-            reg.register_board(&board_id);
-            self.save_registry(&reg);
-        }
+        // Keep registry in sync with boards.
+        self.registry.register_board(&board_id);
 
         Ok(board_id)
     }
@@ -2688,8 +2624,8 @@ impl LocalStorage {
         }
         if new_gen == current_gen && new_gen > 0 {
             let new_body_hash = parser::body_hash(&content);
-            let new_dependency_hash = Self::dependency_hash(&board);
-            let new_resolved_hash = Self::resolved_hash(&board);
+            let new_dependency_hash = super::generation::dependency_hash(&board);
+            let new_resolved_hash = super::generation::resolved_hash(&board);
             let existing_revision = self
                 .boards
                 .read()
@@ -2740,7 +2676,7 @@ impl LocalStorage {
             match Self::align_loaded_board_with_crdt(board_id, &board, c, &board_dir) {
                 Ok((canonical_board, c)) => {
                     board = canonical_board;
-                    if let Err(error) = c.save_to_file(&crdt_path) {
+                    if let Err(error) = super::crdt_artifact::save_store_snapshot(&crdt_path, &c) {
                         log::warn!(
                             "[lexera.crdt] Failed to persist aligned .crdt file {:?}: {}",
                             crdt_path,
@@ -2757,7 +2693,7 @@ impl LocalStorage {
         } else {
             match CrdtStore::from_board(&board) {
                 Ok(c) => {
-                    if let Err(error) = c.save_to_file(&crdt_path) {
+                    if let Err(error) = super::crdt_artifact::save_store_snapshot(&crdt_path, &c) {
                         log::warn!(
                             "[lexera.crdt] Failed to persist rebuilt .crdt file {:?}: {}",
                             crdt_path,
@@ -2852,26 +2788,57 @@ impl LocalStorage {
                 continue;
             }
             matched = true;
-            // Only refresh card content for writable-target includes
-            // (markdown extension, not missing). For non-card-shape files
-            // (.pdf, .epub) parse_slides would yield garbage; for missing
-            // files the cards live inline in main markdown and aren't
-            // refreshable from the include path.
-            if !include_source.is_writable_target() {
+            // Watcher-driven refresh: the file CHANGED on disk, so the
+            // `missing` flag from load time is stale evidence — the file
+            // must exist now for the watcher to fire. Skip only the
+            // immutable property (non-markdown extension can't be parsed
+            // as slide cards regardless), and let the actual read prove
+            // whether the file is currently readable.
+            let path_check = include_source.resolved_path.clone();
+            let ext_is_markdown = matches!(
+                path_check
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_ascii_lowercase())
+                    .as_deref(),
+                Some("md") | Some("markdown")
+            );
+            if !ext_is_markdown {
                 continue;
             }
-            let include_content = match fs::read_to_string(&include_source.resolved_path) {
+            let include_content = match fs::read_to_string(&path_check) {
                 Ok(content) => content,
                 Err(error) => {
-                    log::error!(
-                        "[lexera.storage.include] Failed to refresh include {:?} for board {}: {}",
-                        include_source.resolved_path,
+                    // Read failed even though the watcher said the file
+                    // changed — race condition (file deleted between
+                    // notify-event and our read) or permission flip. Set
+                    // missing=true so subsequent saves keep cards inline.
+                    log::warn!(
+                        "[lexera.storage.include] Refresh read failed for {:?} (board {}): {} — flagging missing",
+                        path_check,
                         board_id,
                         error
                     );
-                    String::new()
+                    if let Some(src) = column.include_source.as_mut() {
+                        src.missing = true;
+                    }
+                    continue;
                 }
             };
+            // Read succeeded → the include is no longer missing. Clear
+            // the stale flag so write_column_cards stops emitting cards
+            // inline in main markdown (Slice 1 safety-net behaviour) for
+            // a file that's now writable-target.
+            if let Some(src) = column.include_source.as_mut() {
+                if src.missing {
+                    log::info!(
+                        "[lexera.storage.include] Include {:?} appeared on disk; clearing missing flag for board {}",
+                        path_check,
+                        board_id
+                    );
+                    src.missing = false;
+                }
+            }
             let next_cards = slide_parser::parse_slides(&include_content);
             if column.cards != next_cards {
                 column.cards = next_cards;
@@ -2886,8 +2853,8 @@ impl LocalStorage {
             return Ok(false);
         }
 
-        let dependency_hash = Self::dependency_hash(&next_board);
-        let resolved_hash = Self::resolved_hash(&next_board);
+        let dependency_hash = super::generation::dependency_hash(&next_board);
+        let resolved_hash = super::generation::resolved_hash(&next_board);
         if let Some(generation_meta) = next_board.generation_meta.as_mut() {
             generation_meta.dependency_hash = dependency_hash;
             generation_meta.resolved_hash = Some(resolved_hash);
@@ -2976,13 +2943,7 @@ impl LocalStorage {
             imap.remove_board(board_id);
         }
 
-        // Unregister from registry (no save — boards on external drives should
-        // not be purged from the registry when temporarily unavailable)
-        {
-            let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
-            reg.unregister_board(board_id);
-            self.save_registry(&reg);
-        }
+        self.registry.unregister_board(board_id);
 
         Ok(())
     }
@@ -3157,7 +3118,7 @@ impl LocalStorage {
             .read()
             .ok()?
             .get(board_id)
-            .map(|state| format!("r-{}", Self::resolved_hash(&state.board)))
+            .map(|state| format!("r-{}", super::generation::resolved_hash(&state.board)))
     }
 
     // ── Registry ──────────────────────────────────────────────────────────
@@ -3165,120 +3126,61 @@ impl LocalStorage {
     /// Load (or create) the board registry from `path` and sync it with the
     /// boards currently in storage. Call this once after boards are loaded.
     pub fn init_registry(&self, path: PathBuf) {
-        let mut reg = match BoardRegistry::load(&path) {
-            Ok(r) => r,
-            Err(e) => {
-                log::warn!("[lexera.registry] Failed to load registry from {}: {}", path.display(), e);
-                BoardRegistry::new()
-            }
-        };
         let known_ids: Vec<String> = self
             .boards
             .read()
             .map(|b| b.keys().cloned().collect())
             .unwrap_or_default();
-        reg.sync_with_storage(&known_ids);
-        if let Err(e) = reg.save(&path) {
-            log::warn!("[lexera.registry] Failed to save registry after sync: {}", e);
-        }
-        *self.registry_path.lock().unwrap_or_else(|e| e.into_inner()) = Some(path);
-        *self.registry.write().unwrap_or_else(|e| e.into_inner()) = reg;
-    }
-
-    /// Persist the current registry to disk (no-op if no path has been set).
-    fn save_registry(&self, reg: &BoardRegistry) {
-        let guard = self.registry_path.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(path) = guard.as_ref() {
-            if let Err(e) = reg.save(path) {
-                log::warn!("[lexera.registry] Failed to save: {}", e);
-            }
-        }
+        self.registry.init(path, &known_ids);
     }
 
     /// Return all board entries sorted by the registry ordering (pinned first,
     /// then display_order, then last_accessed).
     pub fn registry_sorted_boards(&self) -> Vec<BoardRegistryEntry> {
-        self.registry
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .sorted_boards()
-            .into_iter()
-            .cloned()
-            .collect()
+        self.registry.sorted_boards()
     }
 
     /// Record that a board was opened by the user.
     pub fn registry_record_access(&self, board_id: &str) {
-        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
-        reg.record_access(board_id);
-        self.save_registry(&reg);
+        self.registry.record_access(board_id);
     }
 
     /// Reorder boards by setting `display_order` from the position in `board_ids`.
     pub fn registry_reorder(&self, board_ids: &[String]) {
-        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
-        reg.reorder(board_ids);
-        self.save_registry(&reg);
+        self.registry.reorder(board_ids);
     }
 
     /// Toggle the pinned state for a board.
     /// Returns `true` if the board was found in the registry.
     pub fn registry_set_pinned(&self, board_id: &str, pinned: bool) -> bool {
-        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
-        if reg.entries.iter().any(|e| e.board_id == board_id) {
-            reg.set_pinned(board_id, pinned);
-            self.save_registry(&reg);
-            true
-        } else {
-            false
-        }
+        self.registry.set_pinned(board_id, pinned)
     }
 
     /// Set or clear the custom display label for a board.
     /// Returns `true` if the board was found.
     pub fn registry_set_label(&self, board_id: &str, label: Option<String>) -> bool {
-        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
-        if reg.entries.iter().any(|e| e.board_id == board_id) {
-            reg.set_label(board_id, label);
-            self.save_registry(&reg);
-            true
-        } else {
-            false
-        }
+        self.registry.set_label(board_id, label)
     }
 
     /// Return all search history entries (pinned + recent).
     pub fn registry_searches(&self) -> Vec<SearchEntry> {
-        self.registry
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .search_history
-            .clone()
+        self.registry.searches()
     }
 
     /// Add or promote a search entry. Trims unpinned entries to the configured max.
     pub fn registry_add_search(&self, query: &str, use_regex: Option<bool>) {
-        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
-        reg.add_search(query, use_regex);
-        self.save_registry(&reg);
+        self.registry.add_search(query, use_regex);
     }
 
     /// Toggle the pinned state of a search entry.
     /// Returns `true` if the entry was found.
     pub fn registry_toggle_pin_search(&self, query: &str) -> bool {
-        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
-        let toggled = reg.toggle_pin_search(query);
-        if toggled {
-            self.save_registry(&reg);
-        }
-        toggled
+        self.registry.toggle_pin_search(query)
     }
 
     /// Remove a search entry by query string.
     pub fn registry_remove_search(&self, query: &str) {
-        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
-        reg.remove_search(query);
-        self.save_registry(&reg);
+        self.registry.remove_search(query);
     }
 
     /// Get the persisted generation counter for a board (for staleness detection).
@@ -3468,6 +3370,16 @@ impl LocalStorage {
         }
     }
 
+    fn register_self_write(&self, path: &Path, content: &str) {
+        match self.self_write_tracker.lock() {
+            Ok(mut tracker) => tracker.register(path, content),
+            Err(e) => log::error!(
+                "[lexera.storage.write] Self-write tracker lock poisoned: {}",
+                e
+            ),
+        }
+    }
+
     fn write_include_column(&self, column: &KanbanColumn) -> Result<(), StorageError> {
         let include_source = column.include_source.as_ref().ok_or_else(|| {
             StorageError::InvalidBoard("Column is not an include column".to_string())
@@ -3505,13 +3417,7 @@ impl LocalStorage {
 
         // Register self-write fingerprint AFTER successful write so that a
         // failed write doesn't suppress legitimate external file-watcher events.
-        match self.self_write_tracker.lock() {
-            Ok(mut tracker) => tracker.register(&resolved_path, &slide_content),
-            Err(e) => log::error!(
-                "[lexera.storage.write] Self-write tracker lock poisoned: {}",
-                e
-            ),
-        }
+        self.register_self_write(&resolved_path, &slide_content);
 
         Ok(())
     }
@@ -3522,76 +3428,28 @@ impl LocalStorage {
         file_path: &Path,
         board: &KanbanBoard,
     ) -> Result<String, StorageError> {
-        // Write include files FIRST so failures (permission, disk full,
-        // raced unlink) are observable BEFORE the main markdown is
-        // generated. Collect any failed raw_paths; their columns flip
-        // to missing on the board clone below so the main markdown
-        // serializes their cards inline as a safety net. Without this
-        // fallback, cards would live in neither the include file nor
-        // the main .md after a failed include write — silent data loss.
-        let mut failed_include_paths: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        for column in board.all_columns() {
-            if let Some(src) = &column.include_source {
-                if let Err(e) = self.write_include_column(column) {
-                    log::warn!(
-                        "[lexera.storage.persist] Failed to write include column for board {} ({}): {} — falling back to inline serialization in main markdown",
-                        board_id, src.raw_path, e
-                    );
-                    failed_include_paths.insert(src.raw_path.clone());
-                }
-            }
-        }
+        let outcome = super::board_files::persist_board_files(
+            board_id,
+            file_path,
+            board,
+            |column| self.write_include_column(column),
+            |path, markdown| {
+                Self::atomic_write(path, markdown)?;
+                Ok(())
+            },
+            |path, markdown| self.register_self_write(path, markdown),
+        )?;
 
-        let markdown = if failed_include_paths.is_empty() {
-            parser::generate_markdown(board)
-        } else {
-            // Flip include_source.missing on the failed columns so
-            // is_writable_target() returns false and write_column_cards
-            // serializes their cards inline. Operate on a clone so the
-            // in-memory board state is not mutated by the save path.
-            let mut shadow = board.clone();
-            for col in shadow.all_columns_mut() {
-                if let Some(src) = col.include_source.as_mut() {
-                    if failed_include_paths.contains(&src.raw_path) {
-                        src.missing = true;
-                    }
-                }
-            }
-            parser::generate_markdown(&shadow)
-        };
-
-        // Skip main board write if the file already has identical content.
-        let disk_unchanged = file_path.exists()
-            && fs::read_to_string(file_path)
-                .map(|existing| existing == markdown)
-                .unwrap_or(false);
-
-        if disk_unchanged {
+        if outcome.main_file_write == super::board_files::MainFileWrite::SkippedUnchanged {
             self.write_counters
                 .skipped_write_count
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
 
-        if !disk_unchanged {
-            // Write main board file last — only after all includes succeeded.
-            Self::atomic_write(file_path, &markdown)?;
-
-            // Register self-write fingerprint AFTER successful write so that a
-            // failed write doesn't suppress legitimate external file-watcher events.
-            match self.self_write_tracker.lock() {
-                Ok(mut tracker) => tracker.register(file_path, &markdown),
-                Err(e) => log::error!(
-                    "[lexera.storage.write] Self-write tracker lock poisoned: {}",
-                    e
-                ),
-            }
-        }
-
         let board_dir = file_path.parent().unwrap_or(Path::new("."));
         self.sync_include_map_for_board(board_id, board, board_dir);
 
-        Ok(markdown)
+        Ok(outcome.markdown)
     }
 
     /// Write cards to an include file in slide format.
@@ -3665,54 +3523,11 @@ impl LocalStorage {
     /// Atomic write with fsync: write to .tmp, fsync, rename, fsync directory.
     /// Refuses to write empty content over a non-empty file (data safety).
     fn atomic_write(path: &Path, content: &str) -> Result<(), std::io::Error> {
-        // Non-empty-to-empty protection
-        if content.trim().is_empty() {
-            if let Ok(existing) = fs::read_to_string(path) {
-                if !existing.trim().is_empty() {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "Refusing to overwrite non-empty file with empty content",
-                    ));
-                }
-            }
-        }
-
-        let tmp_path = path.with_extension("lexera-sync.tmp");
-        let mut file = fs::File::create(&tmp_path)?;
-        if let Err(e) = file
-            .write_all(content.as_bytes())
-            .and_then(|_| file.sync_all())
-        {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(e);
-        }
-        if let Err(e) = fs::rename(&tmp_path, path) {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(e);
-        }
-
-        // fsync directory for rename durability
-        if let Some(dir) = path.parent() {
-            match fs::File::open(dir) {
-                Ok(d) => {
-                    if let Err(error) = d.sync_all() {
-                        log::warn!(
-                            "[lexera.storage.atomic_write] Failed to fsync directory {:?}: {}",
-                            dir,
-                            error
-                        );
-                    }
-                }
-                Err(error) => {
-                    log::warn!(
-                        "[lexera.storage.atomic_write] Failed to open directory {:?} for fsync: {}",
-                        dir,
-                        error
-                    );
-                }
-            }
-        }
-        Ok(())
+        super::persistence::atomic_write_text(
+            path,
+            content,
+            super::persistence::AtomicWriteOptions::board_markdown(),
+        )
     }
 
     fn collect_search_columns(board: &KanbanBoard) -> Vec<SearchColumnRef<'_>> {
@@ -3827,9 +3642,9 @@ impl LocalStorage {
         let _ = self.ensure_board_state_crdt_loaded(board_id, state);
         let crdt = state.crdt.as_ref()?;
         let vv = if vv_bytes.is_empty() {
-            loro::VersionVector::default()
+            empty_version_vector()
         } else {
-            loro::VersionVector::decode(vv_bytes).ok()?
+            decode_version_vector(vv_bytes).ok()?
         };
         crdt.export_updates_since(&vv).ok()
     }
@@ -4169,6 +3984,64 @@ impl LocalStorage {
         });
 
         results
+    }
+}
+
+#[cfg(feature = "crdt")]
+impl super::CrdtSyncStorage for LocalStorage {
+    fn crdt_sync_available(&self) -> bool {
+        true
+    }
+
+    fn compact_loaded_crdts(&self) -> usize {
+        LocalStorage::compact_loaded_crdts(self)
+    }
+
+    fn get_crdt_vv(&self, board_id: &str) -> Option<Vec<u8>> {
+        LocalStorage::get_crdt_vv(self, board_id)
+    }
+
+    fn export_crdt_updates_since(&self, board_id: &str, vv_bytes: &[u8]) -> Option<Vec<u8>> {
+        LocalStorage::export_crdt_updates_since(self, board_id, vv_bytes)
+    }
+
+    fn export_crdt_snapshot(&self, board_id: &str) -> Option<Vec<u8>> {
+        LocalStorage::export_crdt_snapshot(self, board_id)
+    }
+
+    fn import_crdt_updates(&self, board_id: &str, bytes: &[u8]) -> Result<(), StorageError> {
+        LocalStorage::import_crdt_updates(self, board_id, bytes)
+    }
+}
+
+#[cfg(not(feature = "crdt"))]
+impl super::CrdtSyncStorage for LocalStorage {
+    fn crdt_sync_available(&self) -> bool {
+        false
+    }
+
+    fn compact_loaded_crdts(&self) -> usize {
+        0
+    }
+
+    fn get_crdt_vv(&self, _board_id: &str) -> Option<Vec<u8>> {
+        None
+    }
+
+    fn export_crdt_updates_since(&self, _board_id: &str, _vv_bytes: &[u8]) -> Option<Vec<u8>> {
+        None
+    }
+
+    fn export_crdt_snapshot(&self, _board_id: &str) -> Option<Vec<u8>> {
+        None
+    }
+
+    fn import_crdt_updates(&self, board_id: &str, _bytes: &[u8]) -> Result<(), StorageError> {
+        Err(StorageError::InvalidBoard(format!(
+            "{} for board {}",
+            super::CRDT_SYNC_DISABLED_MESSAGE,
+            board_id
+        )))
     }
 }
 
@@ -5191,6 +5064,44 @@ kanban-plugin: board
     }
 
     #[test]
+    fn test_write_board_flat_include_board_saves_main_in_place() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let redirected_path = dir.path().join("board-lexera2.md");
+        let include_path = dir.path().join("slides.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./slides.md)!!!\n- [ ] Move me into include\n",
+        )
+        .unwrap();
+        fs::write(&include_path, "# Existing\n").unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+        let board = storage.read_board(&id).unwrap();
+
+        let write_result = storage.write_board(&id, &board).unwrap();
+
+        assert!(
+            write_result.redirected_path.is_none(),
+            "flat include saves must update the include graph in place, not redirect only the main file"
+        );
+        assert!(
+            !redirected_path.exists(),
+            "flat include save must not create a redirected shadow board"
+        );
+        let on_disk_board = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk_board.contains("## !!!include(./slides.md)!!!"));
+        assert!(
+            !on_disk_board.contains("Move me into include"),
+            "successful include cards must not remain duplicated inline"
+        );
+        let on_disk_include = fs::read_to_string(&include_path).unwrap();
+        assert!(on_disk_include.contains("Move me into include"));
+    }
+
+    #[test]
     fn test_write_board_does_not_materialize_missing_include() {
         let dir = tempdir().unwrap();
         let board_path = dir.path().join("board.md");
@@ -5209,9 +5120,15 @@ kanban-plugin: board
         let board = storage.read_board(&id).unwrap();
         let cols = board.all_columns();
         assert_eq!(cols.len(), 1);
-        let src = cols[0].include_source.as_ref().expect("column must have include_source");
+        let src = cols[0]
+            .include_source
+            .as_ref()
+            .expect("column must have include_source");
         assert!(src.missing, "include must be flagged missing on load");
-        assert!(!missing_include_path.exists(), "precondition: missing file must not exist");
+        assert!(
+            !missing_include_path.exists(),
+            "precondition: missing file must not exist"
+        );
         drop(cols);
 
         storage.write_board(&id, &board).unwrap();
@@ -5283,6 +5200,175 @@ kanban-plugin: board
             on_disk_board.contains("- [ ] Inline survivor"),
             "main .md must serialize cards inline when include write fails; got:\n{}",
             on_disk_board
+        );
+    }
+
+    #[test]
+    fn test_write_board_main_md_is_not_written_until_after_include_writes() {
+        // Transaction ordering: persist_board_files writes include files
+        // FIRST so that if include writes fail and the failed_include_paths
+        // fallback kicks in, the regenerated markdown reflects the
+        // post-failure board (with missing=true flipped on failed columns).
+        // The on-disk main .md must therefore contain the inline cards
+        // even though the include path itself exists as a valid writable
+        // target by the time we observe — because the write attempt
+        // ordering is include-first / main-second, the missing-flag flip
+        // happens in memory between those two steps and is observable
+        // only via the final main .md content.
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let include_path = dir.path().join("slides.md");
+        // Pre-create as directory to force write failure.
+        fs::create_dir(&include_path).unwrap();
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./slides.md)!!!\n- [ ] Tx-order canary\n",
+        )
+        .unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+        let board = storage.read_board(&id).unwrap();
+
+        // The save call must NOT propagate the include-write failure to
+        // its caller — the inline-fallback path swallows it. If it ever
+        // bubbled up, downstream code (Tauri command handlers etc.)
+        // would surface user-facing errors for what should be transparent.
+        let save_result = storage.write_board(&id, &board);
+        assert!(
+            save_result.is_ok(),
+            "include-write failure must NOT surface to caller; got: {:?}",
+            save_result
+        );
+
+        // Main .md was written AFTER the include attempt (and after the
+        // missing-flag flip on the failed column), so the inline card
+        // survives end-to-end.
+        let on_disk_board = fs::read_to_string(&board_path).unwrap();
+        assert!(
+            on_disk_board.contains("- [ ] Tx-order canary"),
+            "main .md write must occur AFTER include attempt + missing-flag flip; got:\n{}",
+            on_disk_board
+        );
+    }
+
+    #[test]
+    fn test_write_board_main_write_failure_does_not_commit_memory_state() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+        let mut board = storage.read_board(&id).unwrap();
+        board.all_columns_mut()[0].cards[0].content = "Should not commit".to_string();
+
+        fs::remove_file(&board_path).unwrap();
+        fs::create_dir(&board_path).unwrap();
+
+        let result = storage.write_board(&id, &board);
+
+        assert!(
+            result.is_err(),
+            "main markdown write failure must surface to the caller"
+        );
+        assert!(
+            !board_path.with_extension("lexera-sync.tmp").exists(),
+            "failed atomic main write must clean up its temp file"
+        );
+        let stored = storage.read_board(&id).unwrap();
+        assert_eq!(stored.all_columns()[0].cards[0].content, "Buy groceries");
+        let leaked_results =
+            storage.search_with_options("Should not commit", SearchOptions::default());
+        assert!(
+            leaked_results.results.is_empty(),
+            "failed save must not update the searchable board cache"
+        );
+        let original_results =
+            storage.search_with_options("Buy groceries", SearchOptions::default());
+        assert!(
+            !original_results.results.is_empty(),
+            "failed save must keep the prior searchable board cache"
+        );
+    }
+
+    #[test]
+    fn test_write_board_registers_main_self_write_after_successful_write() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+        let mut board = storage.read_board(&id).unwrap();
+        board.all_columns_mut()[0].cards[0].content = "Self-write canary".to_string();
+
+        let result = storage.write_board(&id, &board).unwrap();
+        let written_path = result.redirected_path.as_deref().unwrap_or(&board_path);
+
+        assert!(
+            storage.check_self_write(written_path),
+            "successful main markdown write must register watcher self-write fingerprint"
+        );
+        assert!(
+            !storage.check_self_write(written_path),
+            "self-write fingerprint must be consumed after one matching check"
+        );
+    }
+
+    #[cfg(feature = "crdt")]
+    #[test]
+    fn test_write_board_crdt_artifact_failure_is_best_effort_after_markdown_commit() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let crdt_path = board_path.with_extension("md.crdt");
+        fs::write(
+            &board_path,
+            "\
+---
+kanban-plugin: board
+---
+
+# Work
+
+## Default
+
+### Todo
+- [ ] Buy groceries
+",
+        )
+        .unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+        assert!(
+            crdt_path.exists(),
+            "add_board should create the initial CRDT artifact"
+        );
+
+        fs::remove_file(&crdt_path).unwrap();
+        fs::create_dir(&crdt_path).unwrap();
+
+        let mut board = storage.read_board(&id).unwrap();
+        board.all_columns_mut()[0].cards[0].content = "CRDT artifact failure survivor".to_string();
+
+        storage.write_board(&id, &board).unwrap();
+
+        assert!(
+            crdt_path.is_dir(),
+            "failed CRDT artifact save must not replace the pre-existing directory"
+        );
+        assert!(
+            !crdt_path.with_extension("lexera-crdt.tmp").exists(),
+            "failed CRDT artifact save must clean up its temp file"
+        );
+        let on_disk_board = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk_board.contains("CRDT artifact failure survivor"));
+        let stored = storage.read_board(&id).unwrap();
+        assert_eq!(
+            stored.all_columns()[0].cards[0].content,
+            "CRDT artifact failure survivor"
         );
     }
 
@@ -5470,6 +5556,75 @@ kanban-plugin: board
             generation_before
         );
         assert!(storage.get_board_version(&board_id).unwrap() > version_before);
+    }
+
+    #[test]
+    fn test_reload_picks_up_previously_missing_include_once_file_appears() {
+        // User reports: changing an include file on disk doesn't import the
+        // change. Root cause class: `reload_board_include_path` skips refresh
+        // when `include_source.is_writable_target()` returns false. For an
+        // include that was MISSING at load time (file didn't exist yet), the
+        // parser flags `missing=true`. `sync_board_include_sources` preserves
+        // that flag across refreshes, so even when the watcher later fires
+        // because the file APPEARED on disk, the gate at line 2803 short-
+        // circuits and the new content never reaches the board.
+        //
+        // Contract: after the include file appears on disk and the watcher's
+        // refresh path runs, the column's cards must reflect the new content.
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let include_path = dir.path().join("late-arrival.md");
+
+        // Board references an include that does NOT yet exist on disk.
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./late-arrival.md)!!!\n",
+        )
+        .unwrap();
+        // Intentionally do NOT create the include file yet.
+
+        let storage = LocalStorage::new();
+        let board_id = storage.add_board(&board_path).unwrap();
+
+        // Sanity: parser flagged the include as missing at load.
+        let board_before = storage.read_board(&board_id).unwrap();
+        let src_before = board_before.all_columns()[0]
+            .include_source
+            .as_ref()
+            .expect("include_source set on load");
+        assert!(
+            src_before.missing,
+            "precondition: load-time missing flag is set"
+        );
+        assert!(
+            board_before.all_columns()[0].cards.is_empty(),
+            "precondition: no cards yet (no inline, include doesn't exist)"
+        );
+
+        // User creates the include file on disk. Watcher would fire here.
+        fs::write(&include_path, "# Slide 1\n\nNewly created include\n").unwrap();
+
+        // Simulate the watcher → reload_board_include_path path.
+        let changed = storage
+            .reload_board_include_path(&board_id, &include_path)
+            .expect("reload must not error");
+        assert!(
+            changed,
+            "reload must report changed=true when previously-missing include now has parseable content"
+        );
+
+        let board_after = storage.read_board(&board_id).unwrap();
+        let cards_after = &board_after.all_columns()[0].cards;
+        assert!(
+            !cards_after.is_empty(),
+            "post-condition: cards from newly-appeared include must be loaded; got {} cards",
+            cards_after.len()
+        );
+        assert!(
+            cards_after[0].content.contains("Newly created include"),
+            "post-condition: first card should carry the new include's content; got {:?}",
+            cards_after[0].content
+        );
     }
 
     #[test]

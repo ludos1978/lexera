@@ -3,7 +3,9 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::Json,
 };
-use lexera_core::storage::{BoardStorage, StorageError};
+use lexera_core::storage::{
+    BoardStorage, CrdtSyncStorage, StorageError, CRDT_SYNC_DISABLED_MESSAGE,
+};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -46,6 +48,15 @@ fn board_response_metadata(state: &AppState, board_id: &str) -> (u64, bool, Stri
         .unwrap_or_else(|| format!("v{}", version));
     let etag = format!("\"{}\"", revision);
     (version, is_remote, revision, etag)
+}
+
+fn err_crdt_sync_disabled() -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(ErrorResponse {
+            error: CRDT_SYNC_DISABLED_MESSAGE.to_string(),
+        }),
+    )
 }
 
 fn maybe_not_modified(
@@ -487,6 +498,17 @@ pub async fn open_live_sync_session(
     State(state): State<AppState>,
     Path(board_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
+    if !CrdtSyncStorage::crdt_sync_available(state.storage.as_ref()) {
+        log::warn!(
+            target: "lexera.api.live_sync.open",
+            "{}; rejecting live sync session for board {}",
+            CRDT_SYNC_DISABLED_MESSAGE,
+            board_id
+        );
+        return Err(err_crdt_sync_disabled());
+    }
+
     let board = state.storage.read_board(&board_id).ok_or_else(|| {
         let error = format!("Board not found for live sync open: {}", board_id);
         log_api_issue(StatusCode::NOT_FOUND, "lexera.api.live_sync.open", &error);
@@ -498,7 +520,7 @@ pub async fn open_live_sync_session(
         .get_board_path(&board_id)
         .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
-    let snapshot = state.storage.export_crdt_snapshot(&board_id);
+    let snapshot = CrdtSyncStorage::export_crdt_snapshot(state.storage.as_ref(), &board_id);
 
     let snapshot =
         live_sync::open_session(&board_id, board, board_dir, snapshot).map_err(|error| {
@@ -946,6 +968,10 @@ fn build_rebase_board_response(
 }
 
 async fn broadcast_crdt_to_sync_hub(state: &AppState, board_id: &str) {
+    if !CrdtSyncStorage::crdt_sync_available(state.storage.as_ref()) {
+        return;
+    }
+
     // Quick check (racy but fine -- worst case we export then find no clients)
     {
         let hub = state.sync_hub.lock().await;
@@ -954,16 +980,17 @@ async fn broadcast_crdt_to_sync_hub(state: &AppState, board_id: &str) {
         }
     }
     // Export outside the hub lock to prevent lock ordering inversion
-    let updates = match state.storage.export_crdt_updates_since(board_id, &[]) {
-        Some(u) => u,
-        None => {
-            log::warn!(
-                "[lexera.api.broadcast_crdt] Failed to export CRDT updates for board {}",
-                board_id
-            );
-            return;
-        }
-    };
+    let updates =
+        match CrdtSyncStorage::export_crdt_updates_since(state.storage.as_ref(), board_id, &[]) {
+            Some(u) => u,
+            None => {
+                log::warn!(
+                    "[lexera.api.broadcast_crdt] Failed to export CRDT updates for board {}",
+                    board_id
+                );
+                return;
+            }
+        };
     let msg = serde_json::json!({
         "type": "ServerUpdate",
         "updates": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &updates),

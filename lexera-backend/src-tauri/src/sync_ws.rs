@@ -9,12 +9,14 @@ use axum::{
         ws::{Message, WebSocket},
         Path, Query, State, WebSocketUpgrade,
     },
-    response::IntoResponse,
+    http::StatusCode,
+    response::{IntoResponse, Response},
     routing::get,
     Router,
 };
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
+use lexera_core::storage::{CrdtSyncStorage, CRDT_SYNC_DISABLED_MESSAGE};
 use lexera_core::sync::{ClientMessage, ServerMessage};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -161,7 +163,17 @@ async fn ws_handler(
     Path(board_id): Path<String>,
     Query(params): Query<SyncQuery>,
     State(state): State<AppState>,
-) -> impl IntoResponse {
+) -> Response {
+    if !CrdtSyncStorage::crdt_sync_available(state.storage.as_ref()) {
+        log::warn!(
+            target: "lexera.sync_ws",
+            "{}; rejecting websocket sync for board {}",
+            CRDT_SYNC_DISABLED_MESSAGE,
+            board_id
+        );
+        return (StatusCode::NOT_IMPLEMENTED, CRDT_SYNC_DISABLED_MESSAGE).into_response();
+    }
+
     // Validate bearer token from query param and extract user_id.
     let user_id = params
         .token
@@ -175,6 +187,7 @@ async fn ws_handler(
         })
         .unwrap_or_default();
     ws.on_upgrade(move |socket| handle_sync_session(socket, board_id, user_id, state))
+        .into_response()
 }
 
 async fn handle_sync_session(
@@ -338,10 +351,11 @@ async fn handle_sync_session(
             Vec::new()
         }
     };
-    let server_updates = match state
-        .storage
-        .export_crdt_updates_since(&board_id, &client_vv_bytes)
-    {
+    let server_updates = match CrdtSyncStorage::export_crdt_updates_since(
+        state.storage.as_ref(),
+        &board_id,
+        &client_vv_bytes,
+    ) {
         Some(updates) => updates,
         None => {
             log::warn!(
@@ -351,7 +365,7 @@ async fn handle_sync_session(
             Vec::new()
         }
     };
-    let server_vv = match state.storage.get_crdt_vv(&board_id) {
+    let server_vv = match CrdtSyncStorage::get_crdt_vv(state.storage.as_ref(), &board_id) {
         Some(vv) => vv,
         None => {
             log::warn!(
@@ -488,10 +502,11 @@ async fn handle_sync_session(
                     );
 
                     // Import into storage CRDT
-                    if let Err(e) = state_read
-                        .storage
-                        .import_crdt_updates(&board_id_read, &bytes)
-                    {
+                    if let Err(e) = CrdtSyncStorage::import_crdt_updates(
+                        state_read.storage.as_ref(),
+                        &board_id_read,
+                        &bytes,
+                    ) {
                         log::warn!(
                             "[sync_ws] Failed to import updates from peer {}: {}",
                             peer_id,

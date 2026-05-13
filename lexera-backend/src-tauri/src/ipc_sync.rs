@@ -13,6 +13,7 @@
 
 use crate::state::AppState;
 use base64::Engine;
+use lexera_core::storage::{CrdtSyncStorage, CRDT_SYNC_DISABLED_MESSAGE};
 use lexera_core::sync::{ClientMessage, ServerMessage};
 use lexera_core::watcher::types::BoardChangeEvent;
 use lexera_local_ipc::frame::{write_frame, ClientFrame, ServerFrame};
@@ -36,6 +37,15 @@ pub async fn forward_sync(
     correlation_id: Uuid,
     board_id: String,
 ) -> Result<(), IpcError> {
+    if !CrdtSyncStorage::crdt_sync_available(state.storage.as_ref()) {
+        return send_error_end(
+            write_half,
+            correlation_id,
+            CRDT_SYNC_DISABLED_MESSAGE.to_string(),
+        )
+        .await;
+    }
+
     // 1. Wait for ClientHello, carried inside a StreamSend.
     let hello_payload = loop {
         match control_rx.recv().await {
@@ -136,11 +146,14 @@ pub async fn forward_sync(
 
     // 5. Compute delta + send ServerHello.
     let client_vv_bytes = b64().decode(&client_vv_b64).unwrap_or_default();
-    let server_updates = state
-        .storage
-        .export_crdt_updates_since(&board_id, &client_vv_bytes)
-        .unwrap_or_default();
-    let server_vv = state.storage.get_crdt_vv(&board_id).unwrap_or_default();
+    let server_updates = CrdtSyncStorage::export_crdt_updates_since(
+        state.storage.as_ref(),
+        &board_id,
+        &client_vv_bytes,
+    )
+    .unwrap_or_default();
+    let server_vv =
+        CrdtSyncStorage::get_crdt_vv(state.storage.as_ref(), &board_id).unwrap_or_default();
 
     let server_hello = ServerMessage::ServerHello {
         peer_id,
@@ -261,7 +274,9 @@ async fn handle_client_message(
                     return;
                 }
             };
-            if let Err(e) = state.storage.import_crdt_updates(board_id, &bytes) {
+            if let Err(e) =
+                CrdtSyncStorage::import_crdt_updates(state.storage.as_ref(), board_id, &bytes)
+            {
                 log::warn!(
                     target: "lexera.ipc.sync",
                     "peer {} failed to import updates: {}",

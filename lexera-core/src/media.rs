@@ -143,7 +143,8 @@ pub struct WorkspaceMediaIndex {
 pub fn scan_workspace_media(boards: &[(&str, &str, &std::path::Path)]) -> WorkspaceMediaIndex {
     let mut files: Vec<WorkspaceMediaFile> = Vec::new();
     let mut total_size: u64 = 0;
-    let mut by_category: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut by_category: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
 
     for &(board_id, board_title, board_path) in boards {
         let stem = board_path
@@ -502,10 +503,7 @@ mod workspace_tests {
         std::fs::create_dir_all(&media_b).unwrap();
         std::fs::write(media_b.join("aaa.mp3"), b"a").unwrap();
 
-        let boards = vec![
-            ("a", "A", board_a.as_path()),
-            ("b", "B", board_b.as_path()),
-        ];
+        let boards = vec![("a", "A", board_a.as_path()), ("b", "B", board_b.as_path())];
         let index = scan_workspace_media(&boards);
 
         assert_eq!(index.files.len(), 2);

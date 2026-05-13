@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-lexera-core = { path = "../../lexera-core" }
+lexera-core = { path = "../../lexera-core", default-features = false }
 lexera-local-ipc = { path = "../../lexera-local-ipc" }
 tauri = { version = "2", features = ["unstable"] }
 serde = { version = "1", features = ["derive"] }

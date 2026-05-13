@@ -25,9 +25,7 @@ pub trait ExportPlugin: Plugin {
     fn supported_formats(&self) -> Vec<ExportFormat>;
 
     fn can_export(&self, format_id: &str) -> bool {
-        self.supported_formats()
-            .iter()
-            .any(|f| f.id == format_id)
+        self.supported_formats().iter().any(|f| f.id == format_id)
     }
 }
 

@@ -43,12 +43,12 @@ struct GatherRule {
 
 #[derive(Clone)]
 enum GatherExpr {
-    Tag(String),               // ?#tagname — match #tag in content
-    DayOffset(CompOp, i64),    // day <=> N — days offset from today
-    WeekNum(CompOp, u32),      // week <=> N — ISO week number
-    WeekDay(CompOp, String),   // weekday <=> "mon" — named weekday
-    WeekDayNum(CompOp, i32),   // weekdaynum <=> N — Mon=1, Sun=7
-    MonthNum(CompOp, u32),     // monthnum <=> N — 1..12
+    Tag(String),             // ?#tagname — match #tag in content
+    DayOffset(CompOp, i64),  // day <=> N — days offset from today
+    WeekNum(CompOp, u32),    // week <=> N — ISO week number
+    WeekDay(CompOp, String), // weekday <=> "mon" — named weekday
+    WeekDayNum(CompOp, i32), // weekdaynum <=> N — Mon=1, Sun=7
+    MonthNum(CompOp, u32),   // monthnum <=> N — 1..12
     Or(Vec<GatherExpr>),
     And(Vec<GatherExpr>),
     Not(Box<GatherExpr>),
@@ -155,8 +155,7 @@ fn build_prop_expr(prop: &str, op_str: &str, value_str: &str) -> GatherExpr {
             .unwrap_or(GatherExpr::Never),
         "month" => {
             const MONTHS: [&str; 12] = [
-                "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov",
-                "dec",
+                "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
             ];
             let lv = value_str.to_ascii_lowercase();
             if let Some(idx) = MONTHS.iter().position(|&m| m == lv) {
@@ -212,7 +211,10 @@ fn parse_temporal_query(query_content: &str) -> GatherExpr {
     }
 
     // wnn — short week notation
-    if lc.starts_with('w') && lc.len() > 1 && lc[1..].chars().next().is_some_and(|c| c.is_ascii_digit()) {
+    if lc.starts_with('w')
+        && lc.len() > 1
+        && lc[1..].chars().next().is_some_and(|c| c.is_ascii_digit())
+    {
         if let Ok(n) = lc[1..].parse::<u32>() {
             return GatherExpr::WeekNum(CompOp::Eq, n);
         }
@@ -401,11 +403,9 @@ fn has_person_or_custom_tags(hash_tags: &[String]) -> bool {
         "#ungathered",
         "#gather_",
     ];
-    hash_tags.iter().any(|tag| {
-        !LAYOUT_PREFIXES
-            .iter()
-            .any(|prefix| tag.starts_with(prefix))
-    })
+    hash_tags
+        .iter()
+        .any(|tag| !LAYOUT_PREFIXES.iter().any(|prefix| tag.starts_with(prefix)))
 }
 
 fn sort_column_by_date(cards: &mut [KanbanCard], today: NaiveDate) {
@@ -423,8 +423,16 @@ fn sort_column_by_date(cards: &mut [KanbanCard], today: NaiveDate) {
 
 fn sort_column_by_name(cards: &mut [KanbanCard]) {
     cards.sort_by(|a, b| {
-        let ta = a.content.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-        let tb = b.content.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+        let ta = a
+            .content
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("");
+        let tb = b
+            .content
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("");
         ta.cmp(tb)
     });
 }
@@ -583,7 +591,9 @@ pub fn apply_gather_today(board: &mut KanbanBoard) -> Vec<CardMove> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{KanbanCard, KanbanColumn, KanbanBoard, KanbanRow, KanbanStack, BoardFormat};
+    use crate::types::{
+        BoardFormat, KanbanBoard, KanbanCard, KanbanColumn, KanbanRow, KanbanStack,
+    };
     use chrono::NaiveDate;
 
     fn today() -> NaiveDate {
@@ -644,7 +654,7 @@ mod tests {
         let c2 = card("c2", "personal task #home");
         let board = flat_board(vec![
             col("inbox", "Inbox", vec![c1, c2]),
-            col("work",  "Work ?#work", vec![]),
+            col("work", "Work ?#work", vec![]),
         ]);
         let moves = compute_gather_moves(&board, today());
         assert_eq!(moves.len(), 1);
@@ -658,7 +668,7 @@ mod tests {
         let c_today = card("ct", "task @2026-04-01");
         let c_other = card("co", "task @2026-04-05");
         let board = flat_board(vec![
-            col("all",   "All Tasks", vec![c_today, c_other]),
+            col("all", "All Tasks", vec![c_today, c_other]),
             col("today", "Today ?.today", vec![]),
         ]);
         let moves = compute_gather_moves(&board, today());
@@ -669,11 +679,11 @@ mod tests {
     #[test]
     fn day_offset_future_rule() {
         // day > 0 → future cards
-        let c_past   = card("cp", "past @2026-03-30");
-        let c_today  = card("ct", "today @2026-04-01");
+        let c_past = card("cp", "past @2026-03-30");
+        let c_today = card("ct", "today @2026-04-01");
         let c_future = card("cf", "future @2026-04-05");
         let board = flat_board(vec![
-            col("all",    "All", vec![c_past, c_today, c_future]),
+            col("all", "All", vec![c_past, c_today, c_future]),
             col("future", "Future ?.day>0", vec![]),
         ]);
         let moves = compute_gather_moves(&board, today());
@@ -687,7 +697,7 @@ mod tests {
         let c_normal = card("cn", "normal #work");
         let board = flat_board(vec![
             col("inbox", "Inbox", vec![c_sticky, c_normal]),
-            col("work",  "Work ?#work", vec![]),
+            col("work", "Work ?#work", vec![]),
         ]);
         let moves = compute_gather_moves(&board, today());
         assert_eq!(moves.len(), 1);
@@ -698,9 +708,9 @@ mod tests {
     fn first_match_wins() {
         let c1 = card("c1", "task #work #urgent");
         let board = flat_board(vec![
-            col("inbox",  "Inbox",          vec![c1]),
+            col("inbox", "Inbox", vec![c1]),
             col("urgent", "Urgent ?#urgent", vec![]),
-            col("work",   "Work ?#work",     vec![]),
+            col("work", "Work ?#work", vec![]),
         ]);
         let moves = compute_gather_moves(&board, today());
         assert_eq!(moves.len(), 1);
@@ -711,8 +721,8 @@ mod tests {
     fn apply_gather_mutates_board() {
         let c1 = card("c1", "task #work");
         let mut board = flat_board(vec![
-            col("inbox", "Inbox",      vec![c1]),
-            col("work",  "Work ?#work", vec![]),
+            col("inbox", "Inbox", vec![c1]),
+            col("work", "Work ?#work", vec![]),
         ]);
         let moves = apply_gather(&mut board, today());
         assert_eq!(moves.len(), 1);
@@ -723,11 +733,11 @@ mod tests {
 
     #[test]
     fn ungathered_column_collects_tagged_unmatched() {
-        let c_tagged   = card("ct", "meeting @2026-04-10");
+        let c_tagged = card("ct", "meeting @2026-04-10");
         let c_untagged = card("cu", "plain task");
         let board = flat_board(vec![
-            col("inbox",      "Inbox",           vec![c_tagged, c_untagged]),
-            col("today",      "Today ?.today",    vec![]),
+            col("inbox", "Inbox", vec![c_tagged, c_untagged]),
+            col("today", "Today ?.today", vec![]),
             col("ungathered", "Later #ungathered", vec![]),
         ]);
         let moves = compute_gather_moves(&board, today());
@@ -748,8 +758,8 @@ mod tests {
                 id: "s1".to_string(),
                 title: "Stack".to_string(),
                 columns: vec![
-                    col("inbox", "Inbox",      vec![c1]),
-                    col("work",  "Work ?#work", vec![]),
+                    col("inbox", "Inbox", vec![c1]),
+                    col("work", "Work ?#work", vec![]),
                 ],
                 params: Default::default(),
             }],
@@ -768,8 +778,8 @@ mod tests {
         let c_w14 = card("c14", "this week @2026-04-01");
         let c_w15 = card("c15", "next week @2026-04-07");
         let board = flat_board(vec![
-            col("all",  "All",             vec![c_w14, c_w15]),
-            col("w14",  "Week 14 ?@week=14", vec![]),
+            col("all", "All", vec![c_w14, c_w15]),
+            col("w14", "Week 14 ?@week=14", vec![]),
         ]);
         let moves = compute_gather_moves(&board, today());
         assert_eq!(moves.len(), 1);

@@ -31,6 +31,7 @@ pub mod sync_ws;
 use crate::state::{AppState, ResolvedIncoming};
 use lexera_core::panic_util::panic_payload_to_string;
 use lexera_core::storage::local::LocalStorage;
+use lexera_core::storage::{CrdtSyncStorage, CRDT_SYNC_DISABLED_MESSAGE};
 use lexera_core::watcher::file_watcher::FileWatcher;
 use lexera_core::watcher::types::BoardChangeEvent;
 use std::path::PathBuf;
@@ -582,6 +583,15 @@ fn spawn_crdt_compaction_task(
     storage: &Arc<LocalStorage>,
     shutdown_rx: &tokio::sync::watch::Receiver<bool>,
 ) {
+    if !CrdtSyncStorage::crdt_sync_available(storage.as_ref()) {
+        log::info!(
+            target: "lexera.crdt.compact",
+            "{}; compaction task not started",
+            CRDT_SYNC_DISABLED_MESSAGE
+        );
+        return;
+    }
+
     let storage = storage.clone();
     let mut shutdown_rx = shutdown_rx.clone();
     tauri::async_runtime::spawn(async move {
@@ -594,7 +604,7 @@ fn spawn_crdt_compaction_task(
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    let count = storage.compact_loaded_crdts();
+                    let count = CrdtSyncStorage::compact_loaded_crdts(storage.as_ref());
                     if count > 0 {
                         log::debug!(
                             target: "lexera.crdt.compact",
@@ -615,6 +625,14 @@ fn restore_persisted_connections(
     local_user_id: &str,
     local_user_name: &str,
 ) {
+    if !CrdtSyncStorage::crdt_sync_available(app_state.storage.as_ref()) {
+        log::info!(
+            "[sync_client.restore] {}; persisted remote connections will not be restored",
+            CRDT_SYNC_DISABLED_MESSAGE
+        );
+        return;
+    }
+
     let persisted = match config.read() {
         Ok(cfg) => cfg.remote_connections.clone(),
         Err(e) => {

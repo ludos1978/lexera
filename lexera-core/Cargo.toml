@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["file-watcher"]
+default = ["crdt", "file-watcher"]
+crdt = ["dep:loro"]
 file-watcher = ["dep:notify", "dep:notify-debouncer-full"]
 
 [dependencies]
@@ -20,7 +21,7 @@ percent-encoding = "2"
 tokio = { version = "1", features = ["sync", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 unicode-normalization = "0.1"
-loro = "1.10"
+loro = { version = "1.10", optional = true }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 quick-xml = "0.39"

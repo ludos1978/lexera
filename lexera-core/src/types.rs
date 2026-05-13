@@ -58,14 +58,20 @@ pub struct IncludeSource {
 
 impl IncludeSource {
     pub fn new(raw_path: String, resolved_path: PathBuf) -> Self {
-        Self { raw_path, resolved_path, missing: false }
+        Self {
+            raw_path,
+            resolved_path,
+            missing: false,
+        }
     }
 
     /// Whether cards for this column should round-trip into the include file.
     /// False for missing files and non-markdown extensions; those columns
     /// keep their cards inline in the main board markdown as a safety net.
     pub fn is_writable_target(&self) -> bool {
-        if self.missing { return false; }
+        if self.missing {
+            return false;
+        }
         matches!(
             self.resolved_path
                 .extension()

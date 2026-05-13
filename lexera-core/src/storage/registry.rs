@@ -9,7 +9,8 @@
 /// - Recent/pinned search history
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, RwLock};
 
 use chrono::Local;
 use serde::{Deserialize, Serialize};
@@ -295,6 +296,180 @@ impl BoardRegistry {
     /// Return only the pinned search entries.
     pub fn pinned_searches(&self) -> Vec<&SearchEntry> {
         self.search_history.iter().filter(|s| s.pinned).collect()
+    }
+}
+
+/// Thread-safe registry owner used by storage backends.
+///
+/// Keeps registry persistence and lock handling out of `LocalStorage` so the
+/// board index can be swapped independently from markdown/CRDT persistence.
+#[derive(Debug, Default)]
+pub struct BoardRegistryStore {
+    registry: RwLock<BoardRegistry>,
+    path: Mutex<Option<PathBuf>>,
+}
+
+impl BoardRegistryStore {
+    pub fn new() -> Self {
+        Self {
+            registry: RwLock::new(BoardRegistry::new()),
+            path: Mutex::new(None),
+        }
+    }
+
+    /// Load (or create) the registry from `path`, sync it to known board IDs,
+    /// persist the sync result, and make it the active registry.
+    pub fn init(&self, path: PathBuf, known_ids: &[String]) {
+        let mut registry = match BoardRegistry::load(&path) {
+            Ok(registry) => registry,
+            Err(error) => {
+                log::warn!(
+                    "[lexera.registry] Failed to load registry from {}: {}",
+                    path.display(),
+                    error
+                );
+                BoardRegistry::new()
+            }
+        };
+        registry.sync_with_storage(known_ids);
+        if let Err(error) = registry.save(&path) {
+            log::warn!(
+                "[lexera.registry] Failed to save registry after sync: {}",
+                error
+            );
+        }
+        *self.path.lock().unwrap_or_else(|error| error.into_inner()) = Some(path);
+        *self
+            .registry
+            .write()
+            .unwrap_or_else(|error| error.into_inner()) = registry;
+    }
+
+    fn save(&self, registry: &BoardRegistry) {
+        let guard = self.path.lock().unwrap_or_else(|error| error.into_inner());
+        if let Some(path) = guard.as_ref() {
+            if let Err(error) = registry.save(path) {
+                log::warn!("[lexera.registry] Failed to save: {}", error);
+            }
+        }
+    }
+
+    pub fn register_board(&self, board_id: &str) {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        registry.register_board(board_id);
+        self.save(&registry);
+    }
+
+    pub fn unregister_board(&self, board_id: &str) {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        registry.unregister_board(board_id);
+        self.save(&registry);
+    }
+
+    pub fn sorted_boards(&self) -> Vec<BoardRegistryEntry> {
+        self.registry
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .sorted_boards()
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    pub fn record_access(&self, board_id: &str) {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        registry.record_access(board_id);
+        self.save(&registry);
+    }
+
+    pub fn reorder(&self, board_ids: &[String]) {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        registry.reorder(board_ids);
+        self.save(&registry);
+    }
+
+    pub fn set_pinned(&self, board_id: &str, pinned: bool) -> bool {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        if !registry
+            .entries
+            .iter()
+            .any(|entry| entry.board_id == board_id)
+        {
+            return false;
+        }
+        registry.set_pinned(board_id, pinned);
+        self.save(&registry);
+        true
+    }
+
+    pub fn set_label(&self, board_id: &str, label: Option<String>) -> bool {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        if !registry
+            .entries
+            .iter()
+            .any(|entry| entry.board_id == board_id)
+        {
+            return false;
+        }
+        registry.set_label(board_id, label);
+        self.save(&registry);
+        true
+    }
+
+    pub fn searches(&self) -> Vec<SearchEntry> {
+        self.registry
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .search_history
+            .clone()
+    }
+
+    pub fn add_search(&self, query: &str, use_regex: Option<bool>) {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        registry.add_search(query, use_regex);
+        self.save(&registry);
+    }
+
+    pub fn toggle_pin_search(&self, query: &str) -> bool {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        let toggled = registry.toggle_pin_search(query);
+        if toggled {
+            self.save(&registry);
+        }
+        toggled
+    }
+
+    pub fn remove_search(&self, query: &str) {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        registry.remove_search(query);
+        self.save(&registry);
     }
 }
 
@@ -650,8 +825,11 @@ mod tests {
         reg.add_search("b", None);
         reg.add_search("c", None);
         reg.add_search("d", None); // triggers trim of unpinned
-        // "pinned-one" must still be present
-        assert!(reg.search_history.iter().any(|s| s.query == "pinned-one" && s.pinned));
+                                   // "pinned-one" must still be present
+        assert!(reg
+            .search_history
+            .iter()
+            .any(|s| s.query == "pinned-one" && s.pinned));
     }
 
     #[test]
@@ -706,7 +884,11 @@ mod tests {
 
         let loaded = BoardRegistry::load(&path).expect("load");
         assert_eq!(loaded.search_history.len(), 2);
-        let foo = loaded.search_history.iter().find(|s| s.query == "foo").unwrap();
+        let foo = loaded
+            .search_history
+            .iter()
+            .find(|s| s.query == "foo")
+            .unwrap();
         assert!(foo.pinned);
         assert_eq!(foo.use_regex, Some(true));
     }

@@ -898,10 +898,7 @@ kanban-plugin: board
                     title: col.title.clone(),
                     card_count: col.cards.len(),
                     has_include: if has_include { Some(true) } else { None },
-                    include_path: col
-                        .include_source
-                        .as_ref()
-                        .map(|inc| inc.raw_path.clone()),
+                    include_path: col.include_source.as_ref().map(|inc| inc.raw_path.clone()),
                 }
             })
             .collect();
@@ -925,39 +922,38 @@ kanban-plugin: board
         }
 
         // Build row/stack hierarchy for new-format boards
-        let (row_count, fixture_rows) = if board.format_hint == BoardFormat::New
-            && board.has_explicit_hierarchy()
-        {
-            let rows: Vec<FixtureRow> = board
-                .rows
-                .iter()
-                .map(|row| FixtureRow {
-                    title: row.title.clone(),
-                    stack_count: row.stacks.len(),
-                    stacks: row
-                        .stacks
-                        .iter()
-                        .map(|stack| FixtureStack {
-                            title: stack.title.clone(),
-                            column_count: stack.columns.len(),
-                            columns: stack
-                                .columns
-                                .iter()
-                                .map(|col| FixtureColumn {
-                                    title: col.title.clone(),
-                                    card_count: col.cards.len(),
-                                    has_include: None,
-                                    include_path: None,
-                                })
-                                .collect(),
-                        })
-                        .collect(),
-                })
-                .collect();
-            (Some(rows.len()), Some(rows))
-        } else {
-            (None, None)
-        };
+        let (row_count, fixture_rows) =
+            if board.format_hint == BoardFormat::New && board.has_explicit_hierarchy() {
+                let rows: Vec<FixtureRow> = board
+                    .rows
+                    .iter()
+                    .map(|row| FixtureRow {
+                        title: row.title.clone(),
+                        stack_count: row.stacks.len(),
+                        stacks: row
+                            .stacks
+                            .iter()
+                            .map(|stack| FixtureStack {
+                                title: stack.title.clone(),
+                                column_count: stack.columns.len(),
+                                columns: stack
+                                    .columns
+                                    .iter()
+                                    .map(|col| FixtureColumn {
+                                        title: col.title.clone(),
+                                        card_count: col.cards.len(),
+                                        has_include: None,
+                                        include_path: None,
+                                    })
+                                    .collect(),
+                            })
+                            .collect(),
+                    })
+                    .collect();
+                (Some(rows.len()), Some(rows))
+            } else {
+                (None, None)
+            };
 
         // Board settings (only include if any field is set)
         let board_settings = board.board_settings.as_ref().and_then(|bs| {
@@ -971,7 +967,11 @@ kanban-plugin: board
 
         FixtureBoard {
             valid: board.valid,
-            format: if board.valid { Some(format_str.to_string()) } else { None },
+            format: if board.valid {
+                Some(format_str.to_string())
+            } else {
+                None
+            },
             column_count: all_cols.len(),
             columns: if fixture_columns.is_empty() {
                 None
@@ -1047,8 +1047,7 @@ kanban-plugin: board
                 .unwrap_or_else(|e| panic!("Invalid JSON in {}: {}", expected_path.display(), e));
 
             if actual != expected {
-                let actual_json =
-                    serde_json::to_string_pretty(&actual).unwrap();
+                let actual_json = serde_json::to_string_pretty(&actual).unwrap();
                 failures.push(format!(
                     "FIXTURE MISMATCH: {}\n  expected: {}\n  actual:   {}",
                     stem,
@@ -1119,7 +1118,10 @@ kanban-plugin: board
             2,
             "inline cards must survive missing-include parse"
         );
-        assert_eq!(include_col.cards[0].content, "Inline card under missing include");
+        assert_eq!(
+            include_col.cards[0].content,
+            "Inline card under missing include"
+        );
         assert!(include_col.cards[1].checked);
     }
 

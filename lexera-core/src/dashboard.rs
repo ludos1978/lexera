@@ -155,13 +155,40 @@ fn is_weekly_recurring_tag(tag: &str) -> bool {
     let t = tag.trim().trim_start_matches('@').to_ascii_lowercase();
     matches!(
         t.as_str(),
-        "mon" | "monday" | "mo" | "montag"
-            | "tue" | "tues" | "tuesday" | "tu" | "di" | "dienstag"
-            | "wed" | "wednesday" | "we" | "mi" | "mittwoch"
-            | "thu" | "thur" | "thursday" | "th" | "do" | "donnerstag"
-            | "fri" | "friday" | "fr" | "freitag"
-            | "sat" | "saturday" | "sa" | "samstag"
-            | "sun" | "sunday" | "su" | "so" | "sonntag"
+        "mon"
+            | "monday"
+            | "mo"
+            | "montag"
+            | "tue"
+            | "tues"
+            | "tuesday"
+            | "tu"
+            | "di"
+            | "dienstag"
+            | "wed"
+            | "wednesday"
+            | "we"
+            | "mi"
+            | "mittwoch"
+            | "thu"
+            | "thur"
+            | "thursday"
+            | "th"
+            | "do"
+            | "donnerstag"
+            | "fri"
+            | "friday"
+            | "fr"
+            | "freitag"
+            | "sat"
+            | "saturday"
+            | "sa"
+            | "samstag"
+            | "sun"
+            | "sunday"
+            | "su"
+            | "so"
+            | "sonntag"
     )
 }
 
@@ -187,7 +214,9 @@ fn classify_recurring(
             return Some(RecurringClassification::State(RecurringState::Outdated));
         }
         if age_days <= 3.0 && is_checked {
-            return Some(RecurringClassification::State(RecurringState::ResetToRepeat));
+            return Some(RecurringClassification::State(
+                RecurringState::ResetToRepeat,
+            ));
         }
         if age_days > 3.0 {
             return Some(RecurringClassification::Future);
@@ -205,7 +234,9 @@ fn classify_recurring(
             return Some(RecurringClassification::State(RecurringState::Outdated));
         }
         if age_days <= 90.0 && is_checked {
-            return Some(RecurringClassification::State(RecurringState::ResetToRepeat));
+            return Some(RecurringClassification::State(
+                RecurringState::ResetToRepeat,
+            ));
         }
         if age_days > 90.0 {
             return Some(RecurringClassification::Future);
@@ -239,9 +270,7 @@ fn undated_task_regex() -> &'static Regex {
 static HAS_TEMPORAL_RE: OnceLock<Regex> = OnceLock::new();
 
 fn has_temporal_regex() -> &'static Regex {
-    HAS_TEMPORAL_RE.get_or_init(|| {
-        Regex::new(r"(?:^|\s)@\S").expect("valid has-temporal regex")
-    })
+    HAS_TEMPORAL_RE.get_or_init(|| Regex::new(r"(?:^|\s)@\S").expect("valid has-temporal regex"))
 }
 
 // ── Main scan function ────────────────────────────────────────────────────
@@ -304,10 +333,7 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
 
             // Collect hash tags
             for tag in extract_hash_tags(content) {
-                tag_counts
-                    .entry(tag)
-                    .or_insert((0, TagType::Hash))
-                    .0 += 1;
+                tag_counts.entry(tag).or_insert((0, TagType::Hash)).0 += 1;
             }
 
             // Process temporal tags
@@ -338,8 +364,13 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
 
                     if yearless {
                         // Calendar events: treat as never-checked for recurring classification
-                        let effective_checked = if is_calendar_event { false } else { card.checked };
-                        let classification = classify_recurring(date, effective_checked, is_weekly, today);
+                        let effective_checked = if is_calendar_event {
+                            false
+                        } else {
+                            card.checked
+                        };
+                        let classification =
+                            classify_recurring(date, effective_checked, is_weekly, today);
                         match classification {
                             None => {} // skip
                             Some(RecurringClassification::State(state)) => {
@@ -347,7 +378,11 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
                                     state,
                                     RecurringState::Overdue | RecurringState::Outdated
                                 );
-                                let target = if is_calendar_event { &mut calendar_events } else { &mut upcoming_items };
+                                let target = if is_calendar_event {
+                                    &mut calendar_events
+                                } else {
+                                    &mut upcoming_items
+                                };
                                 target.push(UpcomingItem {
                                     column_index: col_idx,
                                     column_title: col_title.clone(),
@@ -369,7 +404,11 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
                                     date
                                 };
                                 if adj_date <= future_limit {
-                                    let target = if is_calendar_event { &mut calendar_events } else { &mut upcoming_items };
+                                    let target = if is_calendar_event {
+                                        &mut calendar_events
+                                    } else {
+                                        &mut upcoming_items
+                                    };
                                     target.push(UpcomingItem {
                                         column_index: col_idx,
                                         column_title: col_title.clone(),
@@ -396,7 +435,11 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
                         let is_overdue = !is_calendar_event && !card.checked && date < today;
 
                         if is_overdue || (date >= today && date <= future_limit) {
-                            let target = if is_calendar_event { &mut calendar_events } else { &mut upcoming_items };
+                            let target = if is_calendar_event {
+                                &mut calendar_events
+                            } else {
+                                &mut upcoming_items
+                            };
                             target.push(UpcomingItem {
                                 column_index: col_idx,
                                 column_title: col_title.clone(),
@@ -450,7 +493,11 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
     // Build sorted tag list
     let mut tags: Vec<TagInfo> = tag_counts
         .into_iter()
-        .map(|(name, (count, tag_type))| TagInfo { name, count, tag_type })
+        .map(|(name, (count, tag_type))| TagInfo {
+            name,
+            count,
+            tag_type,
+        })
         .collect();
     tags.sort_by(|a, b| b.count.cmp(&a.count).then(a.name.cmp(&b.name)));
 

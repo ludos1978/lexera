@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "test": "./test.sh",
+    "check:storage-modes": "./check-storage-modes.sh",
     "lint": "./lint.sh",
     "lint:js": "eslint --quiet lexera-kanban/src lexera-backend/src",
     "lint:rust": "cargo clippy --workspace --all-targets --no-deps"

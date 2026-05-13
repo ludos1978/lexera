@@ -1,5 +1,7 @@
 ## Version 1
 
+- [ ] add a day/night/automatic theme option. which switches between the white-based and black-based themes!
+
 - [ ] i want to have a better diff system that allows visual change acceptance from changes that are made in the file, vs changes that are made in the kanban. with a fallback to the line by line changes diff and merge.
 
 - [ ] Add the option to unfold the columns that are below a kanban board within the kanban boards list (on the separate view). it must be automatically updated with each modification of colums! make it a modular element that could be activated within the board view as a side element as well (the list of all columns within a board). within the board itself the list only shows it's own columns. the columns should accept drops from other boards, external drops etc. when dropped on columns it adds them at the end, when dropped over a kanban board it create a column named "Incoming" which is another category of the kind "Park", "Tash", "Archive". Also add the option to unfold the columns which lists the titles of the cards! make this a re-usable element as well!

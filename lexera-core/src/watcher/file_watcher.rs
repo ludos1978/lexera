@@ -342,10 +342,7 @@ fn handle_debounced_event(
         let mapping = match path_mapping.read() {
             Ok(m) => m,
             Err(e) => {
-                log::error!(
-                    "[lexera.watcher.event] Path mapping lock poisoned: {}",
-                    e
-                );
+                log::error!("[lexera.watcher.event] Path mapping lock poisoned: {}", e);
                 return;
             }
         };
@@ -362,7 +359,8 @@ fn handle_debounced_event(
         if let Some(board_id) = parent_match {
             log::info!(
                 "[lexera.watcher.media] match: {:?} -> board {}",
-                canonical, board_id
+                canonical,
+                board_id
             );
             drop(mapping);
             // Emit the board-relative path (`{boardStem}-Media/{filename}`)

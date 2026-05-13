@@ -308,8 +308,12 @@ var LexeraApi = (function () {
   var DEFAULT_TIMEOUT_MS = 10000;
   var LONG_TIMEOUT_MS = 30000;
   var DASHBOARD_TIMEOUT_MS = 8000;
+  var BACKEND_STATUS_CACHE_MS = 3000;
+  var CRDT_SYNC_DISABLED_MESSAGE = 'CRDT sync is disabled in this build';
 
   var inFlightCount = 0;
+  var backendStatusCache = null;
+  var backendStatusCacheAt = 0;
 
   function changeInFlight(delta) {
     inFlightCount = Math.max(0, inFlightCount + delta);
@@ -322,9 +326,78 @@ var LexeraApi = (function () {
 
   function getInFlightCount() { return inFlightCount; }
 
+  function normalizeBackendCapabilities(status) {
+    var caps = status && typeof status.capabilities === 'object' && status.capabilities
+      ? status.capabilities
+      : {};
+    var crdtSync = caps.crdtSync !== false;
+    var disabledReason = typeof caps.disabledReason === 'string' && caps.disabledReason
+      ? caps.disabledReason
+      : (crdtSync ? null : CRDT_SYNC_DISABLED_MESSAGE);
+    return {
+      crdtSync: crdtSync,
+      liveSync: crdtSync && caps.liveSync !== false,
+      remoteSync: crdtSync && caps.remoteSync !== false,
+      disabledReason: disabledReason
+    };
+  }
+
+  async function getBackendStatus(options) {
+    options = options || {};
+    var now = Date.now();
+    if (!options.force && backendStatusCache && now - backendStatusCacheAt < BACKEND_STATUS_CACHE_MS) {
+      return backendStatusCache;
+    }
+    const url = await discover();
+    if (!url) return null;
+    const res = await transportFetch(url, '/status', { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) {
+      var error = new Error(res.status + ': ' + (res.statusText || 'Status check failed'));
+      error.status = res.status;
+      throw error;
+    }
+    var status = await res.json();
+    backendStatusCache = status || {};
+    backendStatusCacheAt = Date.now();
+    return backendStatusCache;
+  }
+
+  async function getBackendCapabilities(options) {
+    return normalizeBackendCapabilities(await getBackendStatus(options));
+  }
+
+  function getBackendCapabilitiesSync() {
+    return normalizeBackendCapabilities(backendStatusCache);
+  }
+
+  function isCrdtSyncAvailableSync() {
+    return getBackendCapabilitiesSync().crdtSync !== false;
+  }
+
+  async function isCrdtSyncAvailable(options) {
+    return (await getBackendCapabilities(options)).crdtSync !== false;
+  }
+
+  function makeCrdtSyncDisabledError(reason) {
+    var error = new Error(reason || CRDT_SYNC_DISABLED_MESSAGE);
+    error.status = 501;
+    error.code = 'crdt_sync_disabled';
+    return error;
+  }
+
+  async function assertCrdtSyncAvailable(options) {
+    var capabilities = await getBackendCapabilities(options);
+    if (capabilities.crdtSync === false) {
+      throw makeCrdtSyncDisabledError(capabilities.disabledReason);
+    }
+    return capabilities;
+  }
+
   function clearCachedBackendState(options) {
     options = options || {};
     baseUrl = null;
+    backendStatusCache = null;
+    backendStatusCacheAt = 0;
     if (options.clearToken !== false) {
       bearerToken = null;
       bearerTokenPromise = null;
@@ -657,10 +730,7 @@ var LexeraApi = (function () {
 
   async function checkStatus() {
     try {
-      const url = await discover();
-      if (!url) return false;
-      const res = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
-      return res.ok;
+      return !!(await getBackendStatus({ force: true }));
     } catch (error) {
       logApiIssue('warn', 'api.status', 'Status check failed', error, {
         dedupeKey: 'api.status',
@@ -757,6 +827,7 @@ var LexeraApi = (function () {
   }
 
   async function openLiveSyncSession(boardId) {
+    await assertCrdtSyncAvailable();
     return request('/boards/' + boardId + '/live-sync/open', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1140,7 +1211,7 @@ var LexeraApi = (function () {
   }
 
   function scheduleSyncReconnect() {
-    if (!syncShouldReconnect || syncReconnectTimer || !syncBoardId || !syncUserId || !baseUrl) return;
+    if (!syncShouldReconnect || syncReconnectTimer || !syncBoardId || !syncUserId || !baseUrl || !isCrdtSyncAvailableSync()) return;
     var delay = Math.min(1000 * Math.pow(2, syncReconnectAttempt), 30000);
     delay += Math.random() * 0.3 * delay;
     syncReconnectAttempt++;
@@ -1157,6 +1228,10 @@ var LexeraApi = (function () {
 
   function openSyncSocket() {
     if (!baseUrl || !syncBoardId || !syncUserId) return;
+    if (!isCrdtSyncAvailableSync()) {
+      syncShouldReconnect = false;
+      return;
+    }
     var wsUrl = baseUrl.replace(/^http/, 'ws') + '/sync/' + syncBoardId + '?token=' + encodeURIComponent(bearerToken || '');
     var boardId = syncBoardId;
     syncWs = new WebSocket(wsUrl);
@@ -1268,6 +1343,10 @@ var LexeraApi = (function () {
   function openSyncIpc() {
     var core = resolveTauriCore();
     if (!core || !syncBoardId || !syncUserId) return;
+    if (!isCrdtSyncAvailableSync()) {
+      syncShouldReconnect = false;
+      return;
+    }
     var ChannelCtor = resolveTauriChannelCtor();
     if (!ChannelCtor) {
       logApiIssue('error', 'sync.ipc', 'Tauri Channel unavailable');
@@ -1365,7 +1444,7 @@ var LexeraApi = (function () {
   }
 
   function scheduleSyncIpcReconnect() {
-    if (!syncShouldReconnect || syncIpcReconnectTimer || !syncBoardId || !syncUserId) return;
+    if (!syncShouldReconnect || syncIpcReconnectTimer || !syncBoardId || !syncUserId || !isCrdtSyncAvailableSync()) return;
     var delay = Math.min(1000 * Math.pow(2, syncIpcReconnectAttempt), 30000);
     delay += Math.random() * 0.3 * delay;
     syncIpcReconnectAttempt++;
@@ -1386,6 +1465,13 @@ var LexeraApi = (function () {
    */
   function connectSync(boardId, userId, onUpdate, onPresence, options) {
     disconnectSync();
+    if (!isCrdtSyncAvailableSync()) {
+      logApiIssue('info', 'sync.disabled', CRDT_SYNC_DISABLED_MESSAGE, undefined, {
+        dedupeKey: 'sync.disabled',
+        dedupeWindowMs: 30000
+      });
+      return false;
+    }
     syncBoardId = boardId;
     syncUserId = userId;
     syncOnUpdate = onUpdate;
@@ -1619,6 +1705,7 @@ var LexeraApi = (function () {
   }
 
   async function connectRemote(serverUrl, token) {
+    await assertCrdtSyncAvailable();
     return request('/collab/connect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1650,7 +1737,7 @@ var LexeraApi = (function () {
     discover, request, getBoards, getBoardHierarchy, getBoardHierarchyCached, getBoardChanges, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
     probeExternalEmbed,
     openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search, getCalendarTasks, getDashboardData,
-    checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, fileInfoBatch, uploadMedia, addBoard, removeBoard,
+    checkStatus, getBackendStatus, getBackendCapabilities, isCrdtSyncAvailable, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, fileInfoBatch, uploadMedia, addBoard, removeBoard,
     getCaptureHistory, removeCaptureEntry,
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate, sendEditingPresence,
     getMe, updateMe, getServerInfo,
@@ -1669,7 +1756,11 @@ var LexeraApi = (function () {
       if (!core) return Promise.resolve({ state: 'unavailable', reason: 'Tauri core unavailable' });
       return core.invoke('backend_ipc_status');
     },
-    _setTestBaseUrl: function(url) { baseUrl = url || null; },
+    _setTestBaseUrl: function(url) {
+      baseUrl = url || null;
+      backendStatusCache = null;
+      backendStatusCacheAt = 0;
+    },
     _setTestToken: function(t) { bearerToken = t; bearerTokenPromise = null; },
     _resetTestState: function() {
       clearCachedBackendState();

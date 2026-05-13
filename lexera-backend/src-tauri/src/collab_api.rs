@@ -10,7 +10,7 @@ use axum::{
     Json, Router,
 };
 use lexera_core::storage::local::LocalStorage;
-use lexera_core::storage::BoardStorage;
+use lexera_core::storage::{BoardStorage, CrdtSyncStorage, CRDT_SYNC_DISABLED_MESSAGE};
 use lexera_core::watcher::types::BoardChangeEvent;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -1020,6 +1020,13 @@ async fn connect_remote(
     State(state): State<AppState>,
     Json(body): Json<ConnectBody>,
 ) -> Result<Json<serde_json::Value>> {
+    if !CrdtSyncStorage::crdt_sync_available(state.storage.as_ref()) {
+        return Err((
+            StatusCode::NOT_IMPLEMENTED,
+            Json(ErrorResponse::new(CRDT_SYNC_DISABLED_MESSAGE)),
+        ));
+    }
+
     let user_name = read_arc(&state.auth_service, "auth")
         .ok()
         .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))

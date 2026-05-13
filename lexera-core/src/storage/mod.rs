@@ -1,5 +1,11 @@
 pub mod backup;
+pub mod board_files;
+pub mod capabilities;
+pub mod crdt_artifact;
+pub mod generation;
 pub mod local;
+pub mod merge_engine;
+pub mod persistence;
 pub mod registry;
 
 use std::path::PathBuf;
@@ -10,6 +16,8 @@ use crate::search::SearchOptions;
 use crate::types::{
     BoardInfo, KanbanBoard, KanbanRow, KanbanStack, PaginatedSearchResults, SearchResult,
 };
+
+pub use capabilities::{CrdtSyncStorage, NoCrdtSync, CRDT_SYNC_DISABLED_MESSAGE};
 
 /// Result of a board write operation.
 #[derive(Debug, Clone)]

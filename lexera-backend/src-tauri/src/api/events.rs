@@ -8,6 +8,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
 use crate::state::AppState;
+use lexera_core::storage::{CrdtSyncStorage, CRDT_SYNC_DISABLED_MESSAGE};
 
 const SSE_KEEPALIVE_SECS: u64 = 30;
 
@@ -44,11 +45,19 @@ pub async fn sse_events(
 
 pub async fn status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(state.port);
+    let crdt_sync_available = state.storage.crdt_sync_available();
+    let crdt_sync_disabled_reason = (!crdt_sync_available).then_some(CRDT_SYNC_DISABLED_MESSAGE);
     Json(serde_json::json!({
         "status": "running",
         "port": actual_port,
         "bind_address": state.bind_address,
         "incoming": state.incoming,
+        "capabilities": {
+            "crdtSync": crdt_sync_available,
+            "liveSync": crdt_sync_available,
+            "remoteSync": crdt_sync_available,
+            "disabledReason": crdt_sync_disabled_reason,
+        },
     }))
 }
 
@@ -273,6 +282,10 @@ mod tests {
         assert_eq!(json["status"], "running");
         assert_eq!(json["bind_address"], "127.0.0.1");
         assert_eq!(json["port"], 0);
+        assert_eq!(json["capabilities"]["crdtSync"], true);
+        assert_eq!(json["capabilities"]["liveSync"], true);
+        assert_eq!(json["capabilities"]["remoteSync"], true);
+        assert!(json["capabilities"]["disabledReason"].is_null());
     }
 
     #[tokio::test]

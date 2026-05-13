@@ -3,7 +3,6 @@
 /// Creates timestamped backups in a `.lexera-backups/` directory alongside
 /// each board file and rotates old backups beyond a configurable keep count.
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
@@ -104,17 +103,11 @@ impl BackupManager {
 
     /// Atomically write text content to a file path.
     fn atomic_write_text(path: &Path, content: &str) -> Result<(), std::io::Error> {
-        let tmp_path = path.with_extension("lexera-crashsave.tmp");
-        let mut file = fs::File::create(&tmp_path)?;
-        file.write_all(content.as_bytes())?;
-        file.sync_all()?;
-        fs::rename(&tmp_path, path)?;
-        if let Some(dir) = path.parent() {
-            if let Ok(d) = fs::File::open(dir) {
-                let _ = d.sync_all();
-            }
-        }
-        Ok(())
+        super::persistence::atomic_write_text(
+            path,
+            content,
+            super::persistence::AtomicWriteOptions::crashsave(),
+        )
     }
 
     /// Extract the timestamp suffix from a backup filename, given the original

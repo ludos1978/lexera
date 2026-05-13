@@ -15,6 +15,17 @@ use crate::merge::diff::{self, CardChange};
 use crate::panic_util::panic_payload_to_string;
 use crate::types::*;
 
+pub type CrdtVersionVector = loro::VersionVector;
+
+pub fn empty_version_vector() -> CrdtVersionVector {
+    loro::VersionVector::default()
+}
+
+pub fn decode_version_vector(bytes: &[u8]) -> io::Result<CrdtVersionVector> {
+    loro::VersionVector::decode(bytes)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
+}
+
 /// Convert any Display-able Loro error into an io::Error.
 fn loro_err(e: impl std::fmt::Display) -> io::Error {
     io::Error::other(e.to_string())
@@ -988,8 +999,11 @@ impl CrdtStore {
                             .unwrap_or(false)
                     });
                     if let Some(pos) = stack_pos {
-                        let stack_map = get_map_at(&source_stacks_list, pos)
-                            .ok_or_else(|| io::Error::other("stack index became invalid during cross-container move"))?;
+                        let stack_map = get_map_at(&source_stacks_list, pos).ok_or_else(|| {
+                            io::Error::other(
+                                "stack index became invalid during cross-container move",
+                            )
+                        })?;
                         let data = extract_stack_data(&stack_map);
                         source_stacks_list.delete(pos, 1).map_err(loro_err)?;
 
@@ -1060,8 +1074,11 @@ impl CrdtStore {
                                     .unwrap_or(false)
                             });
                             if let Some(pos) = col_pos {
-                                let col_map = get_map_at(&src_cols_list, pos)
-                                    .ok_or_else(|| io::Error::other("column index became invalid during cross-container move"))?;
+                                let col_map = get_map_at(&src_cols_list, pos).ok_or_else(|| {
+                                    io::Error::other(
+                                        "column index became invalid during cross-container move",
+                                    )
+                                })?;
                                 let data = extract_column_data(&col_map);
                                 src_cols_list.delete(pos, 1).map_err(loro_err)?;
 

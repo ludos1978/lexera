@@ -961,7 +961,12 @@ mod tests {
             .find(|l| l.starts_with("DTSTAMP:"))
             .expect("DTSTAMP line must be present");
         let value = line.strip_prefix("DTSTAMP:").unwrap();
-        assert_eq!(value.len(), 16, "DTSTAMP value should be 16 chars: {}", value);
+        assert_eq!(
+            value.len(),
+            16,
+            "DTSTAMP value should be 16 chars: {}",
+            value
+        );
         assert!(
             value.ends_with('Z'),
             "DTSTAMP value should end with Z (UTC marker): {}",

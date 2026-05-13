@@ -109,7 +109,9 @@ pub fn parse_xbel(xml: &str) -> Result<XbelRoot, XbelError> {
         match reader.read_event_into(&mut buf)? {
             Event::Start(e) if e.local_name().as_ref() == b"xbel" => {
                 let (root_bookmarks, folders) = parse_children(&mut reader)?;
-                let mut result = XbelRoot { folders: Vec::new() };
+                let mut result = XbelRoot {
+                    folders: Vec::new(),
+                };
                 if !root_bookmarks.is_empty() {
                     result.folders.push(XbelFolder {
                         id: "root-unsorted".to_string(),
@@ -334,7 +336,10 @@ pub fn generate_xbel(root: &XbelRoot) -> Result<String, XbelError> {
     Ok(String::from_utf8(bytes).expect("quick-xml writer produces valid UTF-8"))
 }
 
-fn write_folder(writer: &mut Writer<Cursor<Vec<u8>>>, folder: &XbelFolder) -> Result<(), XbelError> {
+fn write_folder(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    folder: &XbelFolder,
+) -> Result<(), XbelError> {
     let mut start = BytesStart::new("folder");
     if !folder.id.is_empty() {
         start.push_attribute(("id", folder.id.as_str()));
@@ -410,7 +415,12 @@ pub fn xbel_to_columns(root: &XbelRoot) -> Vec<KanbanColumn> {
 
     for (i, (path, bookmarks)) in flat_entries.iter().enumerate() {
         let segments: Vec<&str> = path.split(" / ").collect();
-        let stack_key = segments.iter().take(2).copied().collect::<Vec<_>>().join(" / ");
+        let stack_key = segments
+            .iter()
+            .take(2)
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" / ");
         let needs_stack = stack_key == prev_stack_key;
         let title = if needs_stack {
             format!("{} #stack", path)
@@ -548,8 +558,14 @@ fn task_content_to_bookmark(content: &str, fallback_idx: usize) -> Option<XbelBo
     }
     let first_line = content.lines().next()?.trim();
     let caps = link_regex().captures(first_line)?;
-    let title = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-    let href = caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
+    let title = caps
+        .get(1)
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_default();
+    let href = caps
+        .get(2)
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_default();
     let id = caps
         .get(3)
         .map(|m| m.as_str().to_string())
@@ -691,7 +707,9 @@ pub fn merge_xbel_into_columns(
 
             for in_card in incoming_col.cards {
                 let xbel_id = extract_xbel_id(&in_card.content);
-                let existing = xbel_id.as_ref().and_then(|id| existing_by_xbel_id.remove(id));
+                let existing = xbel_id
+                    .as_ref()
+                    .and_then(|id| existing_by_xbel_id.remove(id));
                 let id = match existing {
                     Some(c) => c.id,
                     None => in_card.id.clone(),
@@ -1053,7 +1071,10 @@ mod tests {
                 "Dev Resources",
                 vec![
                     simple_card("t-1", "[GitHub](https://github.com \"bm-1\")"),
-                    simple_card("t-2", "[Stack Overflow](https://stackoverflow.com \"bm-2\")"),
+                    simple_card(
+                        "t-2",
+                        "[Stack Overflow](https://stackoverflow.com \"bm-2\")",
+                    ),
                 ],
             ),
             simple_column(
@@ -1093,7 +1114,10 @@ mod tests {
             simple_column(
                 "col-2",
                 "Bookmarks Bar / Shopping / Stores #stack",
-                vec![simple_card("t-3", "[Walmart](https://walmart.com \"bm-3\")")],
+                vec![simple_card(
+                    "t-3",
+                    "[Walmart](https://walmart.com \"bm-3\")",
+                )],
             ),
             simple_column(
                 "col-3",
@@ -1180,7 +1204,10 @@ mod tests {
         assert_eq!(round_trip.folders[0].title, "Dev Resources");
         assert_eq!(round_trip.folders[0].bookmarks.len(), 2);
         assert_eq!(round_trip.folders[0].bookmarks[0].title, "GitHub");
-        assert_eq!(round_trip.folders[0].bookmarks[0].href, "https://github.com");
+        assert_eq!(
+            round_trip.folders[0].bookmarks[0].href,
+            "https://github.com"
+        );
         assert_eq!(round_trip.folders[0].bookmarks[0].id, "bm-1");
         assert_eq!(
             round_trip.folders[0].bookmarks[0].description.as_deref(),
@@ -1311,7 +1338,10 @@ mod tests {
         let existing = vec![simple_column(
             "col-1",
             "Dev Resources",
-            vec![simple_card("task-1", "[Old Title](https://old-url.com \"bm-1\")")],
+            vec![simple_card(
+                "task-1",
+                "[Old Title](https://old-url.com \"bm-1\")",
+            )],
         )];
 
         let incoming = parse_xbel(FLAT_XBEL).unwrap();
@@ -1440,7 +1470,10 @@ mod tests {
         let existing = vec![simple_column(
             "col-1",
             "Bookmarks Bar / Shopping / Deals",
-            vec![simple_card("task-1", "[Amazon](https://amazon.com \"bm-1\")")],
+            vec![simple_card(
+                "task-1",
+                "[Amazon](https://amazon.com \"bm-1\")",
+            )],
         )];
 
         let incoming = parse_xbel(NESTED_XBEL).unwrap();
