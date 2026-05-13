@@ -3761,8 +3761,18 @@ interface LexeraSubAppApi {
   getWindowLabel(): string;
   getHostWindowLabel(): string;
   /** Returns the Tauri webview record (label + listen) for the current
-   *  webview. Returns null when the Tauri runtime isn't available. */
-  getCurrentWebview(): { label: string; listen: Function } | null;
+   *  webview. Returns null when the Tauri runtime isn't available.
+   *  `listen` mirrors the Tauri 2 `Webview.listen<T>()` shape — event
+   *  carries `{ event, id, payload }` and the returned Promise resolves
+   *  to an unlisten function. Payload stays `any` because every event
+   *  carries a different shape (callers narrow per-event). */
+  getCurrentWebview(): {
+    label: string;
+    listen: (
+      event: string,
+      handler: (event: { event: string; id: number; payload: any }) => void
+    ) => Promise<() => void>;
+  } | null;
   applyThemeSnapshot(snap: LexeraThemeSnapshot | null | undefined): void;
   confirmModal(opts?: LexeraSubAppConfirmModalOptions): Promise<boolean>;
   promptModal(opts?: LexeraSubAppPromptModalOptions): Promise<string | null>;
