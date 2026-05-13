@@ -980,6 +980,78 @@ interface LexeraCanvasModeApi {
 }
 
 /**
+ * Source: src/interaction/controlsDispatcher.js (IIFE;
+ * window.LexeraControlsDispatcher = api). Central event dispatcher for
+ * scroll / drag / mouse interactions on the board. Modules (canvasPan,
+ * canvasZoom, etc.) register handlers per (mode, action) pair;
+ * dispatcher owns event wiring and the (mode × action) match against
+ * the user's LexeraControlsSettings bindings.
+ */
+type LexeraControlsDispatcherMode = 'kanban' | 'canvas';
+
+/**
+ * Context object passed to every handler. Built fresh per dispatch.
+ */
+interface LexeraControlsDispatcherHandlerCtx {
+  event: Event;
+  mode: LexeraControlsDispatcherMode;
+  action: string;
+  target: EventTarget | null;
+  container: HTMLElement | null;
+}
+
+/**
+ * Handler shape `register(mode, action, handler)` accepts. Each sub-key
+ * is optional; the dispatcher checks `if (h.scroll)` / `if (h.drag)`
+ * before dispatching. `scroll` returns `false` to NOT mark the event
+ * handled (lets the next handler in the chain try); any other return
+ * (including void/undefined) consumes the event.
+ */
+interface LexeraControlsDispatcherHandler {
+  scroll?: (
+    ctx: LexeraControlsDispatcherHandlerCtx,
+    deltaX: number,
+    deltaY: number
+  ) => boolean | void;
+  drag?: {
+    canStart?: (ctx: LexeraControlsDispatcherHandlerCtx) => boolean;
+    start?: (ctx: LexeraControlsDispatcherHandlerCtx) => unknown;
+    /** Move/end receive whatever `start()` returned as `context`. */
+    move?: (context: unknown, dx: number, dy: number) => void;
+    end?: (context: unknown) => void;
+  };
+}
+
+/**
+ * Deps required by `LexeraControlsDispatcher.init()`. All optional —
+ * missing accessors degrade gracefully (the dispatcher returns no-ops
+ * for the missing-dep branch instead of throwing).
+ */
+interface LexeraControlsDispatcherDeps {
+  getActiveBoardData?: () => unknown;
+  isCanvasBoardLayout?: () => boolean;
+  getElColumnsContainer?: () => HTMLElement | null;
+}
+
+interface LexeraControlsDispatcherApi {
+  init(deps: LexeraControlsDispatcherDeps): void;
+  detach(): void;
+  register(
+    mode: LexeraControlsDispatcherMode,
+    action: string,
+    handler: LexeraControlsDispatcherHandler
+  ): void;
+  cancelDrag(): void;
+  isDragging(): boolean;
+  /** Test seam — returns the current mode based on board layout. */
+  _currentMode(): LexeraControlsDispatcherMode;
+  /** Test seam — returns true when target is within the board scope. */
+  _isInBoardScope(target: EventTarget | null | undefined): boolean;
+  /** Test seam — returns true when target is inside an editable field. */
+  _isInEditableField(target: EventTarget | null | undefined): boolean;
+}
+
+/**
  * Source: src/canvas/canvasPan.js (IIFE;
  * window.LexeraCanvasPan = api). Registers a `canvas.move` drag handler
  * with LexeraControlsDispatcher — the dispatcher owns event wiring and
@@ -3900,7 +3972,7 @@ declare global {
     LexeraPollingService: any;
     LexeraCanvasMode: LexeraCanvasModeApi;
     LexeraCanvasPan: LexeraCanvasPanApi;
-    LexeraControlsDispatcher: any;
+    LexeraControlsDispatcher: LexeraControlsDispatcherApi;
     LexeraCanvasLayout: LexeraCanvasLayoutApi;
     LexeraColumnContextMenu: any;
     LexeraKeyboardNavigation: any;
