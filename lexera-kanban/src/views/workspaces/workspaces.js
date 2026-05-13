@@ -201,13 +201,40 @@
       startInlineRename(node);
       return;
     }
-    LexeraSubApp.navigate({ type: 'focus-hierarchy-target', target: {
-      boardId: boardId,
-      cardId:   dragKind === 'card'   ? entityId : null,
-      columnId: dragKind === 'column' ? entityId : null,
-      stackId:  dragKind === 'stack'  ? entityId : null,
-      rowId:    dragKind === 'row'    ? entityId : null
-    } });
+    // User report 2026-05-14 with trace `columnId:null`: the focus
+    // precursor for non-focus menu actions (Edit, Park, Archive,
+    // Delete, etc.) was sending bare `{boardId, cardId, columnId:null,
+    // ...}` so the kanban-side scope-by-ancestor lookup had nothing to
+    // scope by → board-wide first match → wrong card copy. Harvest
+    // ancestor ids/title the same way the focus action does.
+    var precursorTarget = { boardId: boardId };
+    if (dragKind === 'card')        precursorTarget.cardId   = entityId;
+    else if (dragKind === 'column') precursorTarget.columnId = entityId;
+    else if (dragKind === 'stack')  precursorTarget.stackId  = entityId;
+    else if (dragKind === 'row')    precursorTarget.rowId    = entityId;
+    var precursorAncestor = node && node.parentElement;
+    while (precursorAncestor) {
+      if (precursorAncestor.classList && precursorAncestor.classList.contains('tree-entry')) {
+        var precAncNode = precursorAncestor.querySelector(':scope > .tree-node[data-tree-id]');
+        if (precAncNode) {
+          var precAncKind = precAncNode.getAttribute('data-drag-kind') || '';
+          var precAncId   = precAncNode.getAttribute('data-tree-id')  || '';
+          if (precAncKind && precAncId) {
+            if (precAncKind === 'column' && !precursorTarget.columnId) {
+              precursorTarget.columnId = precAncId;
+              var precAncLabel = precAncNode.querySelector(':scope > .tree-label');
+              if (precAncLabel) precursorTarget.columnTitle = (precAncLabel.textContent || '').trim();
+            } else if (precAncKind === 'stack' && !precursorTarget.stackId) {
+              precursorTarget.stackId = precAncId;
+            } else if (precAncKind === 'row' && !precursorTarget.rowId) {
+              precursorTarget.rowId = precAncId;
+            }
+          }
+        }
+      }
+      precursorAncestor = precursorAncestor.parentElement;
+    }
+    LexeraSubApp.navigate({ type: 'focus-hierarchy-target', target: precursorTarget });
     if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
       window.LexeraSubApp.broadcast('hierarchy-entity-menu-action', {
         boardId: boardId,
@@ -1091,19 +1118,12 @@
             if (ancKind && ancId) {
               if (ancKind === 'column' && !focusTarget.columnId) {
                 focusTarget.columnId = ancId;
+                // DO NOT emit a `columnIndex` from tree position: tree
+                // siblings are STACK-LOCAL but the kanban's data-col-index
+                // is BOARD-FLAT. Passing the stack-local value matched
+                // the WRONG column (user's "3 stacks left" symptom).
                 var ancLabel = ancNode.querySelector(':scope > .tree-label');
                 if (ancLabel) focusTarget.columnTitle = (ancLabel.textContent || '').trim();
-                if (typeof focusTarget.columnIndex !== 'number') {
-                  var parentChildren = ancestor.parentElement;
-                  if (parentChildren) {
-                    var siblings = parentChildren.children;
-                    var ci = 0;
-                    for (var sk = 0; sk < siblings.length; sk++) {
-                      if (siblings[sk] === ancestor) { focusTarget.columnIndex = ci; break; }
-                      if (siblings[sk].classList && siblings[sk].classList.contains('tree-entry')) ci++;
-                    }
-                  }
-                }
               }
               else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
               else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
