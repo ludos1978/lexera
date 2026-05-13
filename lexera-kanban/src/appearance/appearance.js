@@ -108,13 +108,113 @@ var LexeraAppearance = (function () {
     _callDep('renderFrontendSettingsPanel');
   }
 
+  // ─── Theme mode (auto / dark / light) ─────────────────────────────────
+  //
+  // User report 2026-05-13: "the dark mode doesnt work anymore. also the
+  // frontend settings should have a theme-mode setting (auto = system
+  // default, dark, bright - modes)". Root cause: app.css had no
+  // `prefers-color-scheme: dark` rules — JS detected OS preference and
+  // even broadcast a `color_scheme: dark` snapshot, but no CSS reacted.
+  //
+  // The new model:
+  //   - Setting `themeMode` is one of 'auto' / 'dark' / 'light'.
+  //   - `auto` follows OS `prefers-color-scheme` (the recommended default).
+  //   - `dark` / `light` are explicit overrides.
+  //   - `applyThemeMode()` resolves to a concrete `'dark'` or `'light'`
+  //     and writes it onto `:root[data-theme-mode]`, which the CSS in
+  //     app.css uses to flip the surface / text / chrome tokens.
+  //   - On OS `prefers-color-scheme` change, only `auto` re-resolves.
+
+  var VALID_THEME_MODES = ['auto', 'dark', 'light'];
+
+  function normalizeThemeMode(value) {
+    var raw = String(value == null ? '' : value).trim().toLowerCase();
+    if (raw === 'bright') raw = 'light'; // accept user-facing alias
+    return VALID_THEME_MODES.indexOf(raw) !== -1 ? raw : 'auto';
+  }
+
+  function readStoredThemeMode() {
+    var stored = null;
+    if (Settings) {
+      stored = Settings.get('themeMode');
+    } else if (typeof localStorage !== 'undefined') {
+      try { stored = localStorage.getItem('lexera-theme-mode'); }
+      catch (_) { stored = null; }
+    }
+    return normalizeThemeMode(stored);
+  }
+
+  function resolveEffectiveThemeMode(mode) {
+    var normalized = normalizeThemeMode(mode);
+    if (normalized !== 'auto') return normalized;
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
+  }
+
+  function applyThemeMode(modeArg, options) {
+    options = options || {};
+    var requested = (typeof modeArg === 'undefined' || modeArg === null)
+      ? readStoredThemeMode()
+      : normalizeThemeMode(modeArg);
+    var effective = resolveEffectiveThemeMode(requested);
+    var root = typeof document !== 'undefined' ? document.documentElement : null;
+    if (root) {
+      root.setAttribute('data-theme-mode', effective);
+      // Preserve the user's requested mode separately so the UI can
+      // show 'auto' while the resolved effective mode is dark or light.
+      root.setAttribute('data-theme-mode-requested', requested);
+    }
+    if (options.persist !== false) {
+      if (Settings) {
+        Settings.set('themeMode', requested);
+      } else if (typeof localStorage !== 'undefined') {
+        try { localStorage.setItem('lexera-theme-mode', requested); }
+        catch (_) { /* ignore quota / disabled storage */ }
+      }
+    }
+    _callDep('renderFrontendSettingsPanel');
+    return { requested: requested, effective: effective };
+  }
+
+  function getThemeMode() {
+    return readStoredThemeMode();
+  }
+
+  function getEffectiveThemeMode() {
+    return resolveEffectiveThemeMode(readStoredThemeMode());
+  }
+
+  // Apply the persisted mode on module load so the body starts in the
+  // right palette before any user interaction.
+  applyThemeMode(undefined, { persist: false });
+
+  // Cross-webview re-apply: the frontend-settings sub-app writes
+  // `lexera-theme-mode` to localStorage (same origin = same storage
+  // partition under Tauri) and broadcasts `frontend-setting-changed`.
+  // Browsers fire a `storage` event in EVERY other document in the
+  // same origin when one document mutates localStorage. Listen there so
+  // toggling the setting in the settings webview also re-flips the
+  // shell + kanban + other open sub-apps without needing a reload.
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', function (event) {
+      if (!event || event.key !== 'lexera-theme-mode') return;
+      applyThemeMode(event.newValue, { persist: false });
+    });
+  }
+
   // Re-apply the active visual theme on OS light/dark switch. The legacy
   // palette writer is intentionally not used here; visual themes own the
-  // appearance tokens now.
+  // appearance tokens now. Also re-resolve themeMode when the user picked
+  // `auto`, so the surface flips with the OS.
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
     var visualTheme = (typeof getLexeraCurrentVisualThemeId === 'function' && getLexeraCurrentVisualThemeId()) ||
       (Settings ? Settings.get('visualTheme') : localStorage.getItem('lexera-visual-theme')) || 'warm-paper';
     applyVisualTheme(visualTheme);
+    if (readStoredThemeMode() === 'auto') {
+      applyThemeMode('auto', { persist: false });
+    }
   });
 
   // ─── UI scale ─────────────────────────────────────────────────────────
@@ -244,6 +344,13 @@ var LexeraAppearance = (function () {
     VISUAL_THEME_LABELS: VISUAL_THEME_LABELS,
     applyVisualTheme: applyVisualTheme,
     applyTheme: applyTheme,
+    // Theme mode (auto/dark/light)
+    VALID_THEME_MODES: VALID_THEME_MODES,
+    normalizeThemeMode: normalizeThemeMode,
+    applyThemeMode: applyThemeMode,
+    getThemeMode: getThemeMode,
+    getEffectiveThemeMode: getEffectiveThemeMode,
+    resolveEffectiveThemeMode: resolveEffectiveThemeMode,
     // Sidebar tree display
     getSidebarTreeDisplayOptions: getSidebarTreeDisplayOptions,
     applySidebarTreeDisplayOptions: applySidebarTreeDisplayOptions,

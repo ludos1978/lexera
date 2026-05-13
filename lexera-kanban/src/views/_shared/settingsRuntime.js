@@ -104,6 +104,29 @@
       getCurrentVisualThemeId: getCurrentVisualThemeId,
       applyVisualTheme: applyVisualTheme,
 
+      // ── Theme mode (auto / light / dark) ─────────────────────────
+      // Sub-app side of the user's themeMode setting. Persists via the
+      // same localStorage key the shell-side LexeraAppearance uses
+      // ('lexera-theme-mode') AND broadcasts so other webviews (the
+      // shell + every open sub-app) re-resolve their data-theme-mode
+      // attribute. The shell-side appearance.js listens to the storage
+      // event and the broadcast.
+      getThemeMode: function () {
+        var raw = getLs('lexera-theme-mode', 'auto');
+        if (raw === 'auto' || raw === 'light' || raw === 'dark') return raw;
+        if (raw === 'bright') return 'light';
+        return 'auto';
+      },
+      applyThemeMode: function (v) {
+        var normalized = String(v == null ? '' : v).trim().toLowerCase();
+        if (normalized === 'bright') normalized = 'light';
+        if (normalized !== 'auto' && normalized !== 'light' && normalized !== 'dark') {
+          normalized = 'auto';
+        }
+        setLs('lexera-theme-mode', normalized);
+        broadcast('frontend-setting-changed', { setting: 'themeMode', value: normalized });
+      },
+
       // ── UI scale ─────────────────────────────────────────────────
       getUiScale: function () { return parseFloat(getLs('lexera-ui-scale', '1')) || 1; },
       applyUiScale: function (v) {

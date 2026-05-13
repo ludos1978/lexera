@@ -6776,6 +6776,20 @@ var LexeraDashboard = (function () {
           (Settings ? Settings.get('visualTheme') : localStorage.getItem('lexera-visual-theme')) || 'warm-paper';
       },
       applyVisualTheme: function (id) { applyVisualTheme(id); },
+      // Theme mode (auto / light / dark) — user reported 2026-05-13
+      // "the dark mode doesnt work anymore. also the frontend settings
+      // should have a theme-mode setting". Threads through to
+      // LexeraAppearance which owns the resolver + data-theme-mode setter.
+      getThemeMode: function () {
+        return (LexeraAppearance && typeof LexeraAppearance.getThemeMode === 'function')
+          ? LexeraAppearance.getThemeMode()
+          : 'auto';
+      },
+      applyThemeMode: function (mode) {
+        if (LexeraAppearance && typeof LexeraAppearance.applyThemeMode === 'function') {
+          LexeraAppearance.applyThemeMode(mode);
+        }
+      },
       // UI scale
       getUiScale: function () { return $uiScale; },
       applyUiScale: function (v) { applyUiScale(parseFloat(v) || 1); },

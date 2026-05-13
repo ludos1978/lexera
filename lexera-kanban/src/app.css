@@ -85,6 +85,48 @@
   --shadow-modal:
     0 10px 30px color-mix(in srgb, var(--shadow-ink) 22%, transparent);
 
+  /* Default `color-scheme` so native controls (scrollbars, form widgets)
+     match the active theme tone. Overridden in the dark-mode block below.
+     The JS-driven `--theme-mode` resolver in appearance.js sets
+     `data-theme-mode` on `:root` (`'light'` / `'dark'`); the user can
+     pick `auto` (follow OS prefers-color-scheme), `dark`, or `light`
+     in frontend settings. */
+  color-scheme: light;
+}
+
+/* ───── Dark-mode tokens — applied when JS resolved themeMode to 'dark'.
+   Swaps surface, text, and chrome variables only; spacing / radii /
+   shadows / fonts are mode-agnostic and live in the light block above. */
+:root[data-theme-mode="dark"] {
+  color-scheme: dark;
+  --font-color-mode: #e6e6e6;
+  --font-color-unified: var(--font-color-mode, #e6e6e6);
+  --bg-primary: #10141b;
+  --bg-secondary: #181d27;
+  --bg-tertiary: #232934;
+  --bg-hover: #2a3140;
+  --bg-active: #1b3a5c;
+  --border: #2a3140;
+  --text-primary: #e6e6e6;
+  --text-muted: #8a93a3;
+  --accent: #4fa3ff;
+  --accent-hover: #6db6ff;
+  --success: #5ec396;
+  --error: #ff6464;
+  --card-bg: #181d27;
+  --card-border: #2a3140;
+  --card-checked: #1d2330;
+  --highlight: #4a3f00;
+  --ink:  #e6e6e6;
+  --ink2: #c0c4cc;
+  --ink3: #8a93a3;
+  --ink4: #5a6275;
+  --line: #2a3140;
+  --line2: #353c4a;
+  --shadow-ink: #000000;
+}
+
+:root {
   /* Type scale lives in tokens.css (--font-size-xs / -s / -m / -md / -l).
      Templates override tokens there; all v2 rules reference these. */
 

@@ -92,6 +92,17 @@
       if (!root) continue;
       var opts = getOptionsForPanel(root) || options;
 
+      // Theme mode select (auto / light / dark). Reads the user's
+      // REQUESTED mode (not the resolved effective one) so the dropdown
+      // can show "Auto" even when OS preference resolved to dark.
+      var themeModeSelect = q(root, 'theme-mode');
+      if (themeModeSelect && opts && typeof opts.getThemeMode === 'function') {
+        var modeNow = opts.getThemeMode();
+        themeModeSelect.value = (modeNow === 'auto' || modeNow === 'light' || modeNow === 'dark')
+          ? modeNow
+          : 'auto';
+      }
+
       // Visual theme select
       var visualThemeSelect = q(root, 'visual-theme');
       if (visualThemeSelect) {
@@ -187,6 +198,7 @@
       });
     }
 
+    bindSelect('theme-mode', 'applyThemeMode');
     bindSelect('visual-theme', 'applyVisualTheme');
     bindSelect('ui-scale', 'applyUiScale');
     bindSelect('scroll-speed', 'setScrollSpeed');
