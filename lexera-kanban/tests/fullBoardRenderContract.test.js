@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appJs = readFileSync(resolve(__dirname, '..', 'src', 'app.js'), 'utf8');
 const rowStackMenuJs = readFileSync(resolve(__dirname, '..', 'src', 'menu', 'rowStackMenu.js'), 'utf8');
+const cardContextMenuJs = readFileSync(resolve(__dirname, '..', 'src', 'menu', 'cardContextMenu.js'), 'utf8');
+const columnContextMenuJs = readFileSync(resolve(__dirname, '..', 'src', 'menu', 'columnContextMenu.js'), 'utf8');
 const actionRegistrationsJs = readFileSync(resolve(__dirname, '..', 'src', 'core', 'actionRegistrations.js'), 'utf8');
 
 describe('full-board-render contract', () => {
@@ -37,6 +39,28 @@ describe('full-board-render contract', () => {
     expect(setStackHiddenTagBlock, 'setStackHiddenTag function must exist in rowStackMenu.js').toBeTruthy();
     expect(setStackHiddenTagBlock[0]).toMatch(/persistBoardMutation\(\s*\{[\s\S]*targets:\s*\[\s*\{\s*type:\s*['"]row['"]/);
     expect(setStackHiddenTagBlock[0]).not.toMatch(/targets:\s*\[\s*\{\s*type:\s*['"]board['"]/);
+  });
+
+  it('column hidden-tag mutation uses a stack-targeted refresh (not full board)', () => {
+    // Hiding a column drops one column from its stack but leaves the row
+    // and stack intact — stack-targeted refresh re-renders that stack's
+    // column subtree only. Soft-delete / archive / park on a column share
+    // this path.
+    const setColumnHiddenTagBlock = columnContextMenuJs.match(/async function setColumnHiddenTag[\s\S]*?\n  \}/);
+    expect(setColumnHiddenTagBlock, 'setColumnHiddenTag function must exist in columnContextMenu.js').toBeTruthy();
+    expect(setColumnHiddenTagBlock[0]).toMatch(/type:\s*['"]stack['"]/);
+    expect(setColumnHiddenTagBlock[0]).not.toMatch(/targets:\s*\[\s*\{\s*type:\s*['"]board['"]/);
+  });
+
+  it('card hidden-tag mutation uses a card-remove refresh (not full board)', () => {
+    // Hiding a card drops one card from its column — the column and
+    // everything above is untouched, so card-remove is the narrowest
+    // correct refresh. Soft-delete / archive / park on a card all share
+    // this path via tagCard.
+    const tagCardBlock = cardContextMenuJs.match(/function tagCard\(colIndex, cardIndex, tag\)[\s\S]*?\n  \}/);
+    expect(tagCardBlock, 'tagCard function must exist in cardContextMenu.js').toBeTruthy();
+    expect(tagCardBlock[0]).toMatch(/type:\s*['"]card-remove['"]/);
+    expect(tagCardBlock[0]).not.toMatch(/targets:\s*\[\s*\{\s*type:\s*['"]board['"]/);
   });
 
   it('board frontmatter changes request a full board render', () => {
