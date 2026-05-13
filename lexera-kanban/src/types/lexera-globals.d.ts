@@ -980,6 +980,72 @@ interface LexeraCanvasModeApi {
 }
 
 /**
+ * Source: src/core/settingsStore.js (IIFE;
+ * window.LexeraSettings = api + globalThis.LexeraSettings alias).
+ * Centralized typed access to localStorage-backed settings — single
+ * source of truth for storage key names + types + defaults. Replaces
+ * scattered raw localStorage.getItem/setItem calls with typed get/set
+ * + change notifications via LexeraRuntime event bus + per-board /
+ * per-window scoped keys.
+ */
+type LexeraSettingsType = 'string' | 'boolean' | 'number' | 'json';
+
+interface LexeraSettingsDef {
+  /** localStorage key (or template — see BOARD_DEFS / SCOPED_DEFS /
+   *  WINDOW_DEFS for `{boardId}` / `{scope}` / `{windowScope}` slots). */
+  key: string;
+  type: LexeraSettingsType;
+  /** Returned when the key is missing or fails to JSON.parse. */
+  default: unknown;
+}
+
+interface LexeraSettingsApi {
+  // --- Global key API ---
+  // Read returns `any` (matches the impl — per-key types vary across
+  // DEFS table; callers either know the expected type or use `!!` /
+  // `Number()` coercion). Writes accept `unknown` so callers can pass
+  // any serializable value.
+  get(name: string): any;
+  set(name: string, value: unknown): void;
+  // --- Per-board scoped keys (BOARD_DEFS) ---
+  getForBoard(name: string, boardId: string): any;
+  setForBoard(name: string, boardId: string, value: unknown): void;
+  removeForBoard(name: string, boardId: string): void;
+  // --- Generic scoped (SCOPED_DEFS — `{scope}` placeholder) ---
+  getScoped(name: string, scope: string): any;
+  setScoped(name: string, scope: string, value: unknown): void;
+  // --- Per-window scoped (WINDOW_DEFS — `{windowScope}` placeholder
+  //     resolved from `?workspace=` or `?windowLabel=` URL param) ---
+  getForWindow(name: string): any;
+  setForWindow(name: string, value: unknown): void;
+  removeForWindow(name: string): void;
+  // --- Change notifications via LexeraRuntime event bus ---
+  on(name: string, fn: (value: any) => void): void;
+  // --- Introspection ---
+  /** Resolve a name → localStorage key (with any template placeholders
+   *  already substituted). Returns null when the name is unknown. */
+  keyOf(name: string): string | null;
+  /** All known setting names across DEFS / BOARD_DEFS / SCOPED_DEFS /
+   *  WINDOW_DEFS — useful for `purgeLegacyKeys`-style audits. */
+  allKeys(): Array<string>;
+  /** Returns the LexeraSettingsDef for a name, or null when unknown. */
+  defOf(name: string): LexeraSettingsDef | null;
+  /** Removes legacy keys that earlier versions of Lexera wrote but no
+   *  longer reads (commit a3770220-era purge). Idempotent. */
+  purgeLegacyKeys(): void;
+  /** Read-only — the list of legacy keys purged by `purgeLegacyKeys`. */
+  readonly LEGACY_KEYS: ReadonlyArray<string>;
+  /** Global setting definitions. */
+  readonly DEFS: Readonly<Record<string, LexeraSettingsDef>>;
+  /** Per-board setting definitions (key templates use `{boardId}`). */
+  readonly BOARD_DEFS: Readonly<Record<string, LexeraSettingsDef>>;
+  /** Generic scoped setting definitions (key templates use `{scope}`). */
+  readonly SCOPED_DEFS: Readonly<Record<string, LexeraSettingsDef>>;
+  /** Per-window setting definitions (key templates use `{windowScope}`). */
+  readonly WINDOW_DEFS: Readonly<Record<string, LexeraSettingsDef>>;
+}
+
+/**
  * Source: src/render/cardContentRenderer.js (IIFE;
  * window.LexeraCardContentRenderer = api). Markdown-to-HTML rendering
  * pipeline for card content (headings / lists / code blocks / tables /
@@ -4222,8 +4288,10 @@ declare global {
   // at every call site).
   const ContextMenuBuilders: any;
   // Settings store IIFE — loaded before sidebarSync.js, accessed by
-  // bare name via `typeof LexeraSettings !== 'undefined'`.
-  const LexeraSettings: any;
+  // bare name via `typeof LexeraSettings !== 'undefined'`. Pinned to
+  // the typed `LexeraSettingsApi` so bare-name access carries the
+  // same typing as `window.LexeraSettings`.
+  const LexeraSettings: LexeraSettingsApi;
   // Plugin registry IIFE — accessed by bare name via `typeof
   // LexeraPluginRegistry !== 'undefined'` in contentEnhancerRegistry.js.
   const LexeraPluginRegistry: any;
