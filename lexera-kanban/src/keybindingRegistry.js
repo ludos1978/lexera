@@ -114,7 +114,14 @@
           });
         }
       } catch (err) {
-        console.warn('[keybinding] Failed to parse keybindings.json:', err);
+        // Route through the in-app logger (MEMORY rule: never console.*).
+        // logFrontendIssue is defined in app.js after KeybindingRegistry
+        // loads, so guard against load-order — fall back to a no-op if
+        // the global isn't ready (the parse error is non-fatal anyway:
+        // userBindings stays empty and the app uses built-in defaults).
+        if (typeof logFrontendIssue === 'function') {
+          logFrontendIssue('warn', 'keybinding', 'Failed to parse keybindings.json', err);
+        }
       }
       loaded = true;
     },

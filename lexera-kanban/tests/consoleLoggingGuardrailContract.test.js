@@ -33,7 +33,6 @@ const ALLOWED_CONSOLE_FILES = [
   'core/boardDataStore.js',
   'core/moduleRuntime.js',
   'core/settingsStore.js',
-  'keybindingRegistry.js',
   'menu/contextMenuBuilders.js',
   'plugins/pluginConfig.js',
   'plugins/pluginLoader.js',
