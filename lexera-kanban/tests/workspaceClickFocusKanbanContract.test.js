@@ -183,12 +183,45 @@ describe('workspace tree click → focus kanban entity (user contract 2026-05-11
       expect(hierarchySrc).toMatch(/ancKind\s*===\s*['"]row['"][\s\S]{0,80}!focusTarget\.rowId/);
     });
 
-    it('workspaces.js mirrors the same ancestor-harvest loop', () => {
+    it('hierarchy.js DIRECT-click handler ALSO harvests ancestors (not just runEntityAction)', () => {
+      // User report 2026-05-14: focus still wrong after 7a967330 because
+      // that commit patched runEntityAction (burger-menu path) only.
+      // The DIRECT-click handler at the bottom of hierarchy.js has its
+      // own focus-target build — must apply the same harvest.
+      //
+      // Pin BOTH occurrences of the harvest loop in hierarchy.js so
+      // future edits can't drop one and leave the other.
+      var harvestMatches = hierarchySrc.match(/while\s*\(\s*ancestor\s*\)/g) || [];
+      expect(harvestMatches.length).toBeGreaterThanOrEqual(2);
+      // Direct-click handler is anchored by __hierarchyClickBound; the
+      // harvest must appear within it.
+      expect(hierarchySrc).toMatch(
+        /__hierarchyClickBound[\s\S]{0,5000}|[\s\S]{0,5000}__hierarchyClickBound/
+      );
+      // Loose proximity check: the click handler's navigate call must
+      // be preceded by the ancestor walk so the target carries ids
+      // before dispatch.
+      var clickHandlerSlice = hierarchySrc.match(
+        /localBoardsEl\.addEventListener\(['"]click['"][\s\S]+?__hierarchyClickBound/
+      );
+      expect(clickHandlerSlice).not.toBeNull();
+      expect(clickHandlerSlice[0]).toMatch(/while\s*\(\s*ancestor\s*\)/);
+      expect(clickHandlerSlice[0]).toMatch(/ancKind\s*===\s*['"]column['"]/);
+    });
+
+    it('workspaces.js mirrors the same ancestor-harvest loop in BOTH the menu and click paths', () => {
       // workspaces.js + hierarchy.js are independent sub-apps; both
       // must apply the same fix or the bug repros from one of them.
-      expect(workspacesSrc).toMatch(/while\s*\(\s*ancestor\s*\)/);
+      // Two harvest loops: runEntityAction + direct-click handler.
+      var harvestMatches = workspacesSrc.match(/while\s*\(\s*ancestor\s*\)/g) || [];
+      expect(harvestMatches.length).toBeGreaterThanOrEqual(2);
       expect(workspacesSrc).toMatch(/ancestor\.classList\.contains\(['"]tree-entry['"]\)/);
       expect(workspacesSrc).toMatch(/ancKind\s*===\s*['"]column['"][\s\S]{0,80}!focusTarget\.columnId/);
+      var clickHandlerSlice = workspacesSrc.match(
+        /localBoardsEl\.addEventListener\(['"]click['"][\s\S]+?__workspacesClickBound/
+      );
+      expect(clickHandlerSlice).not.toBeNull();
+      expect(clickHandlerSlice[0]).toMatch(/while\s*\(\s*ancestor\s*\)/);
     });
 
     it('boardSearch.findBoardEntityElement scopes card lookup to the ancestor subtree when columnId/stackId/rowId is provided', () => {

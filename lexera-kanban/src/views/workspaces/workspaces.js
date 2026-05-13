@@ -1076,6 +1076,27 @@
       else if (dragKind === 'stack') focusTarget.stackId = entityId;
       else if (dragKind === 'row') focusTarget.rowId = entityId;
       else return;
+      // User report 2026-05-13: same include-card-shared-by-columns
+      // disambiguation that commit 7a967330 fixed for the burger-menu
+      // path. Mirror of the loop in hierarchy.js direct-click handler
+      // + both files' runEntityAction. See hierarchy.js for the full
+      // rationale.
+      var ancestor = node && node.parentElement;
+      while (ancestor) {
+        if (ancestor.classList && ancestor.classList.contains('tree-entry')) {
+          var ancNode = ancestor.querySelector(':scope > .tree-node[data-tree-id]');
+          if (ancNode) {
+            var ancKind = ancNode.getAttribute('data-drag-kind') || '';
+            var ancId = ancNode.getAttribute('data-tree-id') || '';
+            if (ancKind && ancId) {
+              if (ancKind === 'column' && !focusTarget.columnId) focusTarget.columnId = ancId;
+              else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
+              else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
+            }
+          }
+        }
+        ancestor = ancestor.parentElement;
+      }
       // Diagnostic — see hierarchy.js for the rationale; mirror log
       // so workspace clicks emit the same trace.
       if (typeof window.lexeraLog === 'function') {

@@ -1180,6 +1180,34 @@
       else if (dragKind === 'stack') focusTarget.stackId = entityId;
       else if (dragKind === 'row') focusTarget.rowId = entityId;
       else return;
+      // User report 2026-05-13: "the element focus (mostly cards)
+      // still doesnt focus the item in the kanban view!"  Commit
+      // 7a967330 added the ancestor harvest to `runEntityAction`
+      // (burger-menu path) but this DIRECT-click handler builds its
+      // own focus target without harvesting ancestors. When an
+      // include file is referenced from > 1 column on the same board,
+      // each copy of a card shares the same data-card-kid, so the
+      // kanban-side board-wide selector returns the FIRST DOM match
+      // — wrong column. The fix: walk `.tree-entry` ancestors to
+      // harvest column/stack/row ids so `findBoardEntityElement` can
+      // scope by ancestor. Mirror of the loop in
+      // workspaces.js:click-handler + this file's runEntityAction.
+      var ancestor = node && node.parentElement;
+      while (ancestor) {
+        if (ancestor.classList && ancestor.classList.contains('tree-entry')) {
+          var ancNode = ancestor.querySelector(':scope > .tree-node[data-tree-id]');
+          if (ancNode) {
+            var ancKind = ancNode.getAttribute('data-drag-kind') || '';
+            var ancId = ancNode.getAttribute('data-tree-id') || '';
+            if (ancKind && ancId) {
+              if (ancKind === 'column' && !focusTarget.columnId) focusTarget.columnId = ancId;
+              else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
+              else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
+            }
+          }
+        }
+        ancestor = ancestor.parentElement;
+      }
       // Diagnostic — user-reported "click doesn't focus" is impossible
       // to debug without runtime evidence that the click actually
       // produced a focus-target navigate call. Pair with the
