@@ -108,6 +108,7 @@
     "src/plugins/formats/fileFormatHelpers.js",
     "src/plugins/markdown/markdownPluginManifest.js",
     "src/board/cardCollapse.js",
+    "src/debug/heightMutationLogger.js",
     "src/plugins/exports/filterExport.js",
     "src/plugins/exports/marpExport.js",
     "src/plugins/exports/pandocExport.js",

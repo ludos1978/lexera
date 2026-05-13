@@ -4757,6 +4757,20 @@ declare global {
         collapsedIds: ReadonlyArray<string>
       ): void;
     };
+    /** Height-mutation diagnostic instrumentation for the scroll-drift
+     *  bug. Off by default; activate via `localStorage.LEXERA_HEIGHT_MUTATION_DEBUG=1`
+     *  then reload. Logs height changes for every `.card` / `.column` /
+     *  `.board-stack` into the in-app Log panel. */
+    LexeraHeightMutationLogger?: {
+      start(deps: { lexeraLog?: (level: LexeraLogLevel, message: string) => void }): void;
+      stop(): void;
+      isActive(): boolean;
+      _test_handleEntry: (entry: unknown) => void;
+      _test_describeElement: (el: Element) => string;
+      _test_isFlagSet: () => boolean;
+      _test_FLAG_KEY: string;
+      _test_SELECTOR: string;
+    };
     // Vendor markdown-it plugins — each is a `(md, options?) => void`
     // factory loaded via a separate <script> tag from src/vendor/markdown-it/.
     // markdownPluginManifest.js reads `typeof window.markdownitX === 'function'`
