@@ -829,6 +829,29 @@ var LexeraOrderHelpers = (function () {
           var el = _callDep('findBoardEntityElement', t);
           if (n === 0 && typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
             try {
+              // When the lookup misses, sample a few real DOM
+              // data-card-kid + data-card-id values so we can SEE
+              // whether the target's cardId is in the wrong format,
+              // points at a non-existent card, or just doesn't match
+              // the kanban's current id-set (drift between dashboard /
+              // search snapshot and current kanban DOM).
+              var domSampleKids = [];
+              var domSampleIds = [];
+              var domSampleCardIndices = [];
+              try {
+                if (typeof document !== 'undefined') {
+                  var allCards = document.querySelectorAll('.card[data-card-kid], .card[data-card-id]');
+                  for (var ci = 0; ci < Math.min(allCards.length, 6); ci++) {
+                    var c = allCards[ci];
+                    domSampleKids.push(c.getAttribute('data-card-kid'));
+                    domSampleIds.push(c.getAttribute('data-card-id'));
+                    domSampleCardIndices.push({
+                      col: c.getAttribute('data-col-index'),
+                      ci: c.getAttribute('data-card-index')
+                    });
+                  }
+                }
+              } catch (_) { /* non-fatal */ }
               window.lexeraLog('debug', '[focus-trace] focusLocally.lookup ' +
                 JSON.stringify({
                   found: !!el,
@@ -836,6 +859,15 @@ var LexeraOrderHelpers = (function () {
                   classes: el && el.className,
                   cardId: t && t.cardId,
                   columnId: t && t.columnId,
+                  cardKid: t && t.cardKid,
+                  columnIndex: t && t.columnIndex,
+                  rowIndex: t && t.rowIndex,
+                  stackIndex: t && t.stackIndex,
+                  colLocalIndex: t && t.colLocalIndex,
+                  cardIndex: t && t.cardIndex,
+                  domSampleKids: domSampleKids,
+                  domSampleIds: domSampleIds,
+                  domSampleCardIndices: domSampleCardIndices,
                   hasFindFn: typeof _deps.findBoardEntityElement === 'function'
                 }));
             } catch (_) { /* non-fatal */ }

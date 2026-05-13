@@ -315,27 +315,56 @@ var LexeraBoardSearch = (function () {
         var byIdGlobal = getElColumnsContainer().querySelector('.card[data-card-id="' + cardIdStr + '"]');
         if (byIdGlobal) return byIdGlobal;
       }
-      // Last-resort cardIndex+columnIndex fallback for sources that
-      // captured position-based hints (dashboard search results carry
-      // them; workspace tree clicks don't). Still constrained to .card
-      // — so we never return a column when the user asked for a card.
+      // Position-based card lookups when the id-based lookups missed
+      // (id drift between search/dashboard snapshot and current kanban
+      // DOM). All still constrained to `.card` — we never return a
+      // column when the user asked for a card.
+      //
+      // 1. row+stack+colLocal+card index path — uses ALL position
+      //    indices, fully board-structure-anchored. Survives any
+      //    Loro/CRDT id rotation as long as the board structure
+      //    hasn't reshaped.
+      if (
+        typeof target.rowIndex === 'number' &&
+        typeof target.stackIndex === 'number' &&
+        typeof target.colLocalIndex === 'number' &&
+        typeof target.cardIndex === 'number'
+      ) {
+        var byPathSel =
+          '.column[data-row-index="' + target.rowIndex +
+          '"][data-stack-index="' + target.stackIndex +
+          '"][data-col-local-index="' + target.colLocalIndex + '"] ' +
+          '.card[data-card-index="' + target.cardIndex + '"]';
+        var byPath = getElColumnsContainer().querySelector(byPathSel);
+        if (byPath) return byPath;
+      }
+      // 2. (stackId + colLocalIndex + cardIndex) — same structure
+      //    anchor via stable stack id when row indices unavailable.
+      if (
+        target.stackId &&
+        typeof target.colLocalIndex === 'number' &&
+        typeof target.cardIndex === 'number'
+      ) {
+        var byStackPath = getElColumnsContainer().querySelector(
+          '.board-stack[data-stack-id="' + escapeAttr(String(target.stackId)) + '"] ' +
+          '.column[data-col-local-index="' + target.colLocalIndex + '"] ' +
+          '.card[data-card-index="' + target.cardIndex + '"]'
+        );
+        if (byStackPath) return byStackPath;
+      }
+      // 3. board-flat columnIndex + cardIndex — last-resort for
+      //    dashboard search results when no row/stack path available.
       if (typeof target.columnIndex === 'number' && typeof target.cardIndex === 'number') {
         var byVisibleCardIndex = getElColumnsContainer().querySelector(
           '.card[data-col-index="' + target.columnIndex + '"][data-card-index="' + target.cardIndex + '"]'
         );
         if (byVisibleCardIndex) return byVisibleCardIndex;
       }
-      // User report 2026-05-14: dashboard search results carry a
-      // possibly-stale columnIndex (from a cached dashboard snapshot).
-      // When the cardId lookup misses AND the cardIndex slot has been
-      // shifted (board edited since dashboard cached), the function
-      // used to fall through to a columnIndex-ONLY check below and
-      // return the `.column` at that flat-position — leaving the user
-      // looking at a column far from the desired card ("totally off").
-      // When the user asked for a CARD (target.cardId set), never
-      // return a non-card. Returning null lets the orderHelpers retry
-      // loop attempt again as the DOM stabilises; if the card truly
-      // doesn't exist, focus silently fails instead of picking the
+      // User report 2026-05-14: when the user asked for a CARD
+      // (target.cardId set), never return a non-card surrogate.
+      // Returning null lets the orderHelpers retry loop attempt again
+      // as the DOM stabilises; if the card truly doesn't exist after
+      // 3s of retries, focus silently fails instead of picking the
       // wrong target.
       return null;
     }

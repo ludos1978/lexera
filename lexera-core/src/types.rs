@@ -370,6 +370,14 @@ pub struct SearchResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub col_local_index: Option<usize>,
     pub card_id: String,
+    /// Persistent card identity (8-char hex). Stable across CRDT
+    /// regenerations — used by the frontend's `data-card-kid` lookup
+    /// so dashboard focus survives Loro-id drift between dashboard
+    /// snapshot time and kanban DOM render time. `None` for cards
+    /// that haven't been kid-stamped (parser-fresh slide-include cards
+    /// before first save).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub card_kid: Option<String>,
     pub card_content: String,
     pub checked: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
