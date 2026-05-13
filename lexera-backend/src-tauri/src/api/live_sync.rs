@@ -144,6 +144,18 @@ pub enum LiveSyncError {
     /// at every call site without `.map_err(|e| e.to_string())` boilerplate.
     #[error("{0}")]
     Crdt(#[from] std::io::Error),
+    /// `apply_board` / `import_updates` couldn't find the session by id.
+    /// Display matches the prior `format!` exactly so REST callers see
+    /// the same wire string.
+    #[error("Live sync session not found: {session_id}")]
+    SessionNotFound { session_id: String },
+    /// Transition shim for the still-contextual `format!` strings inside
+    /// `apply_board` / `import_updates` (rebuild branches + apply-failed /
+    /// materialize-failed returns). Preserves byte-identical Display while
+    /// the function signature adopts `LiveSyncError`. Future slices can
+    /// peel each construction off into a dedicated matchable variant.
+    #[error("{0}")]
+    Contextual(String),
 }
 
 // Keeps every existing `Result<_, String>` outer signature working
@@ -275,7 +287,7 @@ pub fn open_session(
     })
 }
 
-pub fn close_session(session_id: &str) -> Result<bool, String> {
+pub fn close_session(session_id: &str) -> Result<bool, LiveSyncError> {
     let mut registry = lock_registry();
     Ok(registry.sessions.remove(session_id).is_some())
 }
@@ -296,12 +308,17 @@ fn board_card_summary(board: &KanbanBoard) -> String {
     cols.join(" ")
 }
 
-pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionResult, String> {
+pub fn apply_board(
+    session_id: &str,
+    board: KanbanBoard,
+) -> Result<LiveSessionResult, LiveSyncError> {
     let mut registry = lock_registry();
     let session = registry
         .sessions
         .get_mut(session_id)
-        .ok_or_else(|| format!("Live sync session not found: {}", session_id))?;
+        .ok_or_else(|| LiveSyncError::SessionNotFound {
+            session_id: session_id.to_string(),
+        })?;
 
     let current_board = session.current_board.clone();
     let before_vv = match session.crdt.oplog_vv_result() {
@@ -314,18 +331,18 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
                 error
             );
             session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
-                format!(
+                LiveSyncError::Contextual(format!(
                     "Failed to rebuild session CRDT after version-vector failure (session={}): {}",
                     &session_id[..8],
                     rebuild_error
-                )
+                ))
             })?;
             session.crdt.oplog_vv_result().map_err(|vv_error| {
-                format!(
+                LiveSyncError::Contextual(format!(
                     "Failed to read rebuilt session CRDT version vector (session={}): {}",
                     &session_id[..8],
                     vv_error
-                )
+                ))
             })?
         }
     };
@@ -354,18 +371,18 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
             board_card_summary(&current_board)
         );
         session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
-            format!(
+            LiveSyncError::Contextual(format!(
                 "Failed to rebuild session CRDT after apply failure (session={}): {}",
                 &session_id[..8],
                 rebuild_error
-            )
+            ))
         })?;
         session.current_board = current_board;
-        return Err(format!(
+        return Err(LiveSyncError::Contextual(format!(
             "Failed to apply live sync board for session {}: {}",
             &session_id[..8],
             e
-        ));
+        )));
     }
     let next_snapshot = match session.crdt.to_board_result() {
         Ok(board) => board,
@@ -377,18 +394,18 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
                 error
             );
             session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
-                format!(
+                LiveSyncError::Contextual(format!(
                     "Failed to rebuild session CRDT after materialize failure (session={}): {}",
                     &session_id[..8],
                     rebuild_error
-                )
+                ))
             })?;
             session.current_board = current_board;
-            return Err(format!(
+            return Err(LiveSyncError::Contextual(format!(
                 "Failed to materialize live sync board after apply for session {}: {}",
                 &session_id[..8],
                 error
-            ));
+            )));
         }
     };
     let mut next_board = normalize_board(next_snapshot, &session.board_dir);
@@ -405,11 +422,11 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
                 error
             );
             session.crdt = CrdtStore::from_board(&next_board).map_err(|rebuild_error| {
-                format!(
+                LiveSyncError::Contextual(format!(
                     "Failed to rebuild session CRDT after export failure (session={}): {}",
                     &session_id[..8],
                     rebuild_error
-                )
+                ))
             })?;
             let vv = encode_vv(&session.crdt)?;
             session.current_board = next_board.clone();
@@ -440,11 +457,11 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
                 error
             );
             session.crdt = CrdtStore::from_board(&next_board).map_err(|rebuild_error| {
-                format!(
+                LiveSyncError::Contextual(format!(
                     "Failed to rebuild session CRDT after version-vector encode failure (session={}): {}",
                     &session_id[..8],
                     rebuild_error
-                )
+                ))
             })?;
             encode_vv(&session.crdt)?
         }
@@ -459,12 +476,17 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
     })
 }
 
-pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResult, String> {
+pub fn import_updates(
+    session_id: &str,
+    bytes: &[u8],
+) -> Result<LiveSessionResult, LiveSyncError> {
     let mut registry = lock_registry();
     let session = registry
         .sessions
         .get_mut(session_id)
-        .ok_or_else(|| format!("Live sync session not found: {}", session_id))?;
+        .ok_or_else(|| LiveSyncError::SessionNotFound {
+            session_id: session_id.to_string(),
+        })?;
 
     let current_board = session.current_board.clone();
     let current_ids = card_id_map(&current_board);
@@ -478,11 +500,11 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
                 error
             );
             session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
-                format!(
+                LiveSyncError::Contextual(format!(
                     "Failed to rebuild session CRDT after import version-vector failure (session={}): {}",
                     &session_id[..8],
                     rebuild_error
-                )
+                ))
             })?;
             encode_vv(&session.crdt)?
         }
@@ -505,18 +527,18 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
             board_card_summary(&current_board)
         );
         session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
-            format!(
+            LiveSyncError::Contextual(format!(
                 "Failed to rebuild session CRDT after import failure (session={}): {}",
                 &session_id[..8],
                 rebuild_error
-            )
+            ))
         })?;
         session.current_board = current_board;
-        return Err(format!(
+        return Err(LiveSyncError::Contextual(format!(
             "Failed to import live sync updates for session {}: {}",
             &session_id[..8],
             error
-        ));
+        )));
     }
 
     let next_snapshot = match session.crdt.to_board_result() {
@@ -529,18 +551,18 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
                 error
             );
             session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
-                format!(
+                LiveSyncError::Contextual(format!(
                     "Failed to rebuild session CRDT after import materialize failure (session={}): {}",
                     &session_id[..8],
                     rebuild_error
-                )
+                ))
             })?;
             session.current_board = current_board;
-            return Err(format!(
+            return Err(LiveSyncError::Contextual(format!(
                 "Failed to materialize board after importing live sync updates for session {}: {}",
                 &session_id[..8],
                 error
-            ));
+            )));
         }
     };
     let mut next_board = normalize_board(next_snapshot, &session.board_dir);
@@ -556,11 +578,11 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
                 error
             );
             session.crdt = CrdtStore::from_board(&next_board).map_err(|rebuild_error| {
-                format!(
+                LiveSyncError::Contextual(format!(
                     "Failed to rebuild session CRDT after import version-vector encode failure (session={}): {}",
                     &session_id[..8],
                     rebuild_error
-                )
+                ))
             })?;
             encode_vv(&session.crdt)?
         }
@@ -613,6 +635,42 @@ mod tests {
         // CRDT failures from (eventual) transport / serialize failures.
         let again = LiveSyncError::Crdt(std::io::Error::from(std::io::ErrorKind::NotFound));
         assert!(matches!(again, LiveSyncError::Crdt(_)));
+    }
+
+    #[test]
+    fn live_sync_error_session_not_found_display_matches_legacy() {
+        // The prior `Result<_, String>` API returned this exact string
+        // when apply_board / import_updates couldn't find the session.
+        // REST callers stitch the message into err_bad_request, so any
+        // drift here changes the wire payload.
+        let err = LiveSyncError::SessionNotFound {
+            session_id: "abc-123".into(),
+        };
+        assert_eq!(err.to_string(), "Live sync session not found: abc-123");
+        let s: String = err.into();
+        assert_eq!(s, "Live sync session not found: abc-123");
+        // Matchable variant — future call sites can distinguish 404-ish
+        // session lookups from CRDT / transport failures without parsing
+        // the Display string.
+        let again = LiveSyncError::SessionNotFound {
+            session_id: "x".into(),
+        };
+        assert!(matches!(again, LiveSyncError::SessionNotFound { .. }));
+    }
+
+    #[test]
+    fn live_sync_error_contextual_passes_through_string_verbatim() {
+        // Transition shim used by apply_board / import_updates for the
+        // still-context-wrapped `format!` strings (apply-failed,
+        // materialize-failed, rebuild-failed). Display must round-trip
+        // the wrapped String byte-identical so REST wire bodies match
+        // the prior `Result<_, String>` payloads.
+        let raw =
+            "Failed to apply live sync board for session 12345678: vv read failed".to_string();
+        let err = LiveSyncError::Contextual(raw.clone());
+        assert_eq!(err.to_string(), raw);
+        let s: String = err.into();
+        assert_eq!(s, raw);
     }
 
     #[test]
