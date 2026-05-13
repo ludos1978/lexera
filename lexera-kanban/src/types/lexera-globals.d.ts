@@ -2541,6 +2541,25 @@ interface LexeraAppUtilsDeps {
   escapeHtml?: (s: string | null | undefined) => string;
 }
 
+/**
+ * Cross-plugin shared dep bag installed by appUtils.js as
+ * `window.LexeraDiagramDeps` so diagram plugins (mermaid.js,
+ * plantuml.js) can read host helpers without re-injecting them per
+ * plugin. Grep of `plugins/diagrams/*.js` confirms three field
+ * accesses:
+ *   - escapeHtml: shared with LexeraAppUtilsDeps
+ *   - handleDiagramAction: shared with LexeraAppUtilsDeps
+ *   - requestRenderedPlantUmlSvg: shared with LexeraAppUtilsDeps
+ * Earlier the Window slot pointed at `LexeraAppUtilsDeps` as a
+ * pragmatic stub; this interface documents the contract explicitly
+ * (and lets the two consumer sets evolve independently).
+ */
+interface LexeraDiagramDeps {
+  escapeHtml?: (s: string | null | undefined) => string;
+  handleDiagramAction?: (...args: unknown[]) => unknown;
+  requestRenderedPlantUmlSvg?: (...args: unknown[]) => unknown;
+}
+
 interface LexeraAppUtilsApi {
   init(deps: LexeraAppUtilsDeps): void;
   renderTable(lines: Array<unknown>, startIdx: number, boardId: string, renderState: unknown): string;
@@ -4523,7 +4542,11 @@ declare global {
     markdownit: any;
     LexeraControlsSettings: LexeraControlsSettingsApi;
     LexeraCardContentRenderer: LexeraCardContentRendererApi;
-    LexeraDiagramDeps: LexeraAppUtilsDeps;
+    /** Cross-plugin shared dep bag set by appUtils.js so diagram
+     *  plugins (mermaid.js, plantuml.js) can read host helpers without
+     *  re-injecting them per plugin. Grep-confirmed accesses:
+     *  `escapeHtml`, `handleDiagramAction`, `requestRenderedPlantUmlSvg`. */
+    LexeraDiagramDeps: LexeraDiagramDeps;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
     LexeraWorkspaceShell: any;
