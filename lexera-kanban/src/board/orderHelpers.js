@@ -997,7 +997,20 @@ var LexeraOrderHelpers = (function () {
       refreshBoardHierarchy: function (boardId, fullBoard) {
         _callDep('refreshBoardHierarchyProjection', boardId, fullBoard, '');
       },
-      refreshDashboard: function () {
+      refreshDashboard: function (boardId, _fullBoard, _pane) {
+        // TODO line 40: cross-view drops shouldn't trigger a full
+        // workspace-wide dashboard refetch when the changed board
+        // isn't even in the dashboard's current scope. The dashboard
+        // can be scoped to 'active' (only the active board) or 'all'
+        // (every board). For 'active' scope, a mutation to a DIFFERENT
+        // board produces no visible delta in the dashboard — skip the
+        // refresh. For 'all' scope, every board mutation is relevant.
+        if (dashboardState && dashboardState.scope === 'active') {
+          var activeId = _dep('activeBoardId');
+          if (boardId && activeId && boardId !== activeId) {
+            return;
+          }
+        }
         scheduleDashboardRefresh(0);
       }
     });
