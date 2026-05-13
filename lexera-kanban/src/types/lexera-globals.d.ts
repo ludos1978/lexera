@@ -980,6 +980,105 @@ interface LexeraCanvasModeApi {
 }
 
 /**
+ * Source: src/settings/controlsSettings.js (IIFE;
+ * window.LexeraControlsSettings = api). Configurable input bindings
+ * per view mode (kanban / canvas) per action (move / zoom / edit /
+ * enter / drag-card / drag-column / drag-stack / drag-row). Consumed
+ * by `LexeraControlsDispatcher` to match events against user-chosen
+ * scroll / drag / key / dblclick bindings.
+ */
+type LexeraControlsBindingType = 'scroll' | 'drag' | 'dblclick' | 'key';
+
+/** Modifier flags shared across binding types. */
+interface LexeraControlsBindingModifiers {
+  ctrl?: boolean;
+  alt?: boolean;
+  shift?: boolean;
+  meta?: boolean;
+}
+
+interface LexeraControlsScrollBinding extends LexeraControlsBindingModifiers {
+  type: 'scroll';
+}
+
+interface LexeraControlsDragBinding extends LexeraControlsBindingModifiers {
+  type: 'drag';
+  /** Mouse button: 0 = left, 1 = middle, 2 = right. */
+  button?: number;
+}
+
+interface LexeraControlsDblclickBinding {
+  type: 'dblclick';
+}
+
+interface LexeraControlsKeyBinding extends LexeraControlsBindingModifiers {
+  type: 'key';
+  /** KeyboardEvent.key value (e.g. 'Enter', 'F2', 'ArrowRight'). */
+  key: string;
+}
+
+/** Discriminated union over the four binding kinds. */
+type LexeraControlsBinding =
+  | LexeraControlsScrollBinding
+  | LexeraControlsDragBinding
+  | LexeraControlsDblclickBinding
+  | LexeraControlsKeyBinding;
+
+interface LexeraControlsSettingsApi {
+  /** Known action names. */
+  readonly ACTIONS: ReadonlyArray<string>;
+  /** Known mode names ('kanban' | 'canvas'). */
+  readonly MODES: ReadonlyArray<string>;
+  /** Bindings for (mode, action). Returns a defensive copy. */
+  getBindings(mode: string, action: string): Array<LexeraControlsBinding>;
+  /** Replace bindings for (mode, action). Persists immediately. */
+  setBindings(mode: string, action: string, bindings: Array<LexeraControlsBinding>): void;
+  /** Append a binding (no-op if an exact duplicate already exists).
+   *  Returns `true` when added, `false` when duplicate. Persists. */
+  addBinding(mode: string, action: string, binding: LexeraControlsBinding): boolean;
+  /** Remove the binding at `index` from (mode, action). Persists. */
+  removeBinding(mode: string, action: string, index: number): void;
+  /** Restore the built-in defaults. Persists. */
+  resetToDefaults(): void;
+  /** Returns a deep clone of the full bindings map. */
+  getAllBindings(): Record<string, Record<string, Array<LexeraControlsBinding>>>;
+  /** Returns a deep clone of the built-in defaults map. */
+  getDefaults(): Record<string, Record<string, Array<LexeraControlsBinding>>>;
+  /** Does `event` match any 'scroll' binding for (mode, action)?
+   *  Never matches when ctrl/meta is held (those are reserved for
+   *  browser zoom). Consumes a structural subset of WheelEvent
+   *  (altKey / shiftKey / ctrlKey / metaKey) so callers can pass
+   *  either a real event or a synthetic object. */
+  matchesScroll(
+    event: { altKey?: boolean; shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean },
+    mode: string,
+    action: string
+  ): boolean;
+  /** Does `event` match any 'drag' binding for (mode, action)?
+   *  Consumes a structural subset of MouseEvent (button / altKey /
+   *  shiftKey) so callers can pass either a real event or a
+   *  synthetic `{ button, altKey, shiftKey }` (see scrollBehavior.js). */
+  matchesDrag(
+    event: { button?: number; altKey?: boolean; shiftKey?: boolean },
+    mode: string,
+    action: string
+  ): boolean;
+  /** Does `event` match any 'key' binding for (mode, action)?
+   *  Consumes a structural subset of KeyboardEvent (key + modifiers). */
+  matchesKey(
+    event: { key: string; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean; metaKey?: boolean },
+    mode: string,
+    action: string
+  ): boolean;
+  /** Does (mode, action) have any 'dblclick' binding? */
+  matchesDblclick(mode: string, action: string): boolean;
+  /** Human-readable label for a binding (e.g. "Alt + Scroll"). */
+  bindingLabel(b: LexeraControlsBinding | null | undefined): string;
+  /** Stable key string for de-dup comparison. */
+  bindingKey(b: LexeraControlsBinding | null | undefined): string;
+}
+
+/**
  * Source: src/core/settingsStore.js (IIFE;
  * window.LexeraSettings = api + globalThis.LexeraSettings alias).
  * Centralized typed access to localStorage-backed settings — single
@@ -4216,7 +4315,7 @@ declare global {
     LexeraTagColors: any;
     tagColors: any;
     markdownit: any;
-    LexeraControlsSettings: any;
+    LexeraControlsSettings: LexeraControlsSettingsApi;
     LexeraCardContentRenderer: LexeraCardContentRendererApi;
     LexeraDiagramDeps: LexeraAppUtilsDeps;
     ManagementUI: any;
@@ -4296,8 +4395,10 @@ declare global {
   // LexeraPluginRegistry !== 'undefined'` in contentEnhancerRegistry.js.
   const LexeraPluginRegistry: any;
   // ControlsSettings IIFE — accessed by bare name in scrollBehavior.js
-  // via `typeof LexeraControlsSettings !== 'undefined'`.
-  const LexeraControlsSettings: any;
+  // via `typeof LexeraControlsSettings !== 'undefined'`. Pinned to
+  // the typed `LexeraControlsSettingsApi` so bare-name access carries
+  // the same typing as `window.LexeraControlsSettings`.
+  const LexeraControlsSettings: LexeraControlsSettingsApi;
   // Tag system IIFE — also accessed by bare name via `LexeraTagSystem.x`
   // from sidebarTree.js and other consumers loaded after tagSystem.js.
   // Pinned to `LexeraTagSystemApi` so bare-name access carries the same
