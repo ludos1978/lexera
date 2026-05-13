@@ -4761,6 +4761,15 @@ declare global {
      *  bug. Off by default; activate via `localStorage.LEXERA_HEIGHT_MUTATION_DEBUG=1`
      *  then reload. Logs height changes for every `.card` / `.column` /
      *  `.board-stack` into the in-app Log panel. */
+    /** Performance trace hook — `traceSlowFrontendTask(target, message, startTime)`
+     *  emits a Log panel entry with elapsed-ms when the task is slow.
+     *  Installed by `app.js` as a guarded slow-task tracer used by
+     *  the undoRedoSystem / save pipeline / etc. */
+    traceSlowFrontendTask?: (
+      target: string,
+      message: string,
+      startTime: number
+    ) => void;
     LexeraHeightMutationLogger?: {
       start(deps: { lexeraLog?: (level: LexeraLogLevel, message: string) => void }): void;
       stop(): void;

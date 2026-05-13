@@ -11,7 +11,7 @@
   if (typeof module === 'object' && module.exports) {
     module.exports = api;
   }
-  root.LexeraUndoRedo = api;
+  /** @type {any} */ (root).LexeraUndoRedo = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
