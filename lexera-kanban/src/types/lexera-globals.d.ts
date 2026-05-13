@@ -3749,9 +3749,16 @@ interface LexeraSubAppInitOptions {
 interface LexeraSubAppApi {
   init(opts: LexeraSubAppInitOptions): void;
   navigate(payload: LexeraSubAppNavigatePayload): Promise<unknown>;
-  /** Broadcasts to sibling-window or global subscribers depending on event kind. */
-  broadcast(event: string, payload?: any): Promise<unknown>;
-  invoke(cmd: string, args?: any): Promise<unknown>;
+  /** Broadcasts to sibling-window or global subscribers depending on
+   *  event kind. `payload` carries event-specific data and is tightened
+   *  to `Record<string, unknown>` so accidentally passing a non-object
+   *  (string, number) fails at gate time; per-event payload narrowing
+   *  is the receiver's job. */
+  broadcast(event: string, payload?: Record<string, unknown>): Promise<unknown>;
+  /** Dispatches a Tauri command. `args` constrained to `Record<string,
+   *  unknown>` (matches Tauri's `invoke<T>(cmd, args)` convention)
+   *  so non-object args fail at gate time. */
+  invoke(cmd: string, args?: Record<string, unknown>): Promise<unknown>;
   getQueryParam(name: string): string;
   getContext(): {
     panelKind: string;
