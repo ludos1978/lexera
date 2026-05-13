@@ -1283,6 +1283,42 @@ interface LexeraBackendDiscoveryApi {
 }
 
 /**
+ * Source: src/tagcolors/tagColors.js (IIFE; root.LexeraTagColors = api).
+ * Centralized tag-color resolution + style-config (palette / role /
+ * surface / contrast). ~35 methods total. The narrow `getColors()`
+ * accessor is the only method consumed by gated files; the rest live
+ * behind the `[key: string]: any` index signature for now.
+ */
+interface LexeraTagColorsApi {
+  /** Returns the active tag-name → CSS-color map for the markdown-it
+   *  tag-browser plugin. Consumed by `plugins/markdown/markdownPluginManifest.js`
+   *  + `render/markdownRenderer.js` (both gated). */
+  getColors(): Record<string, string>;
+  /** Other tagColors.js methods accessible via the index signature.
+   *  Future slices can promote frequently-used methods out. */
+  [key: string]: any;
+}
+
+/**
+ * Source: src/dragdrop/dragDropHandlers.js (IIFE;
+ * window.LexeraDragDropHandlers = api). 40+ method board drag/drop
+ * controller. Only `cleanupAllDrag` is consumed by gated files
+ * (embeddedBoardBridge resets the source-side drag state on a
+ * cross-WKWebView drop echo); the rest stay behind the index signature.
+ */
+interface LexeraDragDropHandlersApi {
+  /** Tear down all drag UI / event listeners. Called by
+   *  embeddedBoardBridge on `cross-view-drag-handled` to clean up
+   *  the source kanban's drag state when the destination handled
+   *  the drop. */
+  cleanupAllDrag(): void;
+  /** Other dragDropHandlers.js methods accessible via the index
+   *  signature. Future slices can promote more out as their
+   *  consumers move into the gate. */
+  [key: string]: any;
+}
+
+/**
  * Source: src/api.js (IIFE; window.LexeraApi = api). HTTP/IPC client
  * for the lexera-backend REST API. ~60 methods covering boards /
  * collab / sync / files / capture / etc.
@@ -4594,7 +4630,7 @@ declare global {
     LexeraInspectorTestApi: LexeraInspectorTestApi;
     LexeraLogTestApi: LexeraLogTestApi;
     LexeraDebugWindow: LexeraDebugWindowTestApi;
-    LexeraDragDropHandlers: any;
+    LexeraDragDropHandlers: LexeraDragDropHandlersApi;
     LexeraOrderHelpers: any;
     LexeraRowStackMenu: any;
     LexeraActionRegistry: LexeraActionRegistryApi;
@@ -4648,7 +4684,7 @@ declare global {
       invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
       [key: string]: unknown;
     };
-    LexeraTagColors: any;
+    LexeraTagColors: LexeraTagColorsApi;
     /** Lowercase global — tag name → CSS color map consumed by the
      *  markdown-it tag-browser plugin (vendor/markdown-it/markdown-it-tag-browser.js
      *  reads `options.tagColors` which the plugin manifests fill from
