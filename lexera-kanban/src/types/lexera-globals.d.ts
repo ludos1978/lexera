@@ -341,11 +341,16 @@ interface LexeraMultiviewApi {
    *  if the bridge global isn't installed. */
   request(targetLabel: string, requestEvent: string, payload?: unknown, timeoutMs?: number): Promise<unknown>;
   /** Register a per-event handler that fires on incoming requests
-   *  for `requestEvent`. Handler signature is decided by the
-   *  requestBridge contract; left loose here so each bridge can pin
-   *  its own shape. Rejects with "not loaded" if the bridge global
-   *  isn't installed. */
-  handleRequest(requestEvent: string, handler: (...args: any[]) => any): Promise<unknown>;
+   *  for `requestEvent`. Delegates to the same handler shape as
+   *  `LexeraRequestBridgeInstance.handleRequest`: handler receives
+   *  the request payload as `data` and may return a value or a
+   *  Promise; thrown / rejected values are forwarded as `_error`
+   *  strings on the response. Rejects with "not loaded" if the
+   *  bridge global isn't installed. */
+  handleRequest(
+    requestEvent: string,
+    handler: (data: unknown) => unknown | Promise<unknown>
+  ): Promise<unknown>;
 
   // ── Lifecycle sub-API (Stage 8) ────────────────────────────
   lifecycle: LexeraMultiviewLifecycleApi;
