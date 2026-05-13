@@ -1283,6 +1283,38 @@ interface LexeraBackendDiscoveryApi {
 }
 
 /**
+ * Source: src/workspace/workspaceShell.js (IIFE;
+ * window.LexeraWorkspaceShell = api). The workspace shell — owns the
+ * dock tree, panel + board tab lifecycle, fold strip, drop zones,
+ * focus + workspace context. ~26 public methods plus ~15 `_test_*`
+ * seams. **This partial interface types only the methods consumed
+ * by gated files** (debug/debugApi.js + debug/debugBridge.js); the
+ * rest live behind the `[key: string]: any` index signature.
+ */
+interface LexeraWorkspaceShellApi {
+  /** Returns true when the shell mounted into this window. False on
+   *  panel-only / embedded-board webviews where the shell skips
+   *  registration. Gated by debugBridge.isShellWebview. */
+  isEnabled(): boolean;
+  /** Window label — 'main' on the boot main window, otherwise the
+   *  Tauri-assigned child window label. */
+  getWindowLabel(): string;
+  /** Dispatch a board-action id (e.g. 'reveal-panel:frontendTests')
+   *  through the shell's action registry. Used by debugBridge to pop
+   *  the frontend-tests panel into whatever dock the shell prefers. */
+  handleBoardAction(action: string, ...args: Array<unknown>): unknown;
+  /** Test seam — returns a snapshot of every input that gates a
+   *  dock's fold-strip rendering (dockSize / hasPanels /
+   *  isFoldedClass / hasFoldStrip / treeTabIds / dockRect /
+   *  foldStripRect). Consumed by LexeraDebug.dockSnapshot. */
+  _test_inspectDock(dockId: 'left' | 'right' | 'bottom' | string): unknown;
+  /** Other workspaceShell.js methods are accessible via the index
+   *  signature. Future slices can promote frequently-used methods
+   *  out (mount / render / openBoard / setPanelVisibility / etc). */
+  [key: string]: any;
+}
+
+/**
  * Source: src/tagcolors/tagColors.js (IIFE; root.LexeraTagColors = api).
  * Centralized tag-color resolution + style-config (palette / role /
  * surface / contrast). ~35 methods total. The narrow `getColors()`
@@ -4706,7 +4738,7 @@ declare global {
     LexeraDiagramDeps: LexeraDiagramDeps;
     ManagementUI: any;
     LexeraSettingsRuntime: LexeraSettingsRuntimeApi;
-    LexeraWorkspaceShell: any;
+    LexeraWorkspaceShell: LexeraWorkspaceShellApi;
     LexeraDashboard: LexeraDashboardApi;
     LexeraDebug: LexeraDebugApi;
     LexeraEmbedMenu: any;
