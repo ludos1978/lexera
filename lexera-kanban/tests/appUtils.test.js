@@ -166,11 +166,20 @@ function loadAppUtils() {
     var syncUserId = '';
     var __testCanUseLiveSync = true;
     var __testSyncConnected = true;
+    var __testCrdtSyncEnabled = true;
     var LexeraApi = {
       isSyncConnected: function () { return __testSyncConnected; }
     };
     function canUseLiveSync(boardId) {
       return !!(__testCanUseLiveSync && boardId);
+    }
+    function isCrdtSyncEnabled() {
+      // Stub the CRDT-sync capability gate that shouldBroadcastEditingPresence
+      // / shouldLiveSyncCardDraft consult. Real impl reads
+      // backendCapabilities.crdtSync !== false; default-on here so the
+      // existing live-draft / editing-presence tests keep matching the
+      // legacy assumption (CRDT enabled). Toggle via __setCrdtSyncEnabled.
+      return __testCrdtSyncEnabled;
     }
 
     // Initialize OrderHelpers with extracted functions so delegation stubs work
@@ -234,6 +243,7 @@ function loadAppUtils() {
       __setSyncUserId: function (value) { syncUserId = value || ''; },
       __setCanUseLiveSync: function (value) { __testCanUseLiveSync = !!value; },
       __setSyncConnected: function (value) { __testSyncConnected = !!value; },
+      __setCrdtSyncEnabled: function (value) { __testCrdtSyncEnabled = value !== false; },
     };
   `;
 

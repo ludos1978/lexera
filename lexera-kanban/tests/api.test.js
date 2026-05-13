@@ -761,7 +761,12 @@ describe('removeBoard', () => {
 
 describe('checkStatus', () => {
   it('returns true when backend responds ok', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true });
+    // checkStatus now delegates to getBackendStatus which calls
+    // `await res.json()` on the response; a bare `{ ok: true }` mock
+    // would throw `res.json is not a function` and checkStatus would
+    // swallow the error and return false. Include a json() stub
+    // returning a valid status payload so the new round-trip succeeds.
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'running' }) });
 
     const result = await Api.checkStatus();
     expect(result).toBe(true);
@@ -909,6 +914,20 @@ describe('collaboration API helpers', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('live sync session API', () => {
+  beforeEach(() => {
+    // openLiveSyncSession / connectRemote now await assertCrdtSyncAvailable()
+    // first, which calls getBackendStatus(). Pre-seed the backend-status
+    // cache so the gate short-circuits to the cached capability snapshot
+    // without consuming the per-test mockFetch response intended for the
+    // actual POST under test.
+    if (Api._setTestBackendStatus) {
+      Api._setTestBackendStatus({ status: 'running', crdt_sync: { available: true } });
+    }
+  });
+  afterEach(() => {
+    if (Api._setTestBackendStatus) Api._setTestBackendStatus(null);
+  });
+
   it('openLiveSyncSession sends POST to /boards/{id}/live-sync/open', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -1068,16 +1087,26 @@ describe('remote board and connection helpers', () => {
   });
 
   it('connectRemote sends POST with server_url and token', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ board_id: 'remote-b1' }),
-    });
+    // connectRemote now awaits assertCrdtSyncAvailable() first. Pre-seed
+    // the backend-status cache so the gate short-circuits without
+    // consuming the mockFetch response intended for the actual POST.
+    if (Api._setTestBackendStatus) {
+      Api._setTestBackendStatus({ status: 'running', crdt_sync: { available: true } });
+    }
+    try {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ board_id: 'remote-b1' }),
+      });
 
-    await Api.connectRemote('https://remote.example.com', 'my-token');
+      await Api.connectRemote('https://remote.example.com', 'my-token');
 
-    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.server_url).toBe('https://remote.example.com');
-    expect(body.token).toBe('my-token');
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.server_url).toBe('https://remote.example.com');
+      expect(body.token).toBe('my-token');
+    } finally {
+      if (Api._setTestBackendStatus) Api._setTestBackendStatus(null);
+    }
   });
 
   it('disconnectRemote sends DELETE to /collab/connect/{localBoardId}', async () => {

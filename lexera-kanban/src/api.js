@@ -1761,6 +1761,13 @@ var LexeraApi = (function () {
       backendStatusCache = null;
       backendStatusCacheAt = 0;
     },
+    /** Pre-seed the backend status cache so `getBackendStatus()` /
+     *  `assertCrdtSyncAvailable()` short-circuit without an extra
+     *  fetch in unit tests. Pass `null` to clear. */
+    _setTestBackendStatus: function(status) {
+      backendStatusCache = status || null;
+      backendStatusCacheAt = status ? Date.now() : 0;
+    },
     _setTestToken: function(t) { bearerToken = t; bearerTokenPromise = null; },
     _resetTestState: function() {
       clearCachedBackendState();
