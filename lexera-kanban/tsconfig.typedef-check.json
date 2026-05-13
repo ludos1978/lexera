@@ -110,6 +110,7 @@
     "src/board/cardCollapse.js",
     "src/debug/heightMutationLogger.js",
     "src/canvas/canvasMath.js",
+    "src/interaction/controlsDispatcher.js",
     "src/plugins/exports/filterExport.js",
     "src/plugins/exports/marpExport.js",
     "src/plugins/exports/pandocExport.js",

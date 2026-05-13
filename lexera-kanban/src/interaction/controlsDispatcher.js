@@ -172,7 +172,10 @@ var LexeraControlsDispatcher = (function () {
   function detach() {
     if (!_attached) return;
     _attached = false;
-    document.removeEventListener('wheel', onWheel, { passive: false });
+    // `passive` is ignored on removeEventListener (it's only an AddEventListenerOptions
+    // flag); match-by-type + capture-flag is what removes a listener. Dropping the
+    // options arg also satisfies tsc's EventListenerOptions narrowing.
+    document.removeEventListener('wheel', onWheel);
     document.removeEventListener('mousedown', onMouseDown);
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
