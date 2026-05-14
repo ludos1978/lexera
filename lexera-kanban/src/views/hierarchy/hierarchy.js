@@ -182,6 +182,41 @@
     return [];
   }
 
+  // Read every position + id attribute the workspace tree node now
+  // emits and write it into the focus target. Matches the kanban
+  // sidebar's `buildHierarchyFocusTargetFromTreeNode` shape so the
+  // kanban-side lookup hits a position-anchored card / column /
+  // stack / row regardless of any id drift.
+  function readNumericAttr(node, name) {
+    var raw = node.getAttribute(name);
+    if (raw == null || raw === '') return undefined;
+    var n = parseInt(raw, 10);
+    return isNaN(n) ? undefined : n;
+  }
+  function populatePositionAttrsOnTarget(target, node) {
+    var rowId = (node.getAttribute('data-row-id') || '').trim();
+    var stackId = (node.getAttribute('data-stack-id') || '').trim();
+    var columnId = (node.getAttribute('data-column-id') || '').trim();
+    var cardId = (node.getAttribute('data-card-id') || '').trim();
+    var cardKid = (node.getAttribute('data-card-kid') || '').trim();
+    if (rowId && !target.rowId) target.rowId = rowId;
+    if (stackId && !target.stackId) target.stackId = stackId;
+    if (columnId && !target.columnId) target.columnId = columnId;
+    if (cardId && !target.cardId) target.cardId = cardId;
+    if (cardKid) target.cardKid = cardKid;
+    var rowIdx = readNumericAttr(node, 'data-row-index');
+    var stackIdx = readNumericAttr(node, 'data-stack-index');
+    var colLocalIdx = readNumericAttr(node, 'data-col-local-index');
+    var colIdx = readNumericAttr(node, 'data-col-index');
+    var cardIdx = readNumericAttr(node, 'data-card-index');
+    if (typeof rowIdx === 'number') target.rowIndex = rowIdx;
+    if (typeof stackIdx === 'number') target.stackIndex = stackIdx;
+    if (typeof colLocalIdx === 'number') target.colLocalIndex = colLocalIdx;
+    if (typeof colIdx === 'number') target.columnIndex = colIdx;
+    if (typeof cardIdx === 'number') target.cardIndex = cardIdx;
+    return target;
+  }
+
   function runEntityAction(node, action) {
     var dragKind = node.getAttribute('data-drag-kind') || '';
     var boardId = node.getAttribute('data-drag-board-id') || '';
@@ -193,6 +228,12 @@
       else if (dragKind === 'stack') focusTarget.stackId = entityId;
       else if (dragKind === 'row') focusTarget.rowId = entityId;
       else return;
+      // Pull every position + id attribute the workspace tree node
+      // now emits (matching the kanban sidebar pattern). This
+      // supersedes the older ancestor-harvest loop; the position
+      // attrs are anchored to board structure so they survive
+      // CRDT/Loro id drift.
+      populatePositionAttrsOnTarget(focusTarget, node);
       // User report 2026-05-13: "the card focus system STILL doesnt
       // focus the correct card!!!". Root cause: when the same include
       // file is referenced from multiple columns of the same board (or
@@ -400,53 +441,128 @@
     if (card && card.kid != null) attrs['data-card-kid'] = String(card.kid);
     return attrs;
   }
-  function buildCardNode(card, ctx) {
-    // Prefer the persistent `card.kid` (8-char hex, surfaces in the
-    // backend's `state_kids` log) over `card.id` (a Loro CRDT
-    // container id like `crdt-N-…`). Loro container ids regenerate
-    // when a board's CRDT state is re-instantiated by a separate
-    // `getBoardColumns` call (the path `loadBoard` in the shell-side
-    // hierarchyDragBridge follows), so the workspace tree's captured
-    // id can drift from the loaded snapshot's id even though they
-    // describe the same card. The kid is stable across those calls.
-    // Falls back to `card.id` when `card.kid` isn't set (older
-    // boards / non-CRDT sources). Reported 2026-05-10:
-    // `srcLocated: false` for cross-board drops where the source
-    // came from the workspace tree.
+  // User report 2026-05-14: "the inspector correctly focusses the card
+  // when i search select something in the hierarchy!". The inspector +
+  // kanban sidebar tree work because their tree-nodes carry FULL
+  // position attrs (data-row-index / data-stack-index /
+  // data-col-local-index / data-card-index / data-row-id /
+  // data-stack-id / data-column-id) sourced from the CURRENT board
+  // state — matching exactly what's on the kanban's `.card` /
+  // `.column` / `.board-stack` / `.board-row` elements.
+  //
+  // The workspace tree's per-node attrs used to be minimal (just
+  // data-tree-id + data-drag-kind + data-card-id + data-card-kid),
+  // forcing a custom ancestor-harvest pass that couldn't keep up with
+  // column.id drift between hierarchy-fetch and kanban-render.
+  //
+  // Fix: mirror the kanban sidebar's full attr set on every workspace
+  // tree node so `boardSearch.findBoardEntityElement`'s position-path
+  // lookups (data-row-index + data-stack-index + data-col-local-index +
+  // data-card-index) match a real DOM element on the kanban side. Even
+  // when Loro ids drift, the position path resolves the same card as
+  // long as the board structure hasn't reshaped.
+  function buildCardNode(card, ctx, cardIdx) {
+    var attrs = cardDragAttrs(ctx.boardId, card);
+    if (ctx.rowId != null) attrs['data-row-id'] = String(ctx.rowId);
+    if (ctx.stackId != null) attrs['data-stack-id'] = String(ctx.stackId);
+    if (ctx.columnId != null) attrs['data-column-id'] = String(ctx.columnId);
+    if (typeof ctx.rowIndex === 'number') attrs['data-row-index'] = String(ctx.rowIndex);
+    if (typeof ctx.stackIndex === 'number') attrs['data-stack-index'] = String(ctx.stackIndex);
+    if (typeof ctx.colLocalIndex === 'number') attrs['data-col-local-index'] = String(ctx.colLocalIndex);
+    if (typeof ctx.colIndex === 'number') attrs['data-col-index'] = String(ctx.colIndex);
+    if (typeof cardIdx === 'number') attrs['data-card-index'] = String(cardIdx);
     return { id: (card.kid || card.id) || null,
              label: window.LexeraTitleHelpers.resolveCardLabel(card),
              type: 'card',
              children: null, expanded: false, hasToggle: false, grip: true,
              menu: true,
              gripTitle: 'Drag card to reorder',
-             attrs: cardDragAttrs(ctx.boardId, card) };
+             attrs: attrs };
   }
-  function buildColumnNode(column, ctx) {
+  function buildColumnNode(column, ctx, colLocalIdx, colFlatBase) {
     var cards = Array.isArray(column.cards) ? column.cards : [];
+    var colIdx = (typeof colFlatBase === 'number') ? colFlatBase : null;
+    var childCtx = {
+      boardId: ctx.boardId,
+      rowId: ctx.rowId,
+      stackId: ctx.stackId,
+      columnId: column.id != null ? String(column.id) : null,
+      rowIndex: ctx.rowIndex,
+      stackIndex: ctx.stackIndex,
+      colLocalIndex: colLocalIdx,
+      colIndex: colIdx
+    };
+    var attrs = dragAttrs(ctx.boardId, 'column');
+    if (ctx.rowId != null) attrs['data-row-id'] = String(ctx.rowId);
+    if (ctx.stackId != null) attrs['data-stack-id'] = String(ctx.stackId);
+    if (column.id != null) attrs['data-column-id'] = String(column.id);
+    if (typeof ctx.rowIndex === 'number') attrs['data-row-index'] = String(ctx.rowIndex);
+    if (typeof ctx.stackIndex === 'number') attrs['data-stack-index'] = String(ctx.stackIndex);
+    if (typeof colLocalIdx === 'number') attrs['data-col-local-index'] = String(colLocalIdx);
+    if (typeof colIdx === 'number') attrs['data-col-index'] = String(colIdx);
+    var visibleCardIdx = 0;
+    var children = [];
+    for (var ci = 0; ci < cards.length; ci++) {
+      children.push(buildCardNode(cards[ci], childCtx, visibleCardIdx));
+      visibleCardIdx++;
+    }
     return { id: column.id || null, label: nodeLabel(column), type: 'column',
-             children: cards.map(function (c) { return buildCardNode(c, ctx); }),
+             children: children,
              expanded: true, grip: true,
              menu: true,
              gripTitle: 'Drag column to reorder',
-             attrs: dragAttrs(ctx.boardId, 'column') };
+             attrs: attrs };
   }
-  function buildStackNode(stack, ctx) {
+  function buildStackNode(stack, ctx, stackIdx, colFlatStart) {
     var cols = Array.isArray(stack.columns) ? stack.columns : [];
+    var childCtx = {
+      boardId: ctx.boardId,
+      rowId: ctx.rowId,
+      stackId: stack.id != null ? String(stack.id) : null,
+      rowIndex: ctx.rowIndex,
+      stackIndex: stackIdx
+    };
+    var attrs = dragAttrs(ctx.boardId, 'stack');
+    if (ctx.rowId != null) attrs['data-row-id'] = String(ctx.rowId);
+    if (stack.id != null) attrs['data-stack-id'] = String(stack.id);
+    if (typeof ctx.rowIndex === 'number') attrs['data-row-index'] = String(ctx.rowIndex);
+    if (typeof stackIdx === 'number') attrs['data-stack-index'] = String(stackIdx);
+    var flatStart = typeof colFlatStart === 'number' ? colFlatStart : 0;
+    var children = [];
+    for (var c = 0; c < cols.length; c++) {
+      children.push(buildColumnNode(cols[c], childCtx, c, flatStart + c));
+    }
     return { id: stack.id || null, label: nodeLabel(stack), type: 'stack',
-             children: cols.map(function (c) { return buildColumnNode(c, ctx); }),
+             children: children,
              expanded: true, grip: true,
              menu: true,
              gripTitle: 'Drag stack to reorder',
-             attrs: dragAttrs(ctx.boardId, 'stack') };
+             attrs: attrs };
   }
-  function buildRowNode(row, ctx) {
+  function buildRowNode(row, ctx, rowIdx, colFlatStartRef) {
     var stacks = Array.isArray(row.stacks) ? row.stacks : [];
+    var childCtx = {
+      boardId: ctx.boardId,
+      rowId: row.id != null ? String(row.id) : null,
+      rowIndex: rowIdx
+    };
+    var attrs = dragAttrs(ctx.boardId, 'row');
+    if (row.id != null) attrs['data-row-id'] = String(row.id);
+    if (typeof rowIdx === 'number') attrs['data-row-index'] = String(rowIdx);
+    var flatRef = colFlatStartRef || { value: 0 };
+    var children = [];
+    for (var s = 0; s < stacks.length; s++) {
+      children.push(buildStackNode(stacks[s], childCtx, s, flatRef.value));
+      // Advance the board-flat column counter by this stack's columns.
+      var stackColCount = Array.isArray(stacks[s].columns) ? stacks[s].columns.length : 0;
+      flatRef.value += stackColCount;
+    }
     return { id: row.id || null, label: nodeLabel(row), type: 'row',
-             children: stacks.map(function (s) { return buildStackNode(s, ctx); }),
+             children: children,
              expanded: true, grip: true,
              menu: true,
              gripTitle: 'Drag row to reorder',
-             attrs: dragAttrs(ctx.boardId, 'row') };
+             attrs: attrs };
   }
   function buildPlaceholderNode(text) {
     return { id: null, label: text, type: 'placeholder',
@@ -458,9 +574,16 @@
       var hierarchy = boardHierarchies[boardId];
       var ctx = { boardId: boardId };
       if (Array.isArray(hierarchy)) {
-        children = hierarchy.length > 0
-          ? hierarchy.map(function (r) { return buildRowNode(r, ctx); })
-          : [buildPlaceholderNode('(empty board)')];
+        if (hierarchy.length > 0) {
+          // colFlatStart counter walks shared by all rows so
+          // data-col-index accumulates board-flat across rows.
+          var colFlatStartRef = { value: 0 };
+          children = hierarchy.map(function (r, idx) {
+            return buildRowNode(r, ctx, idx, colFlatStartRef);
+          });
+        } else {
+          children = [buildPlaceholderNode('(empty board)')];
+        }
       } else if (hierarchy === 'error') {
         children = [buildPlaceholderNode('Failed to load board structure')];
       } else {
@@ -1229,60 +1352,21 @@
       else if (dragKind === 'stack') focusTarget.stackId = entityId;
       else if (dragKind === 'row') focusTarget.rowId = entityId;
       else return;
-      // User report 2026-05-14: "ITS NOT FOCUSSING THE RIGHT CARDS!".
-      // Commit 8485d300 added the id-based ancestor harvest, but the
-      // workspace tree's cached hierarchy and the kanban's freshly-
-      // rendered DOM CAN HAVE DRIFTED `column.id` values — the parser
-      // assigns each column a process-wide-incrementing id on every
-      // parse, and any board edit / file-watcher reload between
-      // hierarchy fetch and kanban render rotates them. When ids drift
-      // `findBoardEntityElement`'s scope lookup misses, falls back to
-      // board-wide first match → wrong card.
+      // User report 2026-05-14: "the inspector correctly focusses the
+      // card when i search select something in the hierarchy!" — the
+      // inspector + kanban sidebar paths work because their tree-nodes
+      // carry FULL position attrs (data-row-index / data-stack-index
+      // / data-col-local-index / data-card-index / data-row-id /
+      // data-stack-id / data-column-id) mirroring the kanban DOM.
       //
-      // Fix: ALSO harvest stable disambiguators alongside ids — column
-      // TITLE (from the tree-node's .tree-label text) and POSITION
-      // (the column's index among its tree-children siblings). The
-      // kanban renders `.column[data-col-title]` + `.column[data-col-index]`
-      // — boardSearch tries them in priority order
-      // (data-column-id → data-col-title → data-col-index → board-wide).
-      // At least one stable identifier will match.
-      var ancestor = node && node.parentElement;
-      while (ancestor) {
-        if (ancestor.classList && ancestor.classList.contains('tree-entry')) {
-          var ancNode = ancestor.querySelector(':scope > .tree-node[data-tree-id]');
-          if (ancNode) {
-            var ancKind = ancNode.getAttribute('data-drag-kind') || '';
-            var ancId = ancNode.getAttribute('data-tree-id') || '';
-            if (ancKind && ancId) {
-              if (ancKind === 'column' && !focusTarget.columnId) {
-                focusTarget.columnId = ancId;
-                // Title from the .tree-label child (mirrors data-col-title).
-                // Position: stack-LOCAL column index (matches the
-                // kanban's `data-col-local-index`, NOT the board-flat
-                // `data-col-index`). Computed by counting earlier
-                // .tree-entry siblings under this node's parent
-                // .tree-children. boardSearch uses (stackId +
-                // colLocalIndex) as a stable scope fallback when
-                // `column.id` drifts after a re-parse.
-                var ancLabel = ancNode.querySelector(':scope > .tree-label');
-                if (ancLabel) focusTarget.columnTitle = (ancLabel.textContent || '').trim();
-                var parentChildren = ancestor.parentElement;
-                if (parentChildren && parentChildren.classList && parentChildren.classList.contains('tree-children')) {
-                  var siblings = parentChildren.children;
-                  var ci = 0;
-                  for (var sk = 0; sk < siblings.length; sk++) {
-                    if (siblings[sk] === ancestor) { focusTarget.colLocalIndex = ci; break; }
-                    if (siblings[sk].classList && siblings[sk].classList.contains('tree-entry')) ci++;
-                  }
-                }
-              }
-              else if (ancKind === 'stack' && !focusTarget.stackId) focusTarget.stackId = ancId;
-              else if (ancKind === 'row' && !focusTarget.rowId) focusTarget.rowId = ancId;
-            }
-          }
-        }
-        ancestor = ancestor.parentElement;
-      }
+      // The workspace tree's tree-nodes now emit those same attrs
+      // (see buildCardNode / buildColumnNode / etc.). Pull every one
+      // of them via `populatePositionAttrsOnTarget` so the kanban-side
+      // `findBoardEntityElement` has both the ids (for happy path)
+      // AND the position path (for id-drift cases). This replaces
+      // the older ancestor-harvest walk — the data now lives directly
+      // on the clicked node.
+      populatePositionAttrsOnTarget(focusTarget, node);
       // Diagnostic — user-reported "click doesn't focus" is impossible
       // to debug without runtime evidence that the click actually
       // produced a focus-target navigate call. Pair with the

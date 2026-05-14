@@ -183,30 +183,41 @@ describe('workspace tree click → focus kanban entity (user contract 2026-05-11
       expect(hierarchySrc).toMatch(/ancKind\s*===\s*['"]row['"][\s\S]{0,80}!focusTarget\.rowId/);
     });
 
-    it('hierarchy.js DIRECT-click handler ALSO harvests ancestors (not just runEntityAction)', () => {
-      // User report 2026-05-14: focus still wrong after 7a967330 because
-      // that commit patched runEntityAction (burger-menu path) only.
-      // The DIRECT-click handler at the bottom of hierarchy.js has its
-      // own focus-target build — must apply the same harvest.
-      //
-      // Pin BOTH occurrences of the harvest loop in hierarchy.js so
-      // future edits can't drop one and leave the other.
-      var harvestMatches = hierarchySrc.match(/while\s*\(\s*ancestor\s*\)/g) || [];
-      expect(harvestMatches.length).toBeGreaterThanOrEqual(2);
-      // Direct-click handler is anchored by __hierarchyClickBound; the
-      // harvest must appear within it.
-      expect(hierarchySrc).toMatch(
-        /__hierarchyClickBound[\s\S]{0,5000}|[\s\S]{0,5000}__hierarchyClickBound/
-      );
-      // Loose proximity check: the click handler's navigate call must
-      // be preceded by the ancestor walk so the target carries ids
-      // before dispatch.
+    it('hierarchy.js dispatch sites populate the focus target with position attrs (replaces older ancestor-harvest pattern)', () => {
+      // User report 2026-05-14: "the inspector correctly focusses the
+      // card when i search select something in the hierarchy!" — the
+      // inspector + kanban sidebar paths work because their tree-nodes
+      // carry FULL position attrs sourced from the kanban's CURRENT
+      // state. The workspace tree's builders now emit the same attrs
+      // (buildCardNode / buildColumnNode / buildStackNode / buildRowNode
+      // all include data-row-id / data-stack-id / data-column-id /
+      // data-row-index / data-stack-index / data-col-local-index /
+      // data-col-index / data-card-index on every node), and the
+      // dispatch sites call `populatePositionAttrsOnTarget(node)` to
+      // copy them into the focus target. This supersedes the older
+      // ancestor-harvest walk.
+      expect(hierarchySrc).toMatch(/function\s+populatePositionAttrsOnTarget/);
+      // Direct-click handler must call it before dispatching the
+      // navigate. Inline ancestor `while (ancestor)` loop may or may
+      // not still exist — what matters is the position attrs flow.
       var clickHandlerSlice = hierarchySrc.match(
         /localBoardsEl\.addEventListener\(['"]click['"][\s\S]+?__hierarchyClickBound/
       );
       expect(clickHandlerSlice).not.toBeNull();
-      expect(clickHandlerSlice[0]).toMatch(/while\s*\(\s*ancestor\s*\)/);
-      expect(clickHandlerSlice[0]).toMatch(/ancKind\s*===\s*['"]column['"]/);
+      expect(clickHandlerSlice[0]).toMatch(/populatePositionAttrsOnTarget/);
+    });
+
+    it('hierarchy.js tree builders emit full position attrs on every node (mirrors kanban sidebar)', () => {
+      // Each node-builder writes data-row-id / data-stack-id /
+      // data-column-id / data-row-index / data-stack-index /
+      // data-col-local-index / data-col-index on the relevant kinds.
+      expect(hierarchySrc).toMatch(/'data-row-id'\s*\]\s*=\s*String\(ctx\.rowId\)/);
+      expect(hierarchySrc).toMatch(/'data-stack-id'\s*\]\s*=\s*String\(ctx\.stackId\)/);
+      expect(hierarchySrc).toMatch(/'data-row-index'\s*\]\s*=/);
+      expect(hierarchySrc).toMatch(/'data-stack-index'\s*\]\s*=/);
+      expect(hierarchySrc).toMatch(/'data-col-local-index'\s*\]\s*=/);
+      expect(hierarchySrc).toMatch(/'data-col-index'\s*\]\s*=/);
+      expect(hierarchySrc).toMatch(/'data-card-index'\s*\]\s*=/);
     });
 
     it('workspaces.js mirrors the same ancestor-harvest loop in BOTH the menu and click paths', () => {

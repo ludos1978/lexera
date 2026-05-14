@@ -126,6 +126,8 @@ struct CachedSearchDocument {
     card_id: String,
     /// Persistent card identity — see `SearchResult.card_kid`.
     card_kid: Option<String>,
+    /// Visible card index within its column — see `SearchResult.card_index`.
+    card_index: Option<usize>,
     card_content: String,
     checked: bool,
     meta: SearchCardMeta,
@@ -708,6 +710,13 @@ impl LocalStorage {
             if is_archived_or_deleted(&col_ref.column.title) {
                 continue;
             }
+            // The kanban renders `data-card-index` as the VISIBLE
+            // index within the column (archived/deleted cards
+            // skipped, see app.js:8406). Track the visible index in
+            // lockstep so the position-path lookup
+            // `.card[data-col-index=X][data-card-index=Y]` matches
+            // the actual DOM element.
+            let mut visible_card_idx: usize = 0;
             for card in &col_ref.column.cards {
                 if is_archived_or_deleted(&card.content) {
                     continue;
@@ -720,10 +729,12 @@ impl LocalStorage {
                     col_local_index: col_ref.col_local_index,
                     card_id: card.id.clone(),
                     card_kid: card.kid.clone(),
+                    card_index: Some(visible_card_idx),
                     card_content: card.content.clone(),
                     checked: card.checked,
                     meta: SearchCardMeta::from_card(&card.content, card.checked),
                 });
+                visible_card_idx += 1;
             }
         }
         docs
@@ -859,6 +870,7 @@ impl LocalStorage {
             col_local_index: doc.col_local_index,
             card_id: doc.card_id.clone(),
             card_kid: doc.card_kid.clone(),
+            card_index: doc.card_index,
             card_content: doc.card_content.clone(),
             checked: doc.checked,
             hash_tags: doc.meta.hash_tags.clone(),

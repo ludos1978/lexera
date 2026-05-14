@@ -378,6 +378,14 @@ pub struct SearchResult {
     /// before first save).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub card_kid: Option<String>,
+    /// Visible card index within its column. User report 2026-05-14:
+    /// dashboard focus was failing because search results didn't carry
+    /// `card_index`, so the kanban-side position-path lookup
+    /// (row/stack/colLocal + cardIndex) couldn't fire when ids drifted.
+    /// `None` only when the position couldn't be computed (legacy
+    /// non-CRDT search paths).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub card_index: Option<usize>,
     pub card_content: String,
     pub checked: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

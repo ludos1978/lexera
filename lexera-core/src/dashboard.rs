@@ -38,6 +38,26 @@ pub enum RecurringState {
 pub struct UpcomingItem {
     pub column_index: usize,
     pub column_title: String,
+    /// User report 2026-05-14: "it works on the tags but not on the
+    /// upcoming, overdue entries in the dashboard!". Tag search results
+    /// (SearchResult) carried row/stack/col_local indices so the
+    /// kanban-side position-path lookup found the right card despite
+    /// id drift; UpcomingItem only had `column_index` (board-flat) so
+    /// when that column position shifted after a re-parse, focus
+    /// failed. Mirror SearchResult's identifiers so both paths resolve
+    /// the same way.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub row_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stack_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub col_local_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub row_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stack_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column_id: Option<String>,
     pub card_index: usize,
     /// User report 2026-05-14: dashboard clicks landed on the wrong card
     /// because `card_id` carries the Loro container id which DRIFTS
@@ -285,6 +305,61 @@ fn has_temporal_regex() -> &'static Regex {
 
 // ── Main scan function ────────────────────────────────────────────────────
 
+/// Column iteration helper that tracks row/stack context so dashboard
+/// items can carry the full position-path (row_index, stack_index,
+/// col_local_index) plus stable row/stack ids — matching the kanban's
+/// position-anchored DOM attributes. User report 2026-05-14: "it
+/// works on the tags but not on the upcoming, overdue entries in the
+/// dashboard" — search results carried these, UpcomingItem didn't.
+struct ColumnContext<'a> {
+    column: &'a crate::types::KanbanColumn,
+    flat_index: usize,
+    row_index: Option<usize>,
+    stack_index: Option<usize>,
+    col_local_index: Option<usize>,
+    row_id: Option<String>,
+    stack_id: Option<String>,
+}
+
+fn collect_columns_with_context(board: &KanbanBoard) -> Vec<ColumnContext<'_>> {
+    if board.rows.is_empty() {
+        // Legacy flat-columns boards: no row/stack context available.
+        return board
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| ColumnContext {
+                column: c,
+                flat_index: i,
+                row_index: None,
+                stack_index: None,
+                col_local_index: None,
+                row_id: None,
+                stack_id: None,
+            })
+            .collect();
+    }
+    let mut refs = Vec::new();
+    let mut flat: usize = 0;
+    for (ri, row) in board.rows.iter().enumerate() {
+        for (si, stack) in row.stacks.iter().enumerate() {
+            for (ci, col) in stack.columns.iter().enumerate() {
+                refs.push(ColumnContext {
+                    column: col,
+                    flat_index: flat,
+                    row_index: Some(ri),
+                    stack_index: Some(si),
+                    col_local_index: Some(ci),
+                    row_id: Some(row.id.clone()),
+                    stack_id: Some(stack.id.clone()),
+                });
+                flat += 1;
+            }
+        }
+    }
+    refs
+}
+
 /// Scan a board and return upcoming items, undated tasks, and tag summary.
 ///
 /// `timeframe_days` controls how far into the future to collect upcoming items.
@@ -300,9 +375,11 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
     let mut total_cards: usize = 0;
     let mut temporal_cards: usize = 0;
 
-    let columns = board.all_columns();
+    let columns = collect_columns_with_context(board);
 
-    for (col_idx, col) in columns.iter().enumerate() {
+    for col_ctx in columns.iter() {
+        let col_idx = col_ctx.flat_index;
+        let col = col_ctx.column;
         let col_title = &col.title;
 
         if is_archived_or_deleted(col_title) {
@@ -397,6 +474,12 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
                                     column_index: col_idx,
                                     column_title: col_title.clone(),
                                     card_index: card_idx,
+                                    row_index: col_ctx.row_index,
+                                    stack_index: col_ctx.stack_index,
+                                    col_local_index: col_ctx.col_local_index,
+                                    row_id: col_ctx.row_id.clone(),
+                                    stack_id: col_ctx.stack_id.clone(),
+                                    column_id: Some(col.id.clone()),
                                     card_id: card.id.clone(),
                                     card_kid: card.kid.clone(),
                                     card_title: card_title.clone(),
@@ -424,7 +507,13 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
                                         column_index: col_idx,
                                         column_title: col_title.clone(),
                                         card_index: card_idx,
-                                        card_id: card.id.clone(),
+                                        row_index: col_ctx.row_index,
+                                    stack_index: col_ctx.stack_index,
+                                    col_local_index: col_ctx.col_local_index,
+                                    row_id: col_ctx.row_id.clone(),
+                                    stack_id: col_ctx.stack_id.clone(),
+                                    column_id: Some(col.id.clone()),
+                                    card_id: card.id.clone(),
                                     card_kid: card.kid.clone(),
                                         card_title: card_title.clone(),
                                         temporal_tag: tag.clone(),
@@ -455,6 +544,12 @@ pub fn scan_board(board: &KanbanBoard, timeframe_days: i64, today: NaiveDate) ->
                             target.push(UpcomingItem {
                                 column_index: col_idx,
                                 column_title: col_title.clone(),
+                                row_index: col_ctx.row_index,
+                                stack_index: col_ctx.stack_index,
+                                col_local_index: col_ctx.col_local_index,
+                                row_id: col_ctx.row_id.clone(),
+                                stack_id: col_ctx.stack_id.clone(),
+                                column_id: Some(col.id.clone()),
                                 card_index: card_idx,
                                 card_id: card.id.clone(),
                                 card_kid: card.kid.clone(),
