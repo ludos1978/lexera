@@ -256,30 +256,31 @@ pub fn open_capture_popup(app: &AppHandle) {
 }
 
 /// Get the quick-capture window and its display scale factor.
-fn capture_window(app: &AppHandle) -> Result<(tauri::WebviewWindow, f64), String> {
+fn capture_window(app: &AppHandle) -> Result<(tauri::WebviewWindow, f64), CaptureError> {
     let window = app
         .get_webview_window("quick-capture")
-        .ok_or("Window not found")?;
+        .ok_or(CaptureError::WindowNotFound)?;
     let scale = window.scale_factor().unwrap_or(1.0);
     Ok((window, scale))
 }
 
-/// Typed error for the two capture-window geometry helpers (`monitor_rect`,
-/// `detect_side`). Display impls reproduce the prior stringified shapes
-/// (`tauri::Error::to_string()` for `Tauri`; the bare `"No monitor"` literal
-/// for `NoMonitor`) so the `From<CaptureGeometryError> for String` boundary
-/// at the existing `?` call sites in the surrounding Tauri commands stays
+/// Typed error for capture-window helpers (`capture_window`, `monitor_rect`,
+/// `detect_side`, `snap_capture_strip`). Display impls reproduce the prior
+/// stringified shapes so the `From<CaptureError> for String` boundary at the
+/// existing `?` call sites in the surrounding Tauri commands stays
 /// byte-identical to the previous `Result<_, String>` implementation.
 #[derive(Debug, thiserror::Error)]
-pub(super) enum CaptureGeometryError {
+pub(super) enum CaptureError {
     #[error("{0}")]
     Tauri(#[from] tauri::Error),
     #[error("No monitor")]
     NoMonitor,
+    #[error("Window not found")]
+    WindowNotFound,
 }
 
-impl From<CaptureGeometryError> for String {
-    fn from(err: CaptureGeometryError) -> String {
+impl From<CaptureError> for String {
+    fn from(err: CaptureError) -> String {
         err.to_string()
     }
 }
@@ -287,10 +288,10 @@ impl From<CaptureGeometryError> for String {
 /// Get current monitor position and size for a window.
 fn monitor_rect(
     window: &tauri::WebviewWindow,
-) -> Result<(tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>), CaptureGeometryError> {
+) -> Result<(tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>), CaptureError> {
     let monitor = window
         .current_monitor()?
-        .ok_or(CaptureGeometryError::NoMonitor)?;
+        .ok_or(CaptureError::NoMonitor)?;
     Ok((*monitor.position(), *monitor.size()))
 }
 
@@ -388,7 +389,7 @@ fn side_x(side: &str, monitor_x: i32, monitor_width: u32, window_width: i32) -> 
 }
 
 /// Snap the strip-mode window to a screen edge vertically centered.
-fn snap_capture_strip(app: &AppHandle, side: &str) -> Result<(), String> {
+fn snap_capture_strip(app: &AppHandle, side: &str) -> Result<(), CaptureError> {
     let (window, scale) = capture_window(app)?;
     let phys_w = (CAPTURE_STRIP_WIDTH * scale) as i32;
     let phys_h = (CAPTURE_STRIP_HEIGHT * scale) as i32;
@@ -398,8 +399,7 @@ fn snap_capture_strip(app: &AppHandle, side: &str) -> Result<(), String> {
     let y = monitor_pos.y + (monitor_size.height as i32 - phys_h) / 2;
 
     window
-        .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))
-        .map_err(|e| e.to_string())?;
+        .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))?;
 
     Ok(())
 }
@@ -475,7 +475,7 @@ pub fn start_monitor_watcher(app: AppHandle) {
 }
 
 /// Determine which screen edge the window is closest to ("left" or "right").
-fn detect_side(window: &tauri::WebviewWindow) -> Result<String, CaptureGeometryError> {
+fn detect_side(window: &tauri::WebviewWindow) -> Result<String, CaptureError> {
     let pos = window.outer_position()?;
     let (monitor_pos, monitor_size) = monitor_rect(window)?;
     let mid_x = monitor_pos.x + monitor_size.width as i32 / 2;
@@ -742,32 +742,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn capture_geometry_error_no_monitor_preserves_string_format() {
+    fn capture_error_no_monitor_preserves_string_format() {
         // Prior `Result<_, String>` produced exactly "No monitor" for the
         // missing-monitor sentinel. The typed Display + From<_> for String
         // path must yield the same byte sequence so any `?` against an
         // outer `Result<_, String>` (8 call sites in capture.rs) reads
         // unchanged.
-        let err = CaptureGeometryError::NoMonitor;
+        let err = CaptureError::NoMonitor;
         assert_eq!(err.to_string(), "No monitor");
         let s: String = err.into();
         assert_eq!(s, "No monitor");
     }
 
     #[test]
-    fn capture_geometry_error_distinct_variants() {
-        // Pin that future refactors don't collapse the two variants into
+    fn capture_error_window_not_found_preserves_string_format() {
+        let err = CaptureError::WindowNotFound;
+        assert_eq!(err.to_string(), "Window not found");
+        let s: String = err.into();
+        assert_eq!(s, "Window not found");
+    }
+
+    #[test]
+    fn capture_error_distinct_variants() {
+        // Pin that future refactors don't collapse the variants into
         // a single string-bag — variant identity is what makes pattern
         // matching at call sites (when they migrate) possible.
-        let no_mon = CaptureGeometryError::NoMonitor;
-        assert!(matches!(no_mon, CaptureGeometryError::NoMonitor));
+        let no_mon = CaptureError::NoMonitor;
+        assert!(matches!(no_mon, CaptureError::NoMonitor));
+        let win_nf = CaptureError::WindowNotFound;
+        assert!(matches!(win_nf, CaptureError::WindowNotFound));
         // The Tauri variant carries the wrapped error verbatim; we don't
         // construct a tauri::Error in tests (no public constructor), but
         // we can prove the enum has the variant via the matches! arm.
-        fn _shape_check(e: CaptureGeometryError) {
+        fn _shape_check(e: CaptureError) {
             match e {
-                CaptureGeometryError::Tauri(_) => {}
-                CaptureGeometryError::NoMonitor => {}
+                CaptureError::Tauri(_) => {}
+                CaptureError::NoMonitor => {}
+                CaptureError::WindowNotFound => {}
             }
         }
     }
