@@ -786,29 +786,6 @@ impl LocalStorage {
         state.search_index = Self::build_search_index(&state.search_docs);
     }
 
-    /// Resolve the canonical board for a given state — the same board
-    /// `read_board()` returns to the kanban frontend.  When CRDT is
-    /// active and semantically equal, the CRDT-aligned board (with its
-    /// potentially different card ids/positions) is used.  Falls back
-    /// to `state.board` when CRDT is unavailable or diverged.
-    fn canonical_board_for_state(state: &BoardState) -> KanbanBoard {
-        let board_dir = state
-            .file_path
-            .parent()
-            .unwrap_or(Path::new("."));
-        state
-            .crdt
-            .as_ref()
-            .and_then(|crdt| {
-                Self::board_from_crdt_if_semantically_equal(
-                    &state.board,
-                    crdt,
-                    board_dir,
-                )
-            })
-            .unwrap_or_else(|| state.board.clone())
-    }
-
     fn ensure_board_state_crdt_loaded(
         &self,
         board_id: &str,
@@ -3862,29 +3839,39 @@ impl LocalStorage {
             };
         }
 
-        let boards = match self.boards.read() {
-            Ok(b) => b,
-            Err(e) => {
-                log::error!("[lexera.storage.search] Boards lock poisoned: {}", e);
-                return PaginatedSearchResults {
-                    results: Vec::new(),
-                    total: 0,
-                    limit: options.limit.unwrap_or(50),
-                    offset: options.offset.unwrap_or(0),
-                };
-            }
+        // Collect board IDs and titles, then release the read lock
+        // before calling read_board (which acquires the write lock).
+        let board_info: Vec<(String, String)> = {
+            let boards = match self.boards.read() {
+                Ok(b) => b,
+                Err(e) => {
+                    log::error!("[lexera.storage.search] Boards lock poisoned: {}", e);
+                    return PaginatedSearchResults {
+                        results: Vec::new(),
+                        total: 0,
+                        limit: options.limit.unwrap_or(50),
+                        offset: options.offset.unwrap_or(0),
+                    };
+                }
+            };
+            boards
+                .iter()
+                .map(|(board_id, state)| (board_id.clone(), state.summary.title.clone()))
+                .collect()
         };
         let mut results = Vec::new();
 
-        for (board_id, state) in boards.iter() {
-            let board_title = state.summary.title.as_str();
-            let canonical_board = Self::canonical_board_for_state(state);
-            let search_docs = Self::build_search_documents(&canonical_board);
+        for (board_id, board_title) in board_info {
+            let board = match self.read_board(&board_id) {
+                Some(b) => b,
+                None => continue,
+            };
+            let search_docs = Self::build_search_documents(&board);
             let search_index = Self::build_search_index(&search_docs);
             let candidates = Self::candidate_indices_for_prefilter(&search_index, &prefilter);
             for (_, doc) in Self::iter_candidate_doc_indices(&search_docs, &candidates) {
                 let search_doc = SearchDocument {
-                    board_title,
+                    board_title: &board_title,
                     column_title: &doc.column_title,
                     card_content: &doc.card_content,
                     checked: doc.checked,
@@ -3894,8 +3881,8 @@ impl LocalStorage {
                     continue;
                 }
                 results.push(Self::search_result_from_cached_doc(
-                    board_id,
-                    board_title,
+                    &board_id,
+                    &board_title,
                     doc,
                 ));
             }
@@ -3945,34 +3932,44 @@ impl LocalStorage {
             })
             .collect();
 
-        let boards = match self.boards.read() {
-            Ok(b) => b,
-            Err(e) => {
-                log::error!("[lexera.storage.search_many] Boards lock poisoned: {}", e);
-                return queries
-                    .iter()
-                    .map(|query| BatchSearchResultSet {
-                        key: query.key.clone(),
-                        paginated: PaginatedSearchResults {
-                            results: Vec::new(),
-                            total: 0,
-                            limit: query.options.limit.unwrap_or(50),
-                            offset: query.options.offset.unwrap_or(0),
-                        },
-                    })
-                    .collect();
-            }
+        // Collect board IDs and titles, then release the read lock
+        // before calling read_board (which acquires the write lock).
+        let board_info: Vec<(String, String)> = {
+            let boards = match self.boards.read() {
+                Ok(b) => b,
+                Err(e) => {
+                    log::error!("[lexera.storage.search_many] Boards lock poisoned: {}", e);
+                    return queries
+                        .iter()
+                        .map(|query| BatchSearchResultSet {
+                            key: query.key.clone(),
+                            paginated: PaginatedSearchResults {
+                                results: Vec::new(),
+                                total: 0,
+                                limit: query.options.limit.unwrap_or(50),
+                                offset: query.options.offset.unwrap_or(0),
+                            },
+                        })
+                        .collect();
+                }
+            };
+            boards
+                .iter()
+                .filter(|(board_id, _)| {
+                    board_scope
+                        .map(|scope| scope.contains(board_id.as_str()))
+                        .unwrap_or(true)
+                })
+                .map(|(board_id, state)| (board_id.clone(), state.summary.title.clone()))
+                .collect()
         };
 
-        for (board_id, state) in boards.iter() {
-            if let Some(scope) = board_scope {
-                if !scope.contains(board_id) {
-                    continue;
-                }
-            }
-            let board_title = state.summary.title.as_str();
-            let canonical_board = Self::canonical_board_for_state(state);
-            let search_docs = Self::build_search_documents(&canonical_board);
+        for (board_id, board_title) in board_info {
+            let board = match self.read_board(&board_id) {
+                Some(b) => b,
+                None => continue,
+            };
+            let search_docs = Self::build_search_documents(&board);
             let search_index = Self::build_search_index(&search_docs);
             let mut cached_results: HashMap<usize, SearchResult> = HashMap::new();
             for query in &mut compiled {
@@ -3985,7 +3982,7 @@ impl LocalStorage {
                     Self::iter_candidate_doc_indices(&search_docs, &candidates)
                 {
                     let search_doc = SearchDocument {
-                        board_title,
+                        board_title: &board_title,
                         column_title: &doc.column_title,
                         card_content: &doc.card_content,
                         checked: doc.checked,
@@ -3995,7 +3992,7 @@ impl LocalStorage {
                         continue;
                     }
                     let result = cached_results.entry(doc_index).or_insert_with(|| {
-                        Self::search_result_from_cached_doc(board_id, board_title, doc)
+                        Self::search_result_from_cached_doc(&board_id, &board_title, doc)
                     });
                     query.results.push(result.clone());
                 }
@@ -4029,33 +4026,45 @@ impl LocalStorage {
     }
 
     fn calendar_tasks_inner(&self, board_scope: Option<&HashSet<String>>) -> Vec<SearchResult> {
-        let boards = match self.boards.read() {
-            Ok(b) => b,
-            Err(e) => {
-                log::error!("[lexera.storage.calendar] Boards lock poisoned: {}", e);
-                return Vec::new();
-            }
-        };
-        let mut results = Vec::new();
-
-        for (board_id, state) in boards.iter() {
-            if let Some(scope) = board_scope {
-                if !scope.contains(board_id) {
-                    continue;
+        // Collect board IDs and titles first, then release the read lock
+        // before calling read_board (which acquires the write lock).
+        let board_info: Vec<(String, String)> = {
+            let boards = match self.boards.read() {
+                Ok(b) => b,
+                Err(e) => {
+                    log::error!("[lexera.storage.calendar] Boards lock poisoned: {}", e);
+                    return Vec::new();
                 }
-            }
-            let board_title = state.summary.title.as_str();
-            // Build search docs from the canonical board — same source
-            // the kanban DOM renders from.
-            let canonical_board = Self::canonical_board_for_state(state);
-            let search_docs = Self::build_search_documents(&canonical_board);
+            };
+            boards
+                .iter()
+                .filter(|(board_id, _)| {
+                    board_scope
+                        .map(|scope| scope.contains(board_id.as_str()))
+                        .unwrap_or(true)
+                })
+                .map(|(board_id, state)| {
+                    (board_id.clone(), state.summary.title.clone())
+                })
+                .collect()
+        };
+
+        let mut results = Vec::new();
+        for (board_id, board_title) in board_info {
+            // read_board resolves CRDT alignment, lazy-loads CRDT if
+            // needed, and returns the same board the kanban frontend
+            // gets via getBoardColumns.
+            let Some(board) = self.read_board(&board_id) else {
+                continue;
+            };
+            let search_docs = Self::build_search_documents(&board);
             for doc in &search_docs {
                 if doc.meta.due_date.is_none() {
                     continue;
                 }
                 results.push(Self::search_result_from_cached_doc(
-                    board_id,
-                    board_title,
+                    &board_id,
+                    &board_title,
                     doc,
                 ));
             }
