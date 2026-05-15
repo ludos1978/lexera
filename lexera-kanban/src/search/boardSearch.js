@@ -117,6 +117,22 @@ var LexeraBoardSearch = (function () {
     return typeof _deps.getWorkspaceShell === 'function' ? _deps.getWorkspaceShell() : null;
   }
 
+  /**
+   * Verify a position-based candidate card matches the expected kid.
+   * Returns true when:
+   *   - targetKid is null/empty (no kid to verify)
+   *   - the card has no data-card-kid (kid not set — accept)
+   *   - the card's kid matches targetKid
+   * Returns false when the card has a DIFFERENT known kid — this means
+   * the position-based fallback found the wrong card.
+   */
+  function kidMatches(cardEl, targetKid) {
+    if (!targetKid) return true;
+    var elKid = cardEl.getAttribute('data-card-kid');
+    if (!elKid) return true; // card has no kid — accept
+    return elKid === targetKid;
+  }
+
   function getDashboardTreeApi() {
     return typeof _deps.getDashboardTreeApi === 'function' ? _deps.getDashboardTreeApi() : null;
   }
@@ -320,6 +336,12 @@ var LexeraBoardSearch = (function () {
       // DOM). All still constrained to `.card` — we never return a
       // column when the user asked for a card.
       //
+      // IMPORTANT: when target.cardKid is set, we MUST verify the
+      // found card's kid matches. If the dashboard's kid is stale
+      // (board restructured between dashboard fetch and kanban render),
+      // the card at the stale position is the WRONG card. Returning
+      // null lets the retry loop wait for the kanban to reload.
+      //
       // 1. row+stack+colLocal+card index path — uses ALL position
       //    indices, fully board-structure-anchored. Survives any
       //    Loro/CRDT id rotation as long as the board structure
@@ -336,7 +358,7 @@ var LexeraBoardSearch = (function () {
           '"][data-col-local-index="' + target.colLocalIndex + '"] ' +
           '.card[data-card-index="' + target.cardIndex + '"]';
         var byPath = getElColumnsContainer().querySelector(byPathSel);
-        if (byPath) return byPath;
+        if (byPath && kidMatches(byPath, target.cardKid)) return byPath;
       }
       // 2. (stackId + colLocalIndex + cardIndex) — same structure
       //    anchor via stable stack id when row indices unavailable.
@@ -350,7 +372,7 @@ var LexeraBoardSearch = (function () {
           '.column[data-col-local-index="' + target.colLocalIndex + '"] ' +
           '.card[data-card-index="' + target.cardIndex + '"]'
         );
-        if (byStackPath) return byStackPath;
+        if (byStackPath && kidMatches(byStackPath, target.cardKid)) return byStackPath;
       }
       // 3. board-flat columnIndex + cardIndex — last-resort for
       //    dashboard search results when no row/stack path available.
@@ -358,7 +380,7 @@ var LexeraBoardSearch = (function () {
         var byVisibleCardIndex = getElColumnsContainer().querySelector(
           '.card[data-col-index="' + target.columnIndex + '"][data-card-index="' + target.cardIndex + '"]'
         );
-        if (byVisibleCardIndex) return byVisibleCardIndex;
+        if (byVisibleCardIndex && kidMatches(byVisibleCardIndex, target.cardKid)) return byVisibleCardIndex;
       }
       // User report 2026-05-14: when the user asked for a CARD
       // (target.cardId set), never return a non-card surrogate.
