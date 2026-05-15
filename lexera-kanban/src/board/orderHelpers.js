@@ -821,6 +821,16 @@ var LexeraOrderHelpers = (function () {
           if (el.classList.contains('card')) {
             _callDep('focusCard', el);
             if (!el.classList.contains('focused') && typeof el.classList.add === 'function') el.classList.add('focused');
+            // Debug: log the focused card's ids
+            if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+              try {
+                window.lexeraLog('debug', '[card-id-debug] focused card: kid=' +
+                  (el.getAttribute('data-card-kid') || 'null') +
+                  ' id=' + (el.getAttribute('data-card-id') || 'null') +
+                  ' colIndex=' + (el.getAttribute('data-col-index') || 'null') +
+                  ' cardIndex=' + (el.getAttribute('data-card-index') || 'null'));
+              } catch (_) {}
+            }
           } else {
             _callDep('focusBoardEntity', el);
           }

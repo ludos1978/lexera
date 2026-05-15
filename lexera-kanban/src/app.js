@@ -2157,6 +2157,16 @@ var LexeraDashboard = (function () {
     if (KeyboardNav) KeyboardNav.navigateCards(key);
   }
   function focusCard(cardEl) {
+    // Debug: log the focused card's ids
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function' && cardEl) {
+      try {
+        window.lexeraLog('debug', '[card-id-debug] focusCard: kid=' +
+          (cardEl.getAttribute('data-card-kid') || 'null') +
+          ' id=' + (cardEl.getAttribute('data-card-id') || 'null') +
+          ' colIndex=' + (cardEl.getAttribute('data-col-index') || 'null') +
+          ' cardIndex=' + (cardEl.getAttribute('data-card-index') || 'null'));
+      } catch (_) {}
+    }
     if (KeyboardNav) KeyboardNav.focusCard(cardEl);
   }
   function unfocusCard() {
