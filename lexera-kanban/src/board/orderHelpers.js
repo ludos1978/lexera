@@ -1310,7 +1310,12 @@ var LexeraOrderHelpers = (function () {
     if (!Array.isArray(data) || data.length === 0) return '0';
     var first = data[0];
     var last = data[data.length - 1];
-    var fp = data.length + ':' + (first.id || first.title || '') + ':' + (last.id || last.title || '');
+    // SearchResult uses cardId/cardContent, UpcomingItem uses cardId/cardTitle,
+    // tree nodes use id/label. Support all shapes so the fingerprint is
+    // meaningful regardless of the item type.
+    var firstKey = first.id || first.cardId || first.title || first.cardTitle || first.summary || '';
+    var lastKey = last.id || last.cardId || last.title || last.cardTitle || last.summary || '';
+    var fp = data.length + ':' + firstKey + ':' + lastKey;
     return extra ? fp + '|' + extra : fp;
   }
 
