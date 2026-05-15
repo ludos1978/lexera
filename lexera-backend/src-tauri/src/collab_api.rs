@@ -1043,7 +1043,7 @@ async fn connect_remote(
     .map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::bad_request(&e)),
+            Json(ErrorResponse::bad_request(&e.to_string())),
         )
     })?;
 

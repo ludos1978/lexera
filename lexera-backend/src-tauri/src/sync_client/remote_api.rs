@@ -30,7 +30,7 @@ use super::friendly_error;
 /// typed source there would need a larger refactor of friendly_error
 /// itself.
 #[derive(Debug, thiserror::Error)]
-pub(super) enum RemoteApiError {
+pub(crate) enum RemoteApiError {
     #[error("{0}")]
     Request(String),
     // status is reqwest::StatusCode so its Display reproduces the prior

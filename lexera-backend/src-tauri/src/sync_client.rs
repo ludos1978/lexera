@@ -24,6 +24,42 @@ struct RemoteConnection {
     ws_task: JoinHandle<()>,
 }
 
+/// Typed error for sync-client connection preparation helpers
+/// (`prepare_invite_connection`, `prepare_existing_connection`).
+/// Display impls preserve the prior stringified shapes so callers
+/// that format via `{}` (log lines, API error responses) read unchanged.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum SyncConnectionError {
+    /// HTTP transport error from reqwest, pre-stringified via `friendly_error`.
+    #[error("{0}")]
+    Request(String),
+    /// HTTP response had a non-success status. Carries context, status, body.
+    #[error("{context} (HTTP {status}): {detail}")]
+    Http {
+        context: String,
+        status: u16,
+        detail: String,
+    },
+    /// JSON body could not be parsed.
+    #[error("{context}: {source}")]
+    JsonParse {
+        context: String,
+        source: reqwest::Error,
+    },
+    /// Logical validation failure (missing field, invalid state).
+    #[error("{0}")]
+    Validation(String),
+    /// Error propagated from `remote_api` helpers.
+    #[error("{0}")]
+    RemoteApi(#[from] remote_api::RemoteApiError),
+}
+
+impl From<SyncConnectionError> for String {
+    fn from(err: SyncConnectionError) -> String {
+        err.to_string()
+    }
+}
+
 pub(crate) struct PendingRemoteConnection {
     pub(crate) server_url: String,
     pub(crate) remote_board_id: String,
@@ -100,7 +136,7 @@ impl SyncClientManager {
         user_id: String,
         user_name: String,
         storage: Arc<LocalStorage>,
-    ) -> Result<PendingRemoteConnection, String> {
+    ) -> Result<PendingRemoteConnection, SyncConnectionError> {
         let server_url = server_url.trim_end_matches('/').to_string();
         let client = reqwest::Client::new();
 
@@ -109,14 +145,15 @@ impl SyncClientManager {
             register_remote_user(&client, &server_url, &user_id, &user_name).await?;
 
         // 2. Accept invite token — use register token for bearer auth.
-        let mut accept_req = client.post(format!("{}/collab/invites/{}/accept", server_url, token));
+        let mut accept_req =
+            client.post(format!("{}/collab/invites/{}/accept", server_url, token));
         if let Some(ref t) = register_token {
             accept_req = accept_req.header("authorization", format!("Bearer {}", t));
         }
         let accept_resp = accept_req
             .send()
             .await
-            .map_err(|e| friendly_error("Accept invite", e))?;
+            .map_err(|e| SyncConnectionError::Request(friendly_error("Accept invite", e)))?;
 
         if !accept_resp.status().is_success() {
             let status = accept_resp.status();
@@ -125,22 +162,37 @@ impl SyncClientManager {
                 .ok()
                 .and_then(|v| v["error"].as_str().map(String::from))
                 .unwrap_or(text);
-            let msg = match status.as_u16() {
-                404 => format!("Invite not found or already used: {}", detail),
-                400 => format!("Invite invalid: {}", detail),
-                _ => format!("Accept invite failed (HTTP {}): {}", status, detail),
-            };
-            return Err(msg);
+            return Err(match status.as_u16() {
+                404 => SyncConnectionError::Http {
+                    context: "Accept invite".into(),
+                    status: 404,
+                    detail: format!("Invite not found or already used: {}", detail),
+                },
+                400 => SyncConnectionError::Http {
+                    context: "Accept invite".into(),
+                    status: 400,
+                    detail: format!("Invite invalid: {}", detail),
+                },
+                code => SyncConnectionError::Http {
+                    context: "Accept invite".into(),
+                    status: code,
+                    detail,
+                },
+            });
         }
 
-        let join: serde_json::Value = accept_resp
-            .json()
-            .await
-            .map_err(|e| format!("Parse join response: {}", e))?;
+        let join: serde_json::Value = accept_resp.json().await.map_err(|e| {
+            SyncConnectionError::JsonParse {
+                context: "Parse join response".into(),
+                source: e,
+            }
+        })?;
 
         let remote_board_id = join["room_id"]
             .as_str()
-            .ok_or("Missing room_id in join response")?
+            .ok_or_else(|| SyncConnectionError::Validation(
+                "Missing room_id in join response".into(),
+            ))?
             .to_string();
         let room_title = join["room_title"]
             .as_str()
@@ -186,7 +238,7 @@ impl SyncClientManager {
         user_name: String,
         auth_token: Option<String>,
         storage: Arc<LocalStorage>,
-    ) -> Result<PendingRemoteConnection, String> {
+    ) -> Result<PendingRemoteConnection, SyncConnectionError> {
         let server_url = server_url.trim_end_matches('/').to_string();
         let local_board_id = local_board_id_from_remote(&remote_board_id);
 
@@ -317,5 +369,54 @@ impl SyncClientManager {
                 },
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sync_connection_error_validation_preserves_string_format() {
+        let err = SyncConnectionError::Validation("Missing room_id in join response".into());
+        assert_eq!(err.to_string(), "Missing room_id in join response");
+        let s: String = err.into();
+        assert_eq!(s, "Missing room_id in join response");
+    }
+
+    #[test]
+    fn sync_connection_error_request_preserves_string_format() {
+        let err = SyncConnectionError::Request(
+            "Accept invite: Could not connect to server".into(),
+        );
+        let s: String = err.into();
+        assert_eq!(s, "Accept invite: Could not connect to server");
+    }
+
+    #[test]
+    fn sync_connection_error_http_formats_with_context_status_detail() {
+        let err = SyncConnectionError::Http {
+            context: "Accept invite".into(),
+            status: 404,
+            detail: "Invite not found or already used: expired".into(),
+        };
+        let s = err.to_string();
+        assert!(s.contains("Accept invite"), "missing context");
+        assert!(s.contains("404"), "missing status");
+        assert!(s.contains("Invite not found"), "missing detail");
+    }
+
+    #[test]
+    fn sync_connection_error_distinct_variants() {
+        // Pin that variants stay matchable — no collapsing into string bags.
+        fn _shape_check(e: SyncConnectionError) {
+            match e {
+                SyncConnectionError::Request(_) => {}
+                SyncConnectionError::Http { .. } => {}
+                SyncConnectionError::JsonParse { .. } => {}
+                SyncConnectionError::Validation(_) => {}
+                SyncConnectionError::RemoteApi(_) => {}
+            }
+        }
     }
 }
