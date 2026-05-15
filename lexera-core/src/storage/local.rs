@@ -4139,13 +4139,28 @@ impl BoardStorage for LocalStorage {
             if let Some(canonical_board) =
                 Self::board_from_crdt_if_semantically_equal(&state.board, crdt, &board_dir)
             {
-                log::info!(
-                    target: "lexera.storage.read_board",
-                    "Returning CRDT-aligned board source=crdt board_id={} state_kids={:?} returned_kids={:?}",
-                    board_id,
-                    board_kid_sample(&state.board, 6),
-                    board_kid_sample(&canonical_board, 6)
-                );
+                // Keep search docs in sync with the CRDT-aligned board.
+                // The kanban frontend receives the CRDT board via
+                // getBoardColumns, so search docs must be built from
+                // the same source — otherwise card kids and column
+                // indices diverge between dashboard results and the
+                // kanban DOM, causing focus to land on the wrong card.
+                let state_kids = board_kid_sample(&state.board, 6);
+                let crdt_kids = board_kid_sample(&canonical_board, 6);
+                if state_kids != crdt_kids {
+                    let new_search_docs = Self::build_search_documents(&canonical_board);
+                    let new_search_index = Self::build_search_index(&new_search_docs);
+                    state.board = canonical_board.clone();
+                    state.search_docs = new_search_docs;
+                    state.search_index = new_search_index;
+                    log::info!(
+                        target: "lexera.storage.read_board",
+                        "Synced state.board to CRDT-aligned board board_id={} old_kids={:?} new_kids={:?}",
+                        board_id,
+                        state_kids,
+                        crdt_kids
+                    );
+                }
                 return Some(canonical_board);
             }
         }
