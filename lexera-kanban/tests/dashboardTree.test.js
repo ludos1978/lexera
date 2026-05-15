@@ -315,3 +315,43 @@ describe('dashboard tree click → nav payload (temporal-section routing)', () =
     expect(payload.columnTitle).toBe('Backlog');
   });
 });
+
+describe('dashboardCardTitle', () => {
+  it('returns the first non-empty line', () => {
+    expect(DashboardTree.dashboardCardTitle('Hello world')).toBe('Hello world');
+  });
+
+  it('strips heading markers', () => {
+    expect(DashboardTree.dashboardCardTitle('# Sprint review')).toBe('Sprint review');
+    expect(DashboardTree.dashboardCardTitle('## Sprint review')).toBe('Sprint review');
+    expect(DashboardTree.dashboardCardTitle('### Sprint review')).toBe('Sprint review');
+  });
+
+  it('skips image-only first lines', () => {
+    expect(DashboardTree.dashboardCardTitle('![alt](img.png)\nReal title')).toBe('Real title');
+  });
+
+  it('strips hidden-internal tags', () => {
+    expect(DashboardTree.dashboardCardTitle('Card title #hidden-internal-archived')).toBe('Card title');
+  });
+
+  it('strips HTML comments', () => {
+    expect(DashboardTree.dashboardCardTitle('<!-- comment -->Title text')).toBe('Title text');
+  });
+
+  it('stops at the first empty line (card header boundary)', () => {
+    expect(DashboardTree.dashboardCardTitle('Title\n\nMore content')).toBe('Title');
+  });
+
+  it('returns (empty card) for empty content', () => {
+    expect(DashboardTree.dashboardCardTitle('')).toBe('(empty card)');
+    expect(DashboardTree.dashboardCardTitle(null)).toBe('(empty card)');
+  });
+
+  it('truncates long lines with ellipsis', () => {
+    var long = 'x'.repeat(70);
+    var result = DashboardTree.dashboardCardTitle(long);
+    expect(result.length).toBeLessThan(65);
+    expect(result.endsWith('...')).toBe(true);
+  });
+});

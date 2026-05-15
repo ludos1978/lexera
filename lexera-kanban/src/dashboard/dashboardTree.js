@@ -23,9 +23,24 @@
   }
 
   function dashboardCardTitle(content) {
-    var line = String(content || '').split('\n')[0].trim();
-    if (!line) return '(empty card)';
-    return line.length > 62 ? line.slice(0, 59) + '...' : line;
+    if (!content) return '(empty card)';
+    var lines = String(content).split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line) break;
+      // Skip image-only lines
+      if (/^!\[/.test(line)) continue;
+      // Strip HTML comments
+      line = line.replace(/<!--[\s\S]*?-->/g, '').trim();
+      // Strip hidden-internal tags (e.g. #hidden-internal-archived)
+      line = line.replace(/\s*#hidden-internal-\S+/g, '').trim();
+      if (!line) continue;
+      // Strip heading markers for display
+      var headingMatch = line.match(/^#{1,3}\s+(.+)/);
+      if (headingMatch) line = headingMatch[1].trim();
+      return line.length > 62 ? line.slice(0, 59) + '...' : line;
+    }
+    return '(empty card)';
   }
 
   function dashboardItemTitle(item) {
