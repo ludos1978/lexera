@@ -38,6 +38,31 @@ fn b64() -> base64::engine::general_purpose::GeneralPurpose {
     base64::engine::general_purpose::STANDARD
 }
 
+/// Typed error for the WS replication loop (`run_sync_client`).
+/// Display impls preserve the prior stringified shapes so callers
+/// that format via `{}` (log lines) read unchanged.
+#[derive(Debug, thiserror::Error)]
+pub(super) enum ReplicationError {
+    #[error("{}", _0)]
+    CrdtDisabled(String),
+    #[error("WebSocket connection failed: {} (check that the remote server is running and accessible)", _0)]
+    WsConnect(String),
+    #[error("Failed to serialize {}: {}", _0, _1)]
+    Serialize(String, String),
+    #[error("Send {} failed: {}", _0, _1)]
+    SendFailed(String, String),
+    #[error("WS read error: {}", _0)]
+    WsRead(String),
+    #[error("Parse error: {}", _0)]
+    Parse(String),
+}
+
+impl From<ReplicationError> for String {
+    fn from(err: ReplicationError) -> String {
+        err.to_string()
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_sync_client_with_reconnect(
     ws_url: String,
@@ -122,21 +147,16 @@ async fn run_sync_client(
     server_url: String,
     remote_board_id: String,
     auth_token: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), ReplicationError> {
     use tokio_tungstenite::tungstenite::Message;
 
     if !CrdtSyncStorage::crdt_sync_available(storage.as_ref()) {
-        return Err(CRDT_SYNC_DISABLED_MESSAGE.to_string());
+        return Err(ReplicationError::CrdtDisabled(CRDT_SYNC_DISABLED_MESSAGE.to_string()));
     }
 
     let (ws_stream, _) = tokio_tungstenite::connect_async(&ws_url)
         .await
-        .map_err(|e| {
-            format!(
-                "WebSocket connection failed: {} (check that the remote server is running and accessible)",
-                e
-            )
-        })?;
+        .map_err(|e| ReplicationError::WsConnect(e.to_string()))?;
 
     log::info!("[sync_client] Connected to {}", ws_url);
     let _ = event_tx.send(BoardChangeEvent::CollabConnectionChanged);
@@ -160,11 +180,11 @@ async fn run_sync_client(
         user_id,
         vv: String::new(),
     })
-    .map_err(|e| format!("Failed to serialize ClientHello: {}", e))?;
+    .map_err(|e| ReplicationError::Serialize("ClientHello".into(), e.to_string()))?;
     ws_tx
         .send(Message::Text(hello))
         .await
-        .map_err(|e| format!("Send ClientHello failed: {}", e))?;
+        .map_err(|e| ReplicationError::SendFailed("ClientHello".into(), e.to_string()))?;
 
     let mut event_rx = event_tx.subscribe();
     let mut last_sent_vv = match CrdtSyncStorage::get_crdt_vv(storage.as_ref(), &local_board_id) {
@@ -226,7 +246,7 @@ async fn run_sync_client(
             // ── Downstream: messages from remote backend ─────────────────
             maybe_msg = ws_rx.next() => {
                 let msg: Message = match maybe_msg {
-                    Some(msg) => msg.map_err(|e| format!("WS read error: {}", e))?,
+                    Some(msg) => msg.map_err(|e| ReplicationError::WsRead(e.to_string()))?,
                     None => {
                         log::info!("[sync_client] WS stream ended for {}", local_board_id);
                         break;
@@ -254,7 +274,7 @@ async fn run_sync_client(
                 };
 
                 let parsed: ServerMessage =
-                    serde_json::from_str(&text).map_err(|e| format!("Parse error: {}", e))?;
+                    serde_json::from_str(&text).map_err(|e| ReplicationError::Parse(e.to_string()))?;
 
                 match parsed {
                     ServerMessage::ServerHello {
@@ -577,11 +597,11 @@ async fn run_sync_client(
                         let msg = serde_json::to_string(&ClientMessage::ClientUpdate {
                             updates: b64().encode(&updates),
                         })
-                        .map_err(|e| format!("Failed to serialize ClientUpdate: {}", e))?;
+                        .map_err(|e| ReplicationError::Serialize("ClientUpdate".into(), e.to_string()))?;
                         ws_tx
                             .send(Message::Text(msg))
                         .await
-                        .map_err(|e| format!("Failed to send ClientUpdate: {}", e))?;
+                        .map_err(|e| ReplicationError::SendFailed("ClientUpdate".into(), e.to_string()))?;
                         if let Some(vv_after_send) =
                             CrdtSyncStorage::get_crdt_vv(storage.as_ref(), &local_board_id)
                         {
@@ -661,4 +681,63 @@ async fn run_sync_client(
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replication_error_ws_connect_preserves_wire_format() {
+        let err = ReplicationError::WsConnect("connection refused".into());
+        let s = err.to_string();
+        assert!(
+            s.contains("WebSocket connection failed"),
+            "missing context: {}",
+            s
+        );
+        assert!(s.contains("connection refused"), "missing detail: {}", s);
+        assert!(
+            s.contains("remote server is running"),
+            "missing hint: {}",
+            s
+        );
+    }
+
+    #[test]
+    fn replication_error_serialize_preserves_context() {
+        let err = ReplicationError::Serialize("ClientHello".into(), "unexpected eof".into());
+        let s = err.to_string();
+        assert!(s.contains("ClientHello"), "missing context: {}", s);
+        assert!(s.contains("unexpected eof"), "missing detail: {}", s);
+    }
+
+    #[test]
+    fn replication_error_crdt_disabled_carries_message() {
+        let err =
+            ReplicationError::CrdtDisabled("CRDT sync is disabled in this build".into());
+        assert!(err.to_string().contains("CRDT sync is disabled"));
+    }
+
+    #[test]
+    fn replication_error_from_for_string_uses_display() {
+        let err = ReplicationError::Parse("expected bracket".into());
+        let s: String = err.into();
+        assert!(s.contains("Parse error"));
+        assert!(s.contains("expected bracket"));
+    }
+
+    #[test]
+    fn replication_error_distinct_variants() {
+        fn _shape_check(e: ReplicationError) {
+            match e {
+                ReplicationError::CrdtDisabled(_) => {}
+                ReplicationError::WsConnect(_) => {}
+                ReplicationError::Serialize(_, _) => {}
+                ReplicationError::SendFailed(_, _) => {}
+                ReplicationError::WsRead(_) => {}
+                ReplicationError::Parse(_) => {}
+            }
+        }
+    }
 }
