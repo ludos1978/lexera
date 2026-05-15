@@ -139,8 +139,30 @@
   }
 
   function buildDashboardResultTreeNodes(items) {
+    // Same card may appear multiple times within a section when it matches
+    // multiple temporal tags or merged sub-queries. Dedupe before grouping.
+    var deduped = [];
+    var seen = new Set();
+    if (Array.isArray(items)) {
+      for (var di = 0; di < items.length; di++) {
+        var it = items[di];
+        if (!it) continue;
+        var bid = String(it.boardId || '').trim();
+        var ident = String(
+          it.cardKid || it.cardId || ('content:' + (it.cardContent || it.cardTitle || ''))
+        ).trim();
+        if (!ident) {
+          deduped.push(it);
+          continue;
+        }
+        var key = bid + '' + ident;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(it);
+      }
+    }
     return buildGroupedDashboardNodes(
-      items,
+      deduped,
       function (item) {
         var boardId = String(item.boardId || '').trim();
         return boardId || ('board-title:' + (String(item.boardTitle || 'Untitled').trim() || 'Untitled'));

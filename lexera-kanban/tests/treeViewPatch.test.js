@@ -141,6 +141,35 @@ describe('TreeView.patch', () => {
     expect(ids).toEqual(['a', 'c']);
   });
 
+  it('does not accumulate id-less entries across patches', () => {
+    // Regression: dashboard result tree nodes carry id:null, so the
+    // id-keyed cleanup loop in patchChildren ignores them. Without
+    // truncation, every patch prepended fresh copies in front of the
+    // old ones, doubling DOM entries each refresh.
+    const tv = loadTreeView();
+    const container = document.createElement('div');
+    const esc = (s) => s;
+
+    // Group with id (so patch enters the recursive path) wrapping
+    // three id-less leaf children, just like the dashboard render.
+    const buildNodes = () => [
+      makeNode('grp', 'Group', { children: [
+        makeLeaf(null, 'Leaf A'),
+        makeLeaf(null, 'Leaf B'),
+        makeLeaf(null, 'Leaf C')
+      ]})
+    ];
+
+    tv.render(container, buildNodes(), { escapeHtml: esc });
+    expect(container.querySelectorAll('.tree-children > .tree-entry').length).toBe(3);
+
+    tv.patch(container, buildNodes(), { escapeHtml: esc });
+    expect(container.querySelectorAll('.tree-children > .tree-entry').length).toBe(3);
+
+    tv.patch(container, buildNodes(), { escapeHtml: esc });
+    expect(container.querySelectorAll('.tree-children > .tree-entry').length).toBe(3);
+  });
+
   it('reorders nodes to match new data order', () => {
     const tv = loadTreeView();
     const container = document.createElement('div');

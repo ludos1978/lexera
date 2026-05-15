@@ -412,6 +412,15 @@ var TreeView = (function () {
         container.insertBefore(expected, current || null);
       }
     }
+    // Truncate any leftover stale entries. The id-keyed cleanup above
+    // only removes entries with data-tree-id; entries rendered from
+    // id-less nodes (e.g. dashboard result items have id:null) are
+    // invisible to existingMap, so on each patch the reorder loop
+    // prepends fresh copies in front of the old ones, doubling DOM
+    // entries every refresh. Drop everything past newEntries.length.
+    while (container.children.length > newEntries.length) {
+      container.removeChild(container.lastChild);
+    }
   }
 
   /**
