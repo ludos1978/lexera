@@ -786,6 +786,29 @@ impl LocalStorage {
         state.search_index = Self::build_search_index(&state.search_docs);
     }
 
+    /// Resolve the canonical board for a given state — the same board
+    /// `read_board()` returns to the kanban frontend.  When CRDT is
+    /// active and semantically equal, the CRDT-aligned board (with its
+    /// potentially different card ids/positions) is used.  Falls back
+    /// to `state.board` when CRDT is unavailable or diverged.
+    fn canonical_board_for_state(state: &BoardState) -> KanbanBoard {
+        let board_dir = state
+            .file_path
+            .parent()
+            .unwrap_or(Path::new("."));
+        state
+            .crdt
+            .as_ref()
+            .and_then(|crdt| {
+                Self::board_from_crdt_if_semantically_equal(
+                    &state.board,
+                    crdt,
+                    board_dir,
+                )
+            })
+            .unwrap_or_else(|| state.board.clone())
+    }
+
     fn ensure_board_state_crdt_loaded(
         &self,
         board_id: &str,
@@ -3855,8 +3878,11 @@ impl LocalStorage {
 
         for (board_id, state) in boards.iter() {
             let board_title = state.summary.title.as_str();
-            let candidates = Self::candidate_indices_for_prefilter(&state.search_index, &prefilter);
-            for (_, doc) in Self::iter_candidate_doc_indices(&state.search_docs, &candidates) {
+            let canonical_board = Self::canonical_board_for_state(state);
+            let search_docs = Self::build_search_documents(&canonical_board);
+            let search_index = Self::build_search_index(&search_docs);
+            let candidates = Self::candidate_indices_for_prefilter(&search_index, &prefilter);
+            for (_, doc) in Self::iter_candidate_doc_indices(&search_docs, &candidates) {
                 let search_doc = SearchDocument {
                     board_title,
                     column_title: &doc.column_title,
@@ -3945,15 +3971,18 @@ impl LocalStorage {
                 }
             }
             let board_title = state.summary.title.as_str();
+            let canonical_board = Self::canonical_board_for_state(state);
+            let search_docs = Self::build_search_documents(&canonical_board);
+            let search_index = Self::build_search_index(&search_docs);
             let mut cached_results: HashMap<usize, SearchResult> = HashMap::new();
             for query in &mut compiled {
                 if query.engine.is_empty() || query.prefilter.impossible {
                     continue;
                 }
                 let candidates =
-                    Self::candidate_indices_for_prefilter(&state.search_index, &query.prefilter);
+                    Self::candidate_indices_for_prefilter(&search_index, &query.prefilter);
                 for (doc_index, doc) in
-                    Self::iter_candidate_doc_indices(&state.search_docs, &candidates)
+                    Self::iter_candidate_doc_indices(&search_docs, &candidates)
                 {
                     let search_doc = SearchDocument {
                         board_title,
@@ -4016,7 +4045,11 @@ impl LocalStorage {
                 }
             }
             let board_title = state.summary.title.as_str();
-            for doc in &state.search_docs {
+            // Build search docs from the canonical board — same source
+            // the kanban DOM renders from.
+            let canonical_board = Self::canonical_board_for_state(state);
+            let search_docs = Self::build_search_documents(&canonical_board);
+            for doc in &search_docs {
                 if doc.meta.due_date.is_none() {
                     continue;
                 }
@@ -4139,28 +4172,13 @@ impl BoardStorage for LocalStorage {
             if let Some(canonical_board) =
                 Self::board_from_crdt_if_semantically_equal(&state.board, crdt, &board_dir)
             {
-                // Keep search docs in sync with the CRDT-aligned board.
-                // The kanban frontend receives the CRDT board via
-                // getBoardColumns, so search docs must be built from
-                // the same source — otherwise card kids and column
-                // indices diverge between dashboard results and the
-                // kanban DOM, causing focus to land on the wrong card.
-                let state_kids = board_kid_sample(&state.board, 6);
-                let crdt_kids = board_kid_sample(&canonical_board, 6);
-                if state_kids != crdt_kids {
-                    let new_search_docs = Self::build_search_documents(&canonical_board);
-                    let new_search_index = Self::build_search_index(&new_search_docs);
-                    state.board = canonical_board.clone();
-                    state.search_docs = new_search_docs;
-                    state.search_index = new_search_index;
-                    log::info!(
-                        target: "lexera.storage.read_board",
-                        "Synced state.board to CRDT-aligned board board_id={} old_kids={:?} new_kids={:?}",
-                        board_id,
-                        state_kids,
-                        crdt_kids
-                    );
-                }
+                log::info!(
+                    target: "lexera.storage.read_board",
+                    "Returning CRDT-aligned board source=crdt board_id={} state_kids={:?} returned_kids={:?}",
+                    board_id,
+                    board_kid_sample(&state.board, 6),
+                    board_kid_sample(&canonical_board, 6)
+                );
                 return Some(canonical_board);
             }
         }
