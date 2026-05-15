@@ -508,6 +508,13 @@ var LexeraKeyboardNavigation = (function () {
     clearSelection();
     unfocusCard();
     if (!cardEl) return;
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      window.lexeraLog('debug', '[card-id-debug] selectCard: kid=' +
+        (cardEl.getAttribute('data-card-kid') || 'null') +
+        ' id=' + (cardEl.getAttribute('data-card-id') || 'null') +
+        ' colIndex=' + (cardEl.getAttribute('data-col-index') || 'null') +
+        ' cardIndex=' + (cardEl.getAttribute('data-card-index') || 'null'));
+    }
     cardEl.classList.add('selected');
     selectedCardEls = [cardEl];
     focusedCardEl = cardEl;
