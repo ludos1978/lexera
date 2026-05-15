@@ -2157,8 +2157,8 @@ var LexeraDashboard = (function () {
     if (KeyboardNav) KeyboardNav.navigateCards(key);
   }
   function focusCard(cardEl) {
-    if (cardEl) {
-      console.log('[card-id-debug] kid=' +
+    if (cardEl && typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      window.lexeraLog('debug', '[card-id-debug] kid=' +
         (cardEl.getAttribute('data-card-kid') || 'null') +
         ' id=' + (cardEl.getAttribute('data-card-id') || 'null') +
         ' colIndex=' + (cardEl.getAttribute('data-col-index') || 'null') +

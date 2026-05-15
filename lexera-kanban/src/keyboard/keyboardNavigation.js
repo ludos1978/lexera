@@ -469,11 +469,13 @@ var LexeraKeyboardNavigation = (function () {
 
   function focusCard(cardEl) {
     if (!cardEl) return;
-    console.log('[card-id-debug] kid=' +
-      (cardEl.getAttribute('data-card-kid') || 'null') +
-      ' id=' + (cardEl.getAttribute('data-card-id') || 'null') +
-      ' colIndex=' + (cardEl.getAttribute('data-col-index') || 'null') +
-      ' cardIndex=' + (cardEl.getAttribute('data-card-index') || 'null'));
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      window.lexeraLog('debug', '[card-id-debug] kid=' +
+        (cardEl.getAttribute('data-card-kid') || 'null') +
+        ' id=' + (cardEl.getAttribute('data-card-id') || 'null') +
+        ' colIndex=' + (cardEl.getAttribute('data-col-index') || 'null') +
+        ' cardIndex=' + (cardEl.getAttribute('data-card-index') || 'null'));
+    }
     unfocusCard();
     focusedCardEl = cardEl;
     cardEl.classList.add('focused');
