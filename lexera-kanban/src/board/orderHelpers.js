@@ -870,6 +870,19 @@ var LexeraOrderHelpers = (function () {
                   domSampleCardIndices: domSampleCardIndices,
                   hasFindFn: typeof _deps.findBoardEntityElement === 'function'
                 }));
+              // Debug: log the found card's actual DOM attributes vs target
+              if (el) {
+                try {
+                  var _fKid = el.getAttribute('data-card-kid');
+                  var _fId = el.getAttribute('data-card-id');
+                  var _fColIdx = el.getAttribute('data-col-index');
+                  var _fCardIdx = el.getAttribute('data-card-index');
+                  // Get the card's visible title from the DOM
+                  var _fTitleEl = el.querySelector('.card-title, .card-header-title, [data-card-title]');
+                  var _fTitle = _fTitleEl ? _fTitleEl.textContent : '(no title el)';
+                  window.lexeraLog('debug', '[dashboard-overdue-debug] found-card DOM: kid=' + _fKid + ' id=' + _fId + ' colIndex=' + _fColIdx + ' cardIndex=' + _fCardIdx + ' title="' + _fTitle + '"');
+                } catch (_) {}
+              }
             } catch (_) { /* non-fatal */ }
           }
           if (el) {
@@ -2750,11 +2763,36 @@ var LexeraOrderHelpers = (function () {
     var cacheKey = options._cacheKey || null;
     if (cacheKey) {
       var rawFp = _dashboardFingerprint(items, emptyText + '|' + (options.collapseWhenEmpty ? '1' : '0'));
-      if (_dashboardCacheHit(cacheKey, rawFp)) return;
+      if (_dashboardCacheHit(cacheKey, rawFp)) {
+        if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function' && cacheKey === 'overdue') {
+          try { window.lexeraLog('debug', '[dashboard-overdue-debug] renderDashboardResultItems CACHE HIT for overdue, fp=' + rawFp); } catch (_) {}
+        }
+        return;
+      }
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function' && cacheKey === 'overdue') {
+        try { window.lexeraLog('debug', '[dashboard-overdue-debug] renderDashboardResultItems CACHE MISS for overdue, fp=' + rawFp + ' items=' + (items ? items.length : 0)); } catch (_) {}
+      }
+    }
+    var treeNodes = _callDep('getDashboardTreeApi').buildDashboardResultTreeNodes(items);
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function' && cacheKey === 'overdue') {
+      try {
+        var _tnSamples = [];
+        if (Array.isArray(treeNodes)) {
+          for (var _gi = 0; _gi < treeNodes.length && _gi < 2; _gi++) {
+            var _grp = treeNodes[_gi];
+            if (!_grp || !Array.isArray(_grp.children)) continue;
+            for (var _ci = 0; _ci < _grp.children.length && _ci < 3; _ci++) {
+              var _ch = _grp.children[_ci];
+              _tnSamples.push({ label: _ch.label, cardKid: _ch.attrs && _ch.attrs['data-dashboard-card-kid'], cardId: _ch.attrs && _ch.attrs['data-dashboard-card-id'], columnIndex: _ch.attrs && _ch.attrs['data-dashboard-column-index'], cardIndex: _ch.attrs && _ch.attrs['data-dashboard-card-index'] });
+            }
+          }
+        }
+        window.lexeraLog('debug', '[dashboard-overdue-debug] treeNodes built: groups=' + (treeNodes ? treeNodes.length : 0) + ' samples=' + JSON.stringify(_tnSamples));
+      } catch (_) {}
     }
     renderDashboardTreeItems(
       targetEl,
-      _callDep('getDashboardTreeApi').buildDashboardResultTreeNodes(items),
+      treeNodes,
       emptyText,
       { collapseWhenEmpty: options.collapseWhenEmpty }
     );
@@ -2814,6 +2852,20 @@ var LexeraOrderHelpers = (function () {
     var scope = dashboardState && typeof dashboardState.scope === 'string' ? dashboardState.scope : 'all';
     var activeBoardId = _dep('activeBoardId') || '';
     try {
+      // Debug: log mirror HTML snippet for overdue list
+      if (typeof window.lexeraLog === 'function' && lists['dashboard-overdue-list']) {
+        try {
+          var _odHtml = String(lists['dashboard-overdue-list'] || '');
+          var _odKids = [];
+          var _kidRe = /data-dashboard-card-kid="([^"]+)"/g;
+          var _m;
+          while ((_m = _kidRe.exec(_odHtml)) !== null) _odKids.push(_m[1]);
+          var _odLabels = [];
+          var _lblRe = /<span class="tree-label">([^<]*)<\/span>/g;
+          while ((_m = _lblRe.exec(_odHtml)) !== null) _odLabels.push(_m[1]);
+          window.lexeraLog('debug', '[dashboard-overdue-debug] mirror broadcast overdue: kids=' + JSON.stringify(_odKids) + ' labels=' + JSON.stringify(_odLabels.slice(0, 5)));
+        } catch (_) {}
+      }
       window.__TAURI__.core.invoke('multiview_broadcast', {
         event: 'dashboard-mirror-update',
         payload: { lists: lists, loading: loading, query: query, scope: scope, activeBoardId: activeBoardId }
@@ -3033,6 +3085,14 @@ var LexeraOrderHelpers = (function () {
         var extractTotal = function (g) { return (g && g.total != null) ? g.total : (Array.isArray(g) ? g.length : ((g && g.items) || []).length); };
         dashboardState.overdue = limitedSearchResults(filterDashboardResultsByScope(extractGroup(groups.overdue)), 40);
         dashboardState.overdueTotal = extractTotal(groups.overdue);
+        if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+          try {
+            var _odSamples = (dashboardState.overdue || []).slice(0, 5).map(function (it) {
+              return { cardKid: it.cardKid, cardId: it.cardId, cardContent: String(it.cardContent || '').split('\n')[0], columnIndex: it.columnIndex, cardIndex: it.cardIndex };
+            });
+            window.lexeraLog('debug', '[dashboard-overdue-debug] backend groups overdue: count=' + (dashboardState.overdue || []).length + ' samples=' + JSON.stringify(_odSamples));
+          } catch (_) {}
+        }
         dashboardState.today = limitedSearchResults(filterDashboardResultsByScope(extractGroup(groups.today)), 40);
         dashboardState.todayTotal = extractTotal(groups.today);
         dashboardState.thisWeek = limitedSearchResults(filterDashboardResultsByScope(extractGroup(groups.thisWeek)), 40);
@@ -3390,6 +3450,13 @@ var LexeraOrderHelpers = (function () {
     _listen('dashboard-navigate', function (event) {
       var payload = event && event.payload;
       if (!payload || !payload.nav || !payload.nav.boardId) return;
+      // Debug: log the full nav target arriving from dashboard sub-app
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        try {
+          window.lexeraLog('debug', '[dashboard-overdue-debug] shell received dashboard-navigate: ' +
+            JSON.stringify({ target: payload.target, cardKid: payload.nav.cardKid, cardId: payload.nav.cardId, columnIndex: payload.nav.columnIndex, cardIndex: payload.nav.cardIndex, columnTitle: payload.nav.columnTitle }));
+        } catch (_) {}
+      }
       try {
         var shell = _dep('WorkspaceShell');
         if (_dep('workspaceShellEnabled') && shell && typeof shell.focusHierarchyTarget === 'function') {

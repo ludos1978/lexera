@@ -280,6 +280,17 @@
       if (target === 'context' || target === 'tag' || target === 'board' || target === 'group' || target === 'broken-group') return;
       var navTarget = buildNavTargetFromNode(node);
       if (!navTarget) return;
+      // Debug: log the node's visible label text alongside nav data
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        try {
+          var _labelEl = node.querySelector(':scope > .tree-label');
+          var _visibleLabel = _labelEl ? _labelEl.textContent : '(no label)';
+          window.lexeraLog('debug', '[dashboard-overdue-debug] click: visibleLabel="' + _visibleLabel + '"' +
+            ' cardKid=' + navTarget.cardKid + ' cardId=' + navTarget.cardId +
+            ' columnIndex=' + navTarget.columnIndex + ' cardIndex=' + navTarget.cardIndex +
+            ' columnTitle=' + navTarget.columnTitle);
+        } catch (_) {}
+      }
       LexeraSubApp.broadcast('dashboard-navigate', {
         target: target || 'result',
         nav: navTarget
