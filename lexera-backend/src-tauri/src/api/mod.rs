@@ -153,6 +153,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             axum::routing::post(board::create_board_crashsave),
         )
         .route(
+            "/boards/{board_id}/resolve-merge",
+            axum::routing::post(board::resolve_merge),
+        )
+        .route(
             "/boards/{board_id}/rebase",
             axum::routing::post(board::rebase_board_with_base),
         )

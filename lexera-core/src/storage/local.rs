@@ -2181,7 +2181,14 @@ impl LocalStorage {
                 })?;
                 let mr = outcome.artifact;
                 if !mr.conflicts.is_empty() {
-                    let crashsave = self
+                    // Data-safety: never fail the save and never silently
+                    // drop a side. Persist the auto-merged board (current-
+                    // biased, conflicting cards keep current's value), keep
+                    // the user's incoming draft in a crashsave, and surface
+                    // the conflicts in the WriteResult so the frontend can
+                    // open the merge view and POST a resolution. Nothing is
+                    // lost; the save still succeeds.
+                    let _ = self
                         .write_crashsave_for_file(
                             &file_path,
                             &ensured,
@@ -2189,22 +2196,19 @@ impl LocalStorage {
                         )
                         .ok();
                     log::warn!(
-                        "[lexera.storage.merge] {} unresolved conflicts during non-CRDT save on board {}",
+                        "[lexera.storage.merge] {} unresolved conflicts during non-CRDT save on board {} — persisted auto-merge, surfaced for merge view",
                         mr.conflicts.len(),
                         board_id
                     );
-                    return Err(StorageError::ConflictDetected {
-                        board_id: board_id.to_string(),
-                        conflicts: mr.conflicts.len(),
-                        merge_result: Box::new(mr),
-                        crashsave,
-                    });
+                    let merged = Self::normalize_board_for_write(&mr.board, &board_dir);
+                    (merged, None, Some(mr))
+                } else {
+                    (
+                        Self::normalize_board_for_write(&mr.board, &board_dir),
+                        None,
+                        None,
+                    )
                 }
-                (
-                    Self::normalize_board_for_write(&mr.board, &board_dir),
-                    None,
-                    None,
-                )
             } else {
                 (
                     Self::normalize_board_for_write(&ensured, &board_dir),

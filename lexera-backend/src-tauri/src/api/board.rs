@@ -113,6 +113,18 @@ pub struct CrashsaveBoardBody {
 }
 
 #[derive(Deserialize)]
+pub struct ResolveMergeBody {
+    /// The base the client merged from (same one it sent on the
+    /// conflicting save).
+    #[serde(rename = "baseBoard")]
+    base_board: lexera_core::types::KanbanBoard,
+    /// The client's draft ("ours") at conflict time.
+    incoming: lexera_core::types::KanbanBoard,
+    /// The user's decision from the merge view.
+    resolution: lexera_core::merge::resolution::MergeResolution,
+}
+
+#[derive(Deserialize)]
 pub struct BoardChangesQuery {
     since_generation: u64,
 }
@@ -402,6 +414,98 @@ pub async fn write_board(
     if let Some(ref redirected) = write_result.redirected_path {
         response["redirectedPath"] =
             serde_json::Value::String(redirected.to_string_lossy().to_string());
+    }
+    Ok(Json(response))
+}
+
+/// POST /boards/{board_id}/resolve-merge -- apply the user's merge-view
+/// decision for a non-CRDT conflicting save.
+///
+/// `current` is whatever is on disk now (the auto-merged board the
+/// conflicting save persisted). The same three sides the frontend saw are
+/// re-merged to recover the conflict set, then the user's
+/// [`MergeResolution`] is applied. For the conflict-file-backup strategy
+/// the discarded side is written to `{stem}-conflict-{ts}.md` first so no
+/// data is ever lost; the kept side is then persisted.
+pub async fn resolve_merge(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Json(body): Json<ResolveMergeBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
+    use lexera_core::merge::resolution::apply_resolution;
+    use lexera_core::storage::merge_engine::{
+        CardIdentityMergeEngine, MergeEngine, MergeRequest,
+    };
+
+    let current = state
+        .storage
+        .read_board(&board_id)
+        .ok_or_else(|| err_not_found(format!("Board not found: {}", board_id)))?;
+
+    let outcome = CardIdentityMergeEngine
+        .merge_from_base(MergeRequest {
+            board_id: &board_id,
+            base: &body.base_board,
+            current: &current,
+            incoming: &body.incoming,
+        })
+        .map_err(|e| {
+            storage_error_response(
+                e,
+                "lexera.api.resolve_merge",
+                format!("Merge recompute failed for board {}", board_id),
+            )
+        })?;
+    let mr = outcome.artifact;
+
+    let resolved = apply_resolution(
+        &body.base_board,
+        &current,
+        &body.incoming,
+        &mr.board,
+        &mr.conflicts,
+        &body.resolution,
+    );
+
+    let mut conflict_backup_path: Option<String> = None;
+    if let Some(losing) = resolved.backup {
+        if let Some(board_path) = state.storage.get_board_path(&board_id) {
+            let md = lexera_core::parser::generate_markdown(&losing);
+            match lexera_core::storage::backup::BackupManager::create_conflict_backup(
+                &board_path,
+                &md,
+            ) {
+                Ok(entry) => {
+                    conflict_backup_path = Some(entry.path.to_string_lossy().to_string())
+                }
+                Err(e) => log_api_issue(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "lexera.api.resolve_merge",
+                    format!("Conflict backup write failed for board {}: {}", board_id, e),
+                ),
+            }
+        }
+    }
+
+    let write_result = state
+        .storage
+        .write_board(&board_id, &resolved.board)
+        .map_err(|e| {
+            storage_error_response(
+                e,
+                "lexera.api.resolve_merge",
+                format!("Failed to persist resolved board {}", board_id),
+            )
+        })?;
+    emit_main_file_changed(&state, &board_id);
+    broadcast_crdt_to_sync_hub(&state, &board_id).await;
+
+    let mut response =
+        build_write_board_response(&state, &board_id, write_result.merge_result, &resolved.board);
+    response["resolved"] = serde_json::Value::Bool(true);
+    if let Some(p) = conflict_backup_path {
+        response["conflictBackupPath"] = serde_json::Value::String(p);
     }
     Ok(Json(response))
 }
@@ -904,6 +1008,12 @@ fn build_write_board_response(
             "autoMerged": merge_result.auto_merged,
             "conflicts": merge_result.conflicts.len(),
             "hasConflicts": has_conflicts,
+            // Structured per-card conflicts + offered strategies so the
+            // frontend can open the non-CRDT merge view and POST a
+            // resolution to /boards/{id}/resolve-merge. Empty when there
+            // are no conflicts (CRDT auto-merge / clean save).
+            "mergeConflicts": merge_result.conflicts,
+            "mergeStrategies": lexera_core::merge::resolution::MergeProposal::default_strategies(),
             "board": saved_board,
             "version": version,
             "revision": revision,
@@ -1476,6 +1586,68 @@ kanban-plugin: board
         );
         assert!(col_a_cards.contains(&"card-a1"), "existing cards preserved");
         assert!(col_a_cards.contains(&"card-a2"), "existing cards preserved");
+    }
+
+    #[tokio::test]
+    async fn resolve_merge_conflict_file_backup_keeps_ours_and_backs_up_current() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) =
+            add_new_format_board(tmp.path(), "resolve-merge.md").await;
+        let token = register_test_user(&state);
+
+        // Client draft adds a card; user chose ConflictFileBackup keeping
+        // "ours" (incoming) — current is written to a conflict backup.
+        let mut incoming = base.clone();
+        incoming.rows[0].stacks[0].columns[0]
+            .cards
+            .push(lexera_core::types::KanbanCard {
+                id: "r".into(),
+                content: "resolved-card".into(),
+                checked: false,
+                kid: Some("kid-resolved".into()),
+                params: HashMap::new(),
+            });
+
+        let body = serde_json::json!({
+            "baseBoard": base,
+            "incoming": incoming,
+            "resolution": {
+                "boardId": board_id,
+                "strategy": "conflict-file-backup",
+                "backupKeep": "ours",
+            },
+        });
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/boards/{}/resolve-merge", board_id))
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["resolved"], serde_json::Value::Bool(true));
+        assert!(
+            json["conflictBackupPath"].is_string(),
+            "discarded side must be backed up: {json}"
+        );
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let col_a: Vec<&str> = saved.rows[0].stacks[0].columns[0]
+            .cards
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect();
+        assert!(
+            col_a.contains(&"resolved-card"),
+            "kept side (ours) must be persisted: {col_a:?}"
+        );
     }
 
     #[tokio::test]
