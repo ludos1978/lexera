@@ -6070,6 +6070,10 @@ kanban-plugin: board
         ours.all_columns_mut()[0].cards[0].content = "Buy groceries from local".to_string();
 
         let result = storage.write_board_from_base(&id, &base, &ours);
+
+        // CRDT path: a same-card edit conflict blocks the save and returns
+        // ConflictDetected + a crashsave of the user draft.
+        #[cfg(feature = "crdt")]
         match result {
             Err(StorageError::ConflictDetected {
                 conflicts,
@@ -6087,6 +6091,22 @@ kanban-plugin: board
             other => panic!("expected conflict with crashsave, got {:?}", other),
         }
 
+        // Non-CRDT path (markdown-only): the save never fails and never
+        // drops data — the current-biased auto-merge is persisted, the
+        // user draft is kept in a crashsave, and the conflict is surfaced
+        // in WriteResult.merge_result for the merge view.
+        #[cfg(not(feature = "crdt"))]
+        {
+            let write_result =
+                result.expect("non-CRDT conflicting save persists the auto-merge, never errors");
+            let mr = write_result
+                .merge_result
+                .expect("conflicts must be surfaced in merge_result");
+            assert_eq!(mr.conflicts.len(), 1);
+        }
+
+        // Both paths keep the on-disk ("remote"/current) value — the
+        // user's draft is never silently lost.
         let persisted = storage.read_board(&id).unwrap();
         assert_eq!(
             persisted.all_columns()[0].cards[0].content,
