@@ -223,9 +223,14 @@ fn write_column_cards(markdown: &mut String, column: &KanbanColumn) {
     }
 
     for task in &column.cards {
-        let normalized = card_identity::strip_kid(&task.content)
+        let stripped = card_identity::strip_kid(&task.content)
             .replace("\r\n", "\n")
             .replace('\r', "\n");
+        // No-op with the `crdt` feature on (markdown stays marker-free);
+        // re-attaches the kid marker when CRDT is compiled out so card
+        // identity survives the file round-trip for the non-CRDT merge.
+        let normalized =
+            card_identity::persist_kid_for_markdown(&stripped, task.kid.as_deref());
         let content_lines: Vec<&str> = normalized.split('\n').collect();
         let summary = content_lines.first().copied().unwrap_or("");
 
@@ -437,13 +442,32 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn test_generate_markdown_does_not_write_kid_marker() {
+        // CRDT on: identity lives in the CRDT snapshot, markdown stays
+        // marker-free (byte-identical to legacy output).
         let board = parse_markdown(
             "---\nkanban-plugin: board\n---\n\n## Todo\n- [ ] Task <!-- kid:a1b2c3d4 -->\n",
         );
         let regenerated = generate_markdown(&board);
         assert!(regenerated.contains("- [ ] Task\n"));
         assert!(!regenerated.contains("<!-- kid:"));
+    }
+
+    #[test]
+    #[cfg(not(feature = "crdt"))]
+    fn test_generate_markdown_persists_kid_marker_without_crdt() {
+        // CRDT off: the inline marker is the only place identity survives
+        // a file round-trip, so it must be written and round-trip stably.
+        let board = parse_markdown(
+            "---\nkanban-plugin: board\n---\n\n## Todo\n- [ ] Task <!-- kid:a1b2c3d4 -->\n",
+        );
+        let regenerated = generate_markdown(&board);
+        assert!(regenerated.contains("<!-- kid:a1b2c3d4 -->"));
+        let reparsed = parse_markdown(&regenerated);
+        let cols = reparsed.all_columns();
+        assert_eq!(cols[0].cards[0].content, "Task");
+        assert_eq!(cols[0].cards[0].kid, Some("a1b2c3d4".to_string()));
     }
 
     #[test]

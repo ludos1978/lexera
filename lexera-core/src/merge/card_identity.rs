@@ -92,6 +92,26 @@ pub fn ensure_kid(content: &str) -> (String, String) {
     (strip_kid(content), resolve_kid(content, None))
 }
 
+/// Re-attach the kid marker to (already kid-stripped) `content`'s first
+/// line **only when the `crdt` feature is disabled**.
+///
+/// With CRDT enabled, the CRDT snapshot is the source of card identity and
+/// the markdown stays marker-free (output is byte-identical to before this
+/// existed — the `test_generate_markdown_does_not_write_kid_marker`
+/// contract). With CRDT disabled there is no snapshot, so the inline
+/// marker is the only way a card's identity survives a round-trip through
+/// the file (or an external editor / mobile capture) — without it the
+/// non-CRDT card-identity merge has nothing stable to merge on.
+pub fn persist_kid_for_markdown(content: &str, kid: Option<&str>) -> String {
+    #[cfg(not(feature = "crdt"))]
+    if let Some(k) = kid.filter(|k| !k.is_empty()) {
+        return inject_kid(content, k);
+    }
+    #[cfg(feature = "crdt")]
+    let _ = kid;
+    content.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

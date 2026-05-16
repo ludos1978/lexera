@@ -113,7 +113,14 @@ pub fn generate_slides(cards: &[KanbanCard]) -> String {
 
     let mut output = String::new();
     for (i, card) in cards.iter().enumerate() {
-        output.push_str(&card_identity::strip_kid(&card.content));
+        let stripped = card_identity::strip_kid(&card.content);
+        // Marker-free with CRDT on; kid re-attached to the slide's first
+        // line when CRDT is compiled out so included-file cards keep a
+        // stable identity across reloads / external edits.
+        output.push_str(&card_identity::persist_kid_for_markdown(
+            &stripped,
+            card.kid.as_deref(),
+        ));
         if i < cards.len() - 1 {
             output.push_str("\n\n---\n\n");
         }
