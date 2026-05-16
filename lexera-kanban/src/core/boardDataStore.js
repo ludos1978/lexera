@@ -670,7 +670,17 @@ var LexeraBoardDataStore = (function () {
           // REST save succeeded even if the live session cannot be refreshed.
         }
         if (result && result.hasConflicts) {
-          dep('showConflictDialog')(result.conflicts, result.autoMerged);
+          // Non-CRDT save returns structured per-card conflicts → rich
+          // merge view; CRDT-path conflicts only carry a count → generic
+          // dialog. `showMergeView` is optional (not wired in every
+          // init site, e.g. test/embedded), so resolve it defensively;
+          // `showConflictDialog` is always wired wherever save runs.
+          var _showMerge = null;
+          if (result.mergeConflicts && result.mergeConflicts.length) {
+            try { _showMerge = dep('showMergeView'); } catch (_) { _showMerge = null; }
+          }
+          if (_showMerge) _showMerge(result);
+          else dep('showConflictDialog')(result.conflicts, result.autoMerged);
         } else if (result && result.merged && result.autoMerged > 0) {
           dep('showNotification')('Auto-merged ' + result.autoMerged + ' change(s) with server version');
         }

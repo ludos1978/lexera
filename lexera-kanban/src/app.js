@@ -3185,6 +3185,7 @@ var LexeraDashboard = (function () {
     showConfirmDialog: function (msg) { return showConfirmDialog(msg); },
     showExternalRebaseConflictDialog: function (r) { showExternalRebaseConflictDialog(r); },
     showConflictDialog: function (conflicts, autoMerged) { showConflictDialog(conflicts, autoMerged); },
+    showMergeView: function (result) { showMergeView(result); },
     setLastSaveTime: function (t) { lastSaveTime = t; },
     isActiveRemoteBoard: function () { return isActiveRemoteBoard(); },
     isRemoteBoardId: function (id) { return isRemoteBoardId(id); },
@@ -6260,6 +6261,32 @@ var LexeraDashboard = (function () {
       if (action === 'overwrite') {
         await overwriteBoardWithLocalDraft('merge-conflict-dialog');
       }
+    });
+  }
+
+  // Non-CRDT save conflict → rich merge view (per-card 3-way or
+  // conflict-file backup). Falls back to the generic conflict dialog when
+  // the merge-view module or structured conflicts are unavailable (e.g.
+  // CRDT-path conflicts that only report a count).
+  function showMergeView(result) {
+    var conflicts = result && result.mergeConflicts;
+    if (!conflicts || !conflicts.length || typeof window === 'undefined' || !window.LexeraMergeView) {
+      showConflictDialog(result && result.conflicts, result && result.autoMerged);
+      return;
+    }
+    var incoming = getFullBoardData();
+    var base = null;
+    try { base = getBoardSaveBase(incoming); } catch (_) { base = null; }
+    window.LexeraMergeView.open({
+      boardId: activeBoardId,
+      conflicts: conflicts,
+      strategies: result.mergeStrategies || ['card-identity-three-way', 'conflict-file-backup'],
+      baseBoard: base,
+      incoming: incoming,
+      api: LexeraApi,
+      log: function (level, area, msg, data) { lexeraLog(level, area, msg, data); },
+      notify: function (msg) { showNotification(msg); },
+      reload: function () { loadBoard(activeBoardId); }
     });
   }
 

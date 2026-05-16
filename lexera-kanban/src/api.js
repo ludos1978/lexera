@@ -805,6 +805,20 @@ var LexeraApi = (function () {
     });
   }
 
+  // Apply a user's merge-view decision for a non-CRDT conflicting save.
+  // `resolution` is the MergeResolution payload built by LexeraMergeView.
+  async function resolveMerge(boardId, baseBoardData, incomingBoardData, resolution) {
+    return request('/boards/' + boardId + '/resolve-merge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseBoard: baseBoardData,
+        incoming: incomingBoardData,
+        resolution: resolution,
+      }),
+    });
+  }
+
   async function createBoardCrashsave(boardId, boardData, reason) {
     return request('/boards/' + boardId + '/crashsave', {
       method: 'POST',
@@ -1734,7 +1748,7 @@ var LexeraApi = (function () {
   }
 
   return {
-    discover, request, getBoards, getBoardHierarchy, getBoardHierarchyCached, getBoardChanges, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
+    discover, request, getBoards, getBoardHierarchy, getBoardHierarchyCached, getBoardChanges, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, resolveMerge, createBoardCrashsave,
     probeExternalEmbed,
     openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search, getCalendarTasks, getDashboardData,
     checkStatus, getBackendStatus, getBackendCapabilities, isCrdtSyncAvailable, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, fileInfoBatch, uploadMedia, addBoard, removeBoard,
