@@ -40,6 +40,18 @@ pub enum CardChange {
     },
 }
 
+impl CardChange {
+    /// The kid of the card this change concerns.
+    pub fn kid(&self) -> &str {
+        match self {
+            CardChange::Added { kid, .. }
+            | CardChange::Removed { kid, .. }
+            | CardChange::Modified { kid, .. }
+            | CardChange::Moved { kid, .. } => kid,
+        }
+    }
+}
+
 /// Snapshot of a card's state for comparison.
 #[derive(Debug, Clone)]
 pub struct CardSnapshot {
@@ -147,6 +159,113 @@ pub fn diff_boards(old_board: &KanbanBoard, new_board: &KanbanBoard) -> Vec<Card
     }
 
     changes
+}
+
+/// Locate the `(column_index, card_index)` of a card by kid across all
+/// columns (rows→stacks→columns flattened, or legacy flat columns).
+fn locate_card_by_kid(board: &KanbanBoard, kid: &str) -> Option<(usize, usize)> {
+    for (ci, col) in board.all_columns().iter().enumerate() {
+        for (ki, card) in col.cards.iter().enumerate() {
+            let card_kid = card
+                .kid
+                .clone()
+                .unwrap_or_else(|| card_identity::extract_kid(&card.content).unwrap_or_default());
+            if !card_kid.is_empty() && card_kid == kid {
+                return Some((ci, ki));
+            }
+        }
+    }
+    None
+}
+
+/// Pick a destination column index: prefer matching `id`, then `title`,
+/// then fall back to the first column. Returns `None` only for a board
+/// with no columns at all.
+fn resolve_target_column(board: &KanbanBoard, column_id: &str, column_title: &str) -> Option<usize> {
+    let cols = board.all_columns();
+    if cols.is_empty() {
+        return None;
+    }
+    if let Some(idx) = cols.iter().position(|c| c.id == column_id) {
+        return Some(idx);
+    }
+    if let Some(idx) = cols.iter().position(|c| c.title == column_title) {
+        return Some(idx);
+    }
+    Some(0)
+}
+
+/// Apply a single [`CardChange`] onto `board` in place, identifying cards
+/// by kid. Returns `true` when the change was applied, `false` when it was
+/// a no-op (target missing / nothing to do). This is the building block of
+/// the non-CRDT card-identity 3-way merge: changes from one source are
+/// replayed onto the other source's board.
+pub fn apply_change(board: &mut KanbanBoard, change: &CardChange) -> bool {
+    match change {
+        CardChange::Added {
+            kid,
+            column_id,
+            column_title,
+            card,
+        } => {
+            if locate_card_by_kid(board, kid).is_some() {
+                return false; // already present — caller decides conflict
+            }
+            let Some(target) = resolve_target_column(board, column_id, column_title) else {
+                return false;
+            };
+            let mut new_card = card.clone();
+            new_card.kid = Some(kid.clone());
+            let mut cols = board.all_columns_mut();
+            cols[target].cards.push(new_card);
+            true
+        }
+        CardChange::Removed { kid, .. } => {
+            let Some((ci, ki)) = locate_card_by_kid(board, kid) else {
+                return false;
+            };
+            let mut cols = board.all_columns_mut();
+            cols[ci].cards.remove(ki);
+            true
+        }
+        CardChange::Modified {
+            kid,
+            new_content,
+            new_checked,
+            new_params,
+            ..
+        } => {
+            let Some((ci, ki)) = locate_card_by_kid(board, kid) else {
+                return false;
+            };
+            let mut cols = board.all_columns_mut();
+            let card = &mut cols[ci].cards[ki];
+            card.content = new_content.clone();
+            card.checked = *new_checked;
+            card.params = new_params.clone();
+            true
+        }
+        CardChange::Moved {
+            kid,
+            new_column_id,
+            new_column,
+            ..
+        } => {
+            let Some((ci, ki)) = locate_card_by_kid(board, kid) else {
+                return false;
+            };
+            let Some(target) = resolve_target_column(board, new_column_id, new_column) else {
+                return false;
+            };
+            if target == ci {
+                return false;
+            }
+            let mut cols = board.all_columns_mut();
+            let card = cols[ci].cards.remove(ki);
+            cols[target].cards.push(card);
+            true
+        }
+    }
 }
 
 #[cfg(test)]
