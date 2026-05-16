@@ -14,6 +14,10 @@ pub enum CardChange {
         column_id: String,
         column_title: String,
         card: KanbanCard,
+        /// Index of the card within its target column, so a replay can
+        /// restore the exact placement (not just append). Clamped to the
+        /// column length on apply.
+        position: usize,
     },
     Removed {
         kid: String,
@@ -37,6 +41,9 @@ pub enum CardChange {
         old_column: String,
         new_column_id: String,
         new_column: String,
+        /// Index of the card within the destination column after the
+        /// move, so the replay preserves order. Clamped on apply.
+        position: usize,
     },
 }
 
@@ -117,6 +124,7 @@ pub fn diff_boards(old_board: &KanbanBoard, new_board: &KanbanBoard) -> Vec<Card
                         old_column: old_card.column_title.clone(),
                         new_column_id: new_card.column_id.clone(),
                         new_column: new_card.column_title.clone(),
+                        position: new_card.position,
                     });
                 }
                 if old_card.content != new_card.content
@@ -154,6 +162,7 @@ pub fn diff_boards(old_board: &KanbanBoard, new_board: &KanbanBoard) -> Vec<Card
                     kid: Some(kid.clone()),
                     params: new_card.params.clone(),
                 },
+                position: new_card.position,
             });
         }
     }
@@ -207,6 +216,7 @@ pub fn apply_change(board: &mut KanbanBoard, change: &CardChange) -> bool {
             column_id,
             column_title,
             card,
+            position,
         } => {
             if locate_card_by_kid(board, kid).is_some() {
                 return false; // already present — caller decides conflict
@@ -217,7 +227,8 @@ pub fn apply_change(board: &mut KanbanBoard, change: &CardChange) -> bool {
             let mut new_card = card.clone();
             new_card.kid = Some(kid.clone());
             let mut cols = board.all_columns_mut();
-            cols[target].cards.push(new_card);
+            let at = (*position).min(cols[target].cards.len());
+            cols[target].cards.insert(at, new_card);
             true
         }
         CardChange::Removed { kid, .. } => {
@@ -249,6 +260,7 @@ pub fn apply_change(board: &mut KanbanBoard, change: &CardChange) -> bool {
             kid,
             new_column_id,
             new_column,
+            position,
             ..
         } => {
             let Some((ci, ki)) = locate_card_by_kid(board, kid) else {
@@ -262,7 +274,8 @@ pub fn apply_change(board: &mut KanbanBoard, change: &CardChange) -> bool {
             }
             let mut cols = board.all_columns_mut();
             let card = cols[ci].cards.remove(ki);
-            cols[target].cards.push(card);
+            let at = (*position).min(cols[target].cards.len());
+            cols[target].cards.insert(at, card);
             true
         }
     }
@@ -567,6 +580,7 @@ mod tests {
                     old_column,
                     new_column_id,
                     new_column,
+                    ..
                 }
                 if kid == "aaaa0001"
                     && old_column_id == "col-a"

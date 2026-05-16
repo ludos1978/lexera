@@ -1943,15 +1943,21 @@ impl LocalStorage {
         let disk_hash = Self::content_hash(&disk_content);
         let disk_diverged = disk_hash != stored_hash && !stored_hash.is_empty();
 
-        if !disk_diverged {
-            let mut boards = self
-                .boards
-                .write()
-                .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
-            let state = boards
-                .get_mut(board_id)
-                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
-            self.ensure_board_state_crdt_loaded(board_id, state)?;
+        // CRDT preload only matters when the CRDT decision path runs. With
+        // the `crdt` feature compiled out the save path is markdown-only,
+        // so we never touch the CRDT store or its `.md.crdt` artifact.
+        #[cfg(feature = "crdt")]
+        {
+            if !disk_diverged {
+                let mut boards = self
+                    .boards
+                    .write()
+                    .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
+                let state = boards
+                    .get_mut(board_id)
+                    .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+                self.ensure_board_state_crdt_loaded(board_id, state)?;
+            }
         }
 
         let (stored_board, crdt_board, has_crdt) = {
@@ -2007,6 +2013,7 @@ impl LocalStorage {
             }
         });
 
+        #[cfg(feature = "crdt")]
         let (board_to_write, crdt_to_write, merge_result) = if let Some(base) = merge_base {
             log::info!(
                 "[lexera.storage.write] board={} path=CRDT_BASE_REBASE base={} current={}",
@@ -2139,6 +2146,72 @@ impl LocalStorage {
         } else {
             // No conflict — direct write
             (normalized_board.clone(), None, None)
+        };
+
+        // Markdown-only persistence (crdt feature compiled out): no CRDT
+        // store, no `.md.crdt` artifact. Card identity is carried by the
+        // inline kid marker, so ensure every card has a kid, then run the
+        // non-CRDT card-identity 3-way merge whenever there is a base
+        // (explicit base from the client, or the last-loaded board when
+        // the file diverged on disk). Genuine conflicts are surfaced via
+        // ConflictDetected so the backend can offer the merge view; the
+        // user-typed draft is preserved in a crashsave first.
+        #[cfg(not(feature = "crdt"))]
+        let (board_to_write, crdt_to_write, merge_result): (
+            KanbanBoard,
+            Option<CrdtStore>,
+            Option<card_merge::MergeResult>,
+        ) = {
+            use crate::storage::merge_engine::{
+                CardIdentityMergeEngine, MergeEngine, MergeRequest,
+            };
+            let ensured = Self::ensure_board_card_kids(&normalized_board);
+            if let Some(base) = merge_base.as_ref() {
+                log::info!(
+                    "[lexera.storage.write] board={} path=NON_CRDT_CARD_IDENTITY base={} current={}",
+                    board_id,
+                    board_card_summary(base),
+                    board_card_summary(&current)
+                );
+                let outcome = CardIdentityMergeEngine.merge_from_base(MergeRequest {
+                    board_id,
+                    base,
+                    current: &current,
+                    incoming: &ensured,
+                })?;
+                let mr = outcome.artifact;
+                if !mr.conflicts.is_empty() {
+                    let crashsave = self
+                        .write_crashsave_for_file(
+                            &file_path,
+                            &ensured,
+                            "non-crdt-merge-conflict",
+                        )
+                        .ok();
+                    log::warn!(
+                        "[lexera.storage.merge] {} unresolved conflicts during non-CRDT save on board {}",
+                        mr.conflicts.len(),
+                        board_id
+                    );
+                    return Err(StorageError::ConflictDetected {
+                        board_id: board_id.to_string(),
+                        conflicts: mr.conflicts.len(),
+                        merge_result: Box::new(mr),
+                        crashsave,
+                    });
+                }
+                (
+                    Self::normalize_board_for_write(&mr.board, &board_dir),
+                    None,
+                    None,
+                )
+            } else {
+                (
+                    Self::normalize_board_for_write(&ensured, &board_dir),
+                    None,
+                    None,
+                )
+            }
         };
 
         log::info!(
@@ -4676,6 +4749,7 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn test_read_board_lazy_hydrates_existing_crdt_snapshot() {
         let dir = tempdir().unwrap();
         let board_path = dir.path().join("board.md");
@@ -4755,7 +4829,12 @@ kanban-plugin: board
         // Verify it was written to disk
         let on_disk = fs::read_to_string(tmp.path()).unwrap();
         assert!(on_disk.contains("New task"));
+        // CRDT on: identity in the snapshot, markdown marker-free.
+        // CRDT off: the marker is the only persisted identity.
+        #[cfg(feature = "crdt")]
         assert!(!on_disk.contains("<!-- kid:"));
+        #[cfg(not(feature = "crdt"))]
+        assert!(on_disk.contains("<!-- kid:"));
         let revision = board.generation_meta.as_ref().unwrap();
         assert_eq!(revision.generation, Some(1));
         assert!(revision.content_hash.is_some());
@@ -4764,6 +4843,7 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn test_import_crdt_updates_bumps_generation_and_revision() {
         let mut tmp = NamedTempFile::new().unwrap();
         write!(tmp, "{}", TEST_BOARD).unwrap();
@@ -4805,6 +4885,7 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn test_import_crdt_updates_remote_board_updates_in_memory_without_local_file_writes() {
         let storage = LocalStorage::new();
         let base_board = parser::parse_markdown(TEST_BOARD);
@@ -4891,8 +4972,23 @@ kanban-plugin: board
         let board_path = storage.get_board_path(&id).unwrap();
 
         let on_disk = fs::read_to_string(&board_path).unwrap();
-        assert!(on_disk.contains("- [ ] Existing\n"));
-        assert!(!on_disk.contains("<!-- kid:"));
+        // CRDT on: the legacy marker is stripped on save (identity moves
+        // to the snapshot). CRDT off: the marker is the only persisted
+        // identity, so it must round-trip back to disk.
+        #[cfg(feature = "crdt")]
+        {
+            assert!(on_disk.contains("- [ ] Existing\n"));
+            assert!(!on_disk.contains("<!-- kid:"));
+        }
+        #[cfg(not(feature = "crdt"))]
+        {
+            assert!(on_disk.contains("- [ ] Existing <!-- kid:a1b2c3d4 -->"));
+            let reparsed = storage.read_board(&id).unwrap();
+            assert_eq!(
+                reparsed.all_columns()[0].cards[0].kid,
+                Some("a1b2c3d4".to_string())
+            );
+        }
     }
 
     #[test]
@@ -6134,6 +6230,7 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn test_crdt_recovery_missing_crdt_file() {
         let dir = tempdir().unwrap();
         let board_path = dir.path().join("board.md");
@@ -6212,6 +6309,7 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn test_add_board_reuses_matching_crdt_card_identities() {
         let dir = tempdir().unwrap();
         let board_path = dir.path().join("board.md");
@@ -6272,6 +6370,7 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn test_read_board_normalizes_stored_board_before_reusing_matching_snapshot_kids() {
         let dir = tempdir().unwrap();
         let board_path = dir.path().join("board.md");
@@ -6331,6 +6430,7 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn test_read_board_hierarchy_uses_crdt_aligned_card_kids() {
         let dir = tempdir().unwrap();
         let board_path = dir.path().join("board.md");

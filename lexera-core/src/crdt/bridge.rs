@@ -720,6 +720,12 @@ impl CrdtStore {
                         column_id,
                         column_title,
                         card,
+                        // Position is handled by Loro structural sync
+                        // (sync_column_structure / sync_column_order)
+                        // before card diffs run, so the CRDT path ignores
+                        // the replay position carried for the non-CRDT
+                        // merge.
+                        ..
                     } => {
                         if let Some(cards_list) =
                             self.find_column_cards_list_by_identity(column_id, column_title)
@@ -772,6 +778,9 @@ impl CrdtStore {
                         old_column,
                         new_column_id,
                         new_column,
+                        // Loro structural sync owns ordering on the CRDT
+                        // path; the non-CRDT replay position is ignored.
+                        ..
                     } => {
                         // Check if card already exists in target (placed by sync_column_structure)
                         let already_in_target = self

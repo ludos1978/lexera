@@ -220,15 +220,33 @@ mod tests {
         assert_eq!(cards[0].kid, Some("a1b2c3d4".to_string()));
     }
 
-    #[test]
-    fn test_generate_strips_legacy_kid_marker() {
-        let cards = vec![KanbanCard {
+    fn legacy_marker_card() -> Vec<KanbanCard> {
+        vec![KanbanCard {
             id: "1".to_string(),
             content: "<!-- kid:a1b2c3d4 -->\n# Slide 1".to_string(),
             checked: false,
             kid: Some("a1b2c3d4".to_string()),
             params: HashMap::new(),
-        }];
-        assert_eq!(generate_slides(&cards), "# Slide 1\n");
+        }]
+    }
+
+    #[test]
+    #[cfg(feature = "crdt")]
+    fn test_generate_strips_legacy_kid_marker() {
+        // CRDT on: identity lives in the snapshot, slides stay marker-free.
+        assert_eq!(generate_slides(&legacy_marker_card()), "# Slide 1\n");
+    }
+
+    #[test]
+    #[cfg(not(feature = "crdt"))]
+    fn test_generate_persists_kid_marker_without_crdt() {
+        // CRDT off: the marker is the only stable identity across an
+        // include-file round-trip, so it is written and round-trips.
+        let out = generate_slides(&legacy_marker_card());
+        assert!(out.contains("# Slide 1"));
+        assert!(out.contains("<!-- kid:a1b2c3d4 -->"));
+        let reparsed = parse_slides(&out);
+        assert_eq!(reparsed.len(), 1);
+        assert_eq!(reparsed[0].kid.as_deref(), Some("a1b2c3d4"));
     }
 }

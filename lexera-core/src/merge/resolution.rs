@@ -141,6 +141,7 @@ fn set_card_to(board: &mut KanbanBoard, kid: &str, target: Option<&CardSnapshot>
                         kid: Some(kid.to_string()),
                         params: t.params.clone(),
                     },
+                    position: t.position,
                 },
             );
         }
@@ -168,6 +169,7 @@ fn set_card_to(board: &mut KanbanBoard, kid: &str, target: Option<&CardSnapshot>
                         old_column: p.column_title.clone(),
                         new_column_id: t.column_id.clone(),
                         new_column: t.column_title.clone(),
+                        position: t.position,
                     },
                 );
             }
