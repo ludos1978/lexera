@@ -289,3 +289,63 @@ describe('renderFileEmbedsForExport — deduplication', () => {
     expect(mtimeCalls).toHaveLength(1);
   });
 });
+
+// ── Regression: embedded PDF must convert to an image in export ─────────
+// The PDF plugin renders client-side (pdf.js) in the board, so its preview
+// block lacked cacheFolderName/outputExtension. getPreviewRenderConfig then
+// returned null and renderFileEmbedsForExport skipped PDF entirely — the
+// embed reached Marp/presentation output unconverted. The preview block now
+// carries a cache config while keeping supportsRuntimeRender:false (board
+// keeps its live viewer; only export uses the cache render).
+
+describe('PDF embed export contract', () => {
+  it('exposes an export-usable preview cache config without enabling board runtime render', () => {
+    const cfg = Registry.getPreviewRenderConfig('/x/doc.pdf', { pageNumber: 1 });
+    expect(cfg).toBeTruthy();
+    expect(cfg.cacheFolderName).toBe('pdf-cache');
+    // Board view must still use the interactive pdf.js viewer, not a
+    // cached backend render.
+    expect(cfg.supportsRuntimeRender).toBe(false);
+    const exp = Registry.getExportRenderConfig('/x/doc.pdf', { pageNumber: 1 });
+    expect(exp).toBeTruthy();
+    expect(exp.outputExtension).toBe('png');
+  });
+
+  it('renders a ![](file.pdf) embed to the pdf-cache and rewrites the link (no longer skipped)', async () => {
+    const absoluteSource = '/src/workspace/assets/sample.pdf';
+    const mtimeMs = 1_700_000_000_000;
+    const prev = Registry.getPreviewRenderConfig(absoluteSource, { pageNumber: 1 });
+    const exp = Registry.getExportRenderConfig(absoluteSource, { pageNumber: 1 });
+    const cacheDir = ES.buildDiagramCacheDir('/src/workspace/board.md', absoluteSource, prev.cacheFolderName);
+    const cacheFile = ES.buildDiagramCacheFileName(absoluteSource, mtimeMs, exp.outputExtension, exp.suffix);
+    const cacheAbsolute = cacheDir + '/' + cacheFile;
+    const expectedLink = ES.relativePath('/out/board', cacheAbsolute);
+
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === 'get_file_mtime_ms') return Promise.resolve(mtimeMs);
+      if (cmd === 'render_embedded_file') {
+        expect(args.opts.pluginId).toBe('pdf');
+        expect(args.opts.targetPath).toBe(cacheAbsolute);
+        expect(args.opts.outputFormat).toBe('png');
+        return Promise.resolve({ success: true, outputPath: args.opts.targetPath, format: 'png', error: null });
+      }
+      if (cmd === 'write_export_file') return Promise.resolve(undefined);
+      return Promise.resolve({ success: true });
+    });
+
+    await ES._output('![Doc](assets/sample.pdf)', {
+      mode: 'save',
+      format: 'presentation',
+      targetFolder: '/out',
+      exportFolderName: 'board',
+      sourceFilePath: '/src/workspace/board.md',
+      linkHandlingMode: 'rewrite-only',
+    });
+
+    const renderCalls = mockInvoke.mock.calls.filter((c) => c[0] === 'render_embedded_file');
+    expect(renderCalls).toHaveLength(1);
+    const writeCall = mockInvoke.mock.calls.find((c) => c[0] === 'write_export_file');
+    expect(writeCall[1].content).toBe('![Doc](' + expectedLink + ')');
+    expect(writeCall[1].content).not.toContain('sample.pdf');
+  });
+});

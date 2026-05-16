@@ -420,9 +420,21 @@
     assetType: 'document',
     rendererRequirements: [{ id: 'pdftoppm' }],
     previewPlaceholder: 'PDF preview uses the built-in viewer. Exports can render a page image for compatibility.',
+    // Board view keeps its interactive pdf.js viewer
+    // (supportsRuntimeRender:false → embedMenu's preview-cache render is a
+    // no-op for PDF). The cacheFolderName + outputExtension are still
+    // required so the EXPORT path's getPreviewRenderConfig() returns a
+    // config instead of null — without them renderFileEmbedsForExport
+    // skips PDF and the embed never becomes an image in Marp/presentation
+    // (and other) exports. Mirrors the drawio/excalidraw cache scheme;
+    // suffix matches the export config so both target the same cache file.
     preview: {
       kind: 'pdf',
-      supportsRuntimeRender: false
+      cacheFolderName: 'pdf-cache',
+      outputExtension: 'png',
+      outputFormat: 'png',
+      supportsRuntimeRender: false,
+      buildSuffix: H.pageSuffix('-p')
     },
     export: H.buildExportConfig('png', 'png', H.pageSuffix('-p')),
     matches: function (normalized) {
