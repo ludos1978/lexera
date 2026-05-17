@@ -425,6 +425,44 @@ describe('Video / audio embed export contract', () => {
     expect(writeCall[1].content).not.toContain('sample-video.mp4');
   });
 
+  it('keeps rendered cache links relative to the export folder inside the workspace', async () => {
+    const absoluteSource = '/src/workspace/Media/sample-video.mp4';
+    const exportDir = '/src/workspace/exports/board';
+    const mtimeMs = 1_700_000_222_000;
+    const prev = Registry.getPreviewRenderConfig(absoluteSource, { pageNumber: 1 });
+    const exp = Registry.getExportRenderConfig(absoluteSource, { pageNumber: 1, outputFormat: 'pdf' });
+    const cacheDir = ES.buildDiagramCacheDir('/src/workspace/board.md', absoluteSource, prev.cacheFolderName);
+    const cacheFile = ES.buildDiagramCacheFileName(absoluteSource, mtimeMs, exp.outputExtension, exp.suffix);
+    const cacheAbsolute = cacheDir + '/' + cacheFile;
+    const expectedLink = ES.relativePath(exportDir, cacheAbsolute);
+
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === 'get_file_mtime_ms') return Promise.resolve(mtimeMs);
+      if (cmd === 'render_embedded_file') {
+        expect(args.opts.targetPath).toBe(cacheAbsolute);
+        return Promise.resolve({ success: true, outputPath: args.opts.targetPath, format: 'png', error: null });
+      }
+      if (cmd === 'write_export_file') return Promise.resolve(undefined);
+      return Promise.resolve({ success: true });
+    });
+
+    await ES._output('![Clip](Media/sample-video.mp4)', {
+      mode: 'save',
+      format: 'presentation',
+      marpFormat: 'pdf',
+      targetFolder: '/src/workspace/exports',
+      exportFolderName: 'board',
+      sourceFilePath: '/src/workspace/board.md',
+      linkHandlingMode: 'rewrite-only',
+    });
+
+    const writeCall = mockInvoke.mock.calls.find((c) => c[0] === 'write_export_file');
+    expect(writeCall[1].path).toBe('/src/workspace/exports/board/board.md');
+    expect(writeCall[1].content).toBe('![Clip](' + expectedLink + ')');
+    expect(writeCall[1].content).toContain('../../Media/Media-Media/video-cache/');
+    expect(writeCall[1].content).not.toContain('../../../');
+  });
+
   it('renders HTML video tags through the same plugin path for Marp PDF export', async () => {
     const absoluteSource = '/src/workspace/Media/sample-video.mp4';
     const mtimeMs = 1_700_000_333_000;

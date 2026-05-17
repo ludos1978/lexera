@@ -777,6 +777,15 @@ class ExportService {
         const linkHandlingMode = ExportService.normalizeLinkHandlingMode(options.linkHandlingMode);
         let nextContent = content;
         let createdFiles = [];
+        const exportRelativeLinkSkips = Object.create(null);
+
+        function markExportRelativeLinkSkips(paths) {
+            if (!Array.isArray(paths)) return;
+            for (let i = 0; i < paths.length; i++) {
+                const key = ExportService.normalizeExportLinkPathKey(paths[i]);
+                if (key) exportRelativeLinkSkips[key] = true;
+            }
+        }
 
         // Include merge must run before any media/export conversion. Included
         // markdown can itself contain plugin-backed embeds, and its relative
@@ -803,6 +812,7 @@ class ExportService {
             if (renderedEmbeds.createdFiles.length > 0) {
                 createdFiles = createdFiles.concat(renderedEmbeds.createdFiles);
             }
+            markExportRelativeLinkSkips(renderedEmbeds.exportRelativePaths);
         }
 
         if (ExportService.shouldPreprocessDiagramsForExport(options)) {
@@ -846,7 +856,7 @@ class ExportService {
             }
         }
 
-        nextContent = ExportService.rewriteLinksForExport(nextContent, sourceFilePath, mdPath, packedFolderPrefix);
+        nextContent = ExportService.rewriteLinksForExport(nextContent, sourceFilePath, mdPath, packedFolderPrefix, exportRelativeLinkSkips);
 
         // Write the Readme.txt last so it captures every skip/warning collected
         // during this run. The file is only written when there's at least one
@@ -1097,7 +1107,7 @@ class ExportService {
         const renderTargetFormat = String(targetFormat || '').trim().toLowerCase();
         const registry = ExportService.getFileFormatRegistry();
         if (!registry || !exportCanUseTauri()) {
-            return { content, createdFiles: [] };
+            return { content, createdFiles: [], exportRelativePaths: [] };
         }
 
         const packCopies = ExportService.shouldCopyRenderedEmbedToPack(linkHandlingMode);
@@ -1209,7 +1219,7 @@ class ExportService {
         }
 
         if (!matches.length) {
-            return { content, createdFiles: [] };
+            return { content, createdFiles: [], exportRelativePaths: [] };
         }
 
         const createdFiles = [];
@@ -1305,8 +1315,18 @@ class ExportService {
         }
 
         if (!Object.keys(renderedTargets).length) {
-            return { content, createdFiles: [] };
+            return { content, createdFiles: [], exportRelativePaths: [] };
         }
+
+        const exportRelativePaths = [];
+        const exportRelativePathKeys = Object.create(null);
+        Object.keys(renderedTargets).forEach(function (key) {
+            const target = renderedTargets[key];
+            const normalized = ExportService.normalizeExportLinkPathKey(target);
+            if (!normalized || exportRelativePathKeys[normalized]) return;
+            exportRelativePathKeys[normalized] = true;
+            exportRelativePaths.push(target);
+        });
 
         let cursor = 0;
         let output = '';
@@ -1325,6 +1345,7 @@ class ExportService {
         return {
             content: ExportService.restoreCodeBlocks(output, protectedCode.blocks),
             createdFiles: createdFiles,
+            exportRelativePaths: exportRelativePaths,
         };
     }
 
@@ -1722,12 +1743,14 @@ class ExportService {
         };
     }
 
-    static rewriteLinksForExport(content, sourceFilePath, mdPath, skipPathPrefix) {
+    static rewriteLinksForExport(content, sourceFilePath, mdPath, skipPathPrefix, skipPathSet) {
         const sourceDir = ExportService.dirnamePath(sourceFilePath);
         const exportDir = ExportService.dirnamePath(mdPath);
         return ExportService.transformLinkTargets(content, function (token) {
             if (!token || !token.pathPart) return null;
             if (ExportService.isUrl(token.pathPart) || ExportService.isAbsolutePath(token.pathPart)) return null;
+            const pathKey = ExportService.normalizeExportLinkPathKey(token.pathPart);
+            if (skipPathSet && pathKey && skipPathSet[pathKey]) return null;
             if (skipPathPrefix && ExportService.toForwardSlashes(token.pathPart).indexOf(skipPathPrefix) === 0) return null;
             const absoluteTarget = ExportService.resolvePath(sourceDir, token.pathPart);
             return ExportService.relativePath(exportDir, absoluteTarget);
@@ -2207,6 +2230,14 @@ class ExportService {
         const down = toParts.slice(i);
         const result = up.concat(down).join('/');
         return result || '.';
+    }
+
+    static normalizeExportLinkPathKey(value) {
+        let normalized = ExportService.toForwardSlashes(String(value || '').trim());
+        while (normalized.indexOf('./') === 0) {
+            normalized = normalized.slice(2);
+        }
+        return normalized;
     }
 
     static allocateUniqueTargetName(fileName, usedNames) {
