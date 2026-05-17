@@ -8,8 +8,12 @@ echo "=== lexera-core without CRDT ==="
 cargo check -p lexera-core --no-default-features
 
 echo
-echo "=== lexera-backend without CRDT ==="
-cargo check -p lexera-backend --no-default-features
+echo "=== lexera-backend default markdown-only mode ==="
+cargo check -p lexera-backend
+
+echo
+echo "=== lexera-backend explicit CRDT mode ==="
+cargo check -p lexera-backend --features crdt
 
 echo
 echo "=== lexera-kanban Tauri shell ==="

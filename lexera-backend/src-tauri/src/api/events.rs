@@ -129,6 +129,7 @@ pub async fn stream_logs() -> Sse<impl tokio_stream::Stream<Item = Result<Event,
 mod tests {
     use axum::body::Body;
     use axum::http::StatusCode;
+    use lexera_core::storage::CRDT_SYNC_DISABLED_MESSAGE;
     use lexera_core::watcher::types::BoardChangeEvent;
     use tower::ServiceExt;
 
@@ -282,10 +283,18 @@ mod tests {
         assert_eq!(json["status"], "running");
         assert_eq!(json["bind_address"], "127.0.0.1");
         assert_eq!(json["port"], 0);
-        assert_eq!(json["capabilities"]["crdtSync"], true);
-        assert_eq!(json["capabilities"]["liveSync"], true);
-        assert_eq!(json["capabilities"]["remoteSync"], true);
-        assert!(json["capabilities"]["disabledReason"].is_null());
+        let crdt_enabled = cfg!(feature = "crdt");
+        assert_eq!(json["capabilities"]["crdtSync"], crdt_enabled);
+        assert_eq!(json["capabilities"]["liveSync"], crdt_enabled);
+        assert_eq!(json["capabilities"]["remoteSync"], crdt_enabled);
+        if crdt_enabled {
+            assert!(json["capabilities"]["disabledReason"].is_null());
+        } else {
+            assert_eq!(
+                json["capabilities"]["disabledReason"],
+                CRDT_SYNC_DISABLED_MESSAGE
+            );
+        }
     }
 
     #[tokio::test]

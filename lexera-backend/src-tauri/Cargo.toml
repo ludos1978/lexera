@@ -1,6 +1,6 @@
 [package]
 name = "lexera-backend"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -40,7 +40,9 @@ tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
 
 [features]
-default = ["crdt"]
+# Default runtime is markdown-only. CRDT/live remote sync remains available as
+# an explicit opt-in build: `cargo check -p lexera-backend --features crdt`.
+default = []
 crdt = ["lexera-core/crdt"]
 test = ["tauri/test"]
 
