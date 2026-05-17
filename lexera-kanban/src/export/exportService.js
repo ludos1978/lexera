@@ -784,7 +784,8 @@ class ExportService {
                 sourceFilePath,
                 exportDir,
                 fileBasename,
-                linkHandlingMode
+                linkHandlingMode,
+                ExportService.resolveEmbedRenderTargetFormat(options)
             );
             nextContent = renderedEmbeds.content;
             if (renderedEmbeds.createdFiles.length > 0) {
@@ -890,6 +891,29 @@ class ExportService {
         if (!options || (options.mode || 'copy') === 'copy') return false;
         const format = String(options.format || '').trim().toLowerCase();
         return format === 'presentation' || format === 'document' || format === 'keep' || format === 'kanban';
+    }
+
+    // Resolve the export's target media sub-format that file-format
+    // plugins reason about in `export.appliesToFormat`. This is the bare
+    // renderable target, not a display label (see describeOutputFormat):
+    //   presentation → marp sub-format: 'html' | 'pdf' | 'pptx' | 'markdown'
+    //                  (empty marpFormat defaults to 'html' — Marp's and
+    //                   this app's implicit presentation target).
+    //   document     → pandoc sub-format: 'docx' | 'odt' | 'epub' | 'markdown'
+    //   keep/kanban  → 'kanban' (the live board format; media stays playable)
+    static resolveEmbedRenderTargetFormat(options) {
+        const format = String(options && options.format || '').trim().toLowerCase();
+        if (format === 'presentation') {
+            const marpFormat = String(options && options.marpFormat || '').trim().toLowerCase();
+            if (marpFormat === 'md') return 'markdown';
+            return marpFormat || 'html';
+        }
+        if (format === 'document') {
+            const pandocFormat = String(options && options.pandocFormat || '').trim().toLowerCase();
+            return pandocFormat || 'markdown';
+        }
+        if (format === 'keep' || format === 'kanban') return 'kanban';
+        return format || 'markdown';
     }
 
     static getFileFormatRegistry() {
@@ -1070,7 +1094,8 @@ class ExportService {
         return { content: nextContent, createdFiles: createdFiles };
     }
 
-    static async renderFileEmbedsForExport(content, sourceFilePath, exportDir, fileBasename, linkHandlingMode) {
+    static async renderFileEmbedsForExport(content, sourceFilePath, exportDir, fileBasename, linkHandlingMode, targetFormat) {
+        const renderTargetFormat = String(targetFormat || '').trim().toLowerCase();
         const registry = ExportService.getFileFormatRegistry();
         if (!registry || !exportCanUseTauri()) {
             return { content, createdFiles: [] };
@@ -1103,7 +1128,10 @@ class ExportService {
 
             const attrs = ExportService.parseAttributeBlock(attrsBlock);
             const pageNumber = ExportService.resolvePluginRenderPageNumber(pathMeta.anchorPart, attrs);
-            const renderConfig = registry.getExportRenderConfig(filePath, { pageNumber: pageNumber });
+            const renderConfig = registry.getExportRenderConfig(filePath, {
+                pageNumber: pageNumber,
+                outputFormat: renderTargetFormat,
+            });
             if (!renderConfig || renderConfig.supportsRuntimeRender === false) {
                 continue;
             }

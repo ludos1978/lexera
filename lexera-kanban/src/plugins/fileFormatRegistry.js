@@ -153,6 +153,19 @@ var LexeraFileFormatRegistry = (function () {
   function getExportRenderConfig(filePath, options) {
     var plugin = findByFilePath(filePath);
     if (!plugin || !plugin.export || !plugin.export.outputExtension) return null;
+    // Format-aware gate: a plugin whose export config declares
+    // appliesToFormat opts out of conversion for targets where the
+    // embed is natively usable (e.g. video/audio stay playable in Marp
+    // HTML but convert to a still image for PDF/PPTX). Returning null
+    // makes renderFileEmbedsForExport skip the embed for this target.
+    var targetFormat = options && options.outputFormat
+      ? String(options.outputFormat).trim().toLowerCase()
+      : '';
+    if (typeof plugin.export.appliesToFormat === 'function' &&
+        targetFormat &&
+        !plugin.export.appliesToFormat(targetFormat)) {
+      return null;
+    }
     var page = normalizePageNumber(options && options.pageNumber);
     return {
       pluginId: plugin.id,

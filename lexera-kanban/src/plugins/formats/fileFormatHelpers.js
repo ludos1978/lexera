@@ -19,13 +19,25 @@ var LexeraFileFormatHelpers = (function () {
     };
   }
 
-  function buildExportConfig(outputExtension, outputFormat, suffixBuilder) {
-    return {
+  // `appliesToFormat` (optional) is a predicate `(targetFormat) => bool`.
+  // When present and it returns false for the export's resolved target
+  // sub-format ('html' | 'pdf' | 'pptx' | 'markdown' | …), the registry's
+  // getExportRenderConfig() returns null so renderFileEmbedsForExport skips
+  // conversion for that target — used by video/audio, which stay playable
+  // <video>/<audio> in Marp HTML but must become a still image for
+  // PDF/PPTX. Absent predicate ⇒ always applies (pdf/drawio/xlsx/… behaviour
+  // unchanged).
+  function buildExportConfig(outputExtension, outputFormat, suffixBuilder, appliesToFormat) {
+    var config = {
       outputExtension: outputExtension,
       outputFormat: outputFormat,
       supportsRuntimeRender: true,
       buildSuffix: suffixBuilder || function () { return ''; }
     };
+    if (typeof appliesToFormat === 'function') {
+      config.appliesToFormat = appliesToFormat;
+    }
+    return config;
   }
 
   // Default renderFile closure used by file-format plugins whose backend is

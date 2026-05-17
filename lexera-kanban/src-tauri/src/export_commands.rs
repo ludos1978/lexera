@@ -371,6 +371,20 @@ fn find_node_cli() -> Option<PathBuf> {
     probe_command(&candidates, &["--version"])
 }
 
+fn find_ffmpeg_cli() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let candidates = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/opt/local/bin/ffmpeg", "ffmpeg"];
+    #[cfg(target_os = "windows")]
+    let candidates = [
+        "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+        "C:\\ffmpeg\\bin\\ffmpeg.exe",
+        "ffmpeg.exe",
+    ];
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    let candidates = ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "ffmpeg"];
+    probe_command(&candidates, &["-version"])
+}
+
 fn find_java_cli() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     let candidates = [
@@ -644,6 +658,16 @@ fn build_node_renderer_status() -> EmbeddedRendererStatus {
         find_node_cli(),
         &["--version"],
         "Required for raw Excalidraw rendering through the local Playwright worker.",
+    )
+}
+
+fn build_ffmpeg_renderer_status() -> EmbeddedRendererStatus {
+    build_renderer_cli_status(
+        "ffmpeg",
+        "FFmpeg",
+        find_ffmpeg_cli(),
+        &["-version"],
+        "Optional. Required only to convert embedded video (poster frame) and audio (waveform) for Marp PDF/PPTX export; Marp HTML keeps playable media without it.",
     )
 }
 
@@ -1294,6 +1318,56 @@ fn render_epub_file(source_path: &Path, target_path: &Path, page_number: u32) ->
     Ok(())
 }
 
+/// Extract a representative still frame from a video as PNG. Used only when
+/// the export target cannot play media (Marp PDF/PPTX) — Marp HTML and the
+/// live board keep the playable <video>. The `thumbnail` filter scores the
+/// first batch of frames and emits the most representative one (avoids the
+/// common all-black opening frame); the long edge is capped so the cache
+/// PNG stays modest while preserving aspect ratio.
+fn render_video_poster_file(source_path: &Path, target_path: &Path) -> Result<(), String> {
+    let cli = find_ffmpeg_cli().ok_or_else(|| "ffmpeg CLI not found".to_string())?;
+    ensure_parent_dir(target_path)?;
+    let args = vec![
+        "-y".to_string(),
+        "-i".to_string(),
+        source_path.to_string_lossy().to_string(),
+        "-vf".to_string(),
+        "thumbnail,scale='min(1280,iw)':-2".to_string(),
+        "-frames:v".to_string(),
+        "1".to_string(),
+        "-an".to_string(),
+        target_path.to_string_lossy().to_string(),
+    ];
+    run_command_capture(&cli, &args, source_path.parent())?;
+    if !target_path.is_file() {
+        return Err(format!("ffmpeg did not create {}", target_path.display()));
+    }
+    Ok(())
+}
+
+/// Render an audio file's waveform to a PNG. Same gating as video — only for
+/// non-playable targets; Marp HTML keeps the playable <audio>. `showwavespic`
+/// produces one image for the whole track.
+fn render_audio_waveform_file(source_path: &Path, target_path: &Path) -> Result<(), String> {
+    let cli = find_ffmpeg_cli().ok_or_else(|| "ffmpeg CLI not found".to_string())?;
+    ensure_parent_dir(target_path)?;
+    let args = vec![
+        "-y".to_string(),
+        "-i".to_string(),
+        source_path.to_string_lossy().to_string(),
+        "-filter_complex".to_string(),
+        "showwavespic=s=1280x320:colors=#3b82f6".to_string(),
+        "-frames:v".to_string(),
+        "1".to_string(),
+        target_path.to_string_lossy().to_string(),
+    ];
+    run_command_capture(&cli, &args, source_path.parent())?;
+    if !target_path.is_file() {
+        return Err(format!("ffmpeg did not create {}", target_path.display()));
+    }
+    Ok(())
+}
+
 fn render_excalidraw_file(source_path: &Path, target_path: &Path, output_format: &str) -> Result<(), String> {
     if output_format.eq_ignore_ascii_case("svg")
         && source_path
@@ -1401,6 +1475,14 @@ fn render_epub_embedded(source_path: &Path, target_path: &Path, page_number: u32
     render_epub_file(source_path, target_path, page_number)
 }
 
+fn render_video_embedded(source_path: &Path, target_path: &Path, _page_number: u32, _output_format: &str) -> Result<(), String> {
+    render_video_poster_file(source_path, target_path)
+}
+
+fn render_audio_embedded(source_path: &Path, target_path: &Path, _page_number: u32, _output_format: &str) -> Result<(), String> {
+    render_audio_waveform_file(source_path, target_path)
+}
+
 const EMBEDDED_RENDERERS: &[EmbeddedRendererDefinition] = &[
     EmbeddedRendererDefinition { id: "drawio", render: render_drawio_embedded },
     EmbeddedRendererDefinition { id: "excalidraw", render: render_excalidraw_embedded },
@@ -1411,6 +1493,8 @@ const EMBEDDED_RENDERERS: &[EmbeddedRendererDefinition] = &[
     EmbeddedRendererDefinition { id: "pdf", render: render_pdf_embedded },
     EmbeddedRendererDefinition { id: "document", render: render_document_embedded },
     EmbeddedRendererDefinition { id: "epub", render: render_epub_embedded },
+    EmbeddedRendererDefinition { id: "video", render: render_video_embedded },
+    EmbeddedRendererDefinition { id: "audio", render: render_audio_embedded },
 ];
 
 const EMBEDDED_RENDERER_STATUSES: &[EmbeddedRendererStatusDefinition] = &[
@@ -1420,6 +1504,7 @@ const EMBEDDED_RENDERER_STATUSES: &[EmbeddedRendererStatusDefinition] = &[
     EmbeddedRendererStatusDefinition { build_status: build_pdftoppm_renderer_status },
     EmbeddedRendererStatusDefinition { build_status: build_mutool_renderer_status },
     EmbeddedRendererStatusDefinition { build_status: build_node_renderer_status },
+    EmbeddedRendererStatusDefinition { build_status: build_ffmpeg_renderer_status },
     EmbeddedRendererStatusDefinition { build_status: build_excalidraw_worker_asset_status },
 ];
 
@@ -3181,8 +3266,8 @@ pub async fn copy_export_assets(items: Vec<ExportAssetCopyItem>) -> Result<Vec<E
 #[cfg(test)]
 mod tests {
     use super::{
-        build_minimal_pdf, detect_delimited_text_separator, is_cache_fresh,
-        normalize_plantuml_source, parse_delimited_rows, render_csv_text_to_svg,
+        build_minimal_pdf, detect_delimited_text_separator, find_embedded_renderer,
+        is_cache_fresh, normalize_plantuml_source, parse_delimited_rows, render_csv_text_to_svg,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -3245,6 +3330,17 @@ mod tests {
         let tgt = dir.join("rendered.png");
         fs::write(&tgt, b"data").expect("write tgt");
         assert!(!is_cache_fresh(&src, &tgt));
+    }
+
+    #[test]
+    fn embedded_renderer_registry_resolves_timed_media() {
+        // Marp PDF/PPTX export dispatches embedded video/audio through these
+        // ids (frontend media.js renderFile → render_embedded_file). A missing
+        // registration would surface as "Unknown embedded file renderer".
+        assert!(find_embedded_renderer("video").is_some(), "video renderer must be registered");
+        assert!(find_embedded_renderer("audio").is_some(), "audio renderer must be registered");
+        assert!(find_embedded_renderer("pdf").is_some(), "pdf renderer must remain registered");
+        assert!(find_embedded_renderer("nope").is_none(), "unknown id must not resolve");
     }
 
     #[test]

@@ -228,9 +228,19 @@ pub fn from_columns(columns: &[&KanbanColumn], options: &PresentationOptions) ->
         // Task slides
         let tasks = filter_tasks(&column.cards, options);
         for card in &tasks {
+            // Only cards that genuinely originate from the include FILE have
+            // include-relative resource paths. When the include is missing or
+            // a non-markdown target (.pdf/.xlsx/…), the parser keeps the
+            // user's cards inline in the main board (parser.rs §write_column_
+            // cards / is_writable_target) — their `![](Media/x.pdf)` paths are
+            // board-relative and must NOT be rebased, or they resolve to a
+            // non-existent `<include_dir>/Media/x.pdf` and the embed renderer
+            // can't convert them (exports the original media, unconverted).
             let content = match &column.include_source {
-                Some(src) => resolve_include_card_paths(&card.content, src),
-                None => card.content.clone(),
+                Some(src) if src.is_writable_target() => {
+                    resolve_include_card_paths(&card.content, src)
+                }
+                _ => card.content.clone(),
             };
             slide_contents.push(task_to_slide_content(&content, options));
         }
@@ -263,9 +273,14 @@ pub fn to_document(
         let tasks = filter_tasks(&column.cards, options);
 
         for card in &tasks {
+            // See to_presentation: only true include-file cards carry
+            // include-relative paths; inline-kept cards (missing / non-md
+            // include) stay board-relative and must not be rebased.
             let raw_content = match &column.include_source {
-                Some(src) => resolve_include_card_paths(&card.content, src),
-                None => card.content.clone(),
+                Some(src) if src.is_writable_target() => {
+                    resolve_include_card_paths(&card.content, src)
+                }
+                _ => card.content.clone(),
             };
             let mut content = normalize_crlf(&raw_content);
 
@@ -1217,7 +1232,11 @@ mod tests {
     // ======================================================================
 
     fn include_source(raw_path: &str) -> IncludeSource {
-        IncludeSource::new(raw_path.to_string(), std::path::PathBuf::new())
+        // Mirror production: storage resolves a real path (with extension) so
+        // IncludeSource::is_writable_target() reflects md-vs-non-md. The old
+        // empty PathBuf made is_writable_target() always false, which masked
+        // the include-card path-rebasing gate.
+        IncludeSource::new(raw_path.to_string(), std::path::PathBuf::from(raw_path))
     }
 
     #[test]
@@ -1324,6 +1343,69 @@ mod tests {
         let output = to_document(&b, PageBreaks::Continuous, &default_opts());
         assert!(output.contains("deep/image.png"));
         assert!(!output.contains("./image.png"));
+    }
+
+    // Regression: a card written INLINE in the board under a column whose
+    // header is `!!!include(includes/nope.md)!!!` but whose include file is
+    // MISSING. The parser keeps such cards inline (board-relative paths);
+    // rebasing them relative to the include dir produces a non-existent
+    // `includes/Media/...` path, so the export embed-renderer can't convert
+    // the media and the ORIGINAL file is embedded unconverted. The inline
+    // card's path must stay board-relative.
+    #[test]
+    fn from_board_missing_include_column_keeps_board_relative_paths() {
+        let mut src = include_source("includes/nope.md");
+        src.missing = true;
+        let col = KanbanColumn {
+            id: "col1".to_string(),
+            title: "!!!include(includes/nope.md)!!!".to_string(),
+            cards: vec![card("![doc-20](Media/sample-doc.pdf)")],
+            include_source: Some(src),
+            params: HashMap::new(),
+        };
+        let b = board_with(vec![col]);
+        let output = from_board(&b, &default_opts());
+        assert!(
+            output.contains("![doc-20](Media/sample-doc.pdf)"),
+            "inline card under a MISSING include must keep its board-relative \
+             path so the embed renderer can convert it; got: {output}"
+        );
+        assert!(!output.contains("includes/Media/sample-doc.pdf"));
+    }
+
+    // Same defect for a non-markdown include target (`.pdf`/`.xlsx`/…):
+    // is_writable_target() is false, the parser keeps cards inline, so their
+    // paths are board-relative and must not be rebased.
+    #[test]
+    fn from_board_non_markdown_include_column_keeps_board_relative_paths() {
+        let col = KanbanColumn {
+            id: "col1".to_string(),
+            title: "!!!include(includes/unsupported-doc.pdf)!!!".to_string(),
+            cards: vec![card("![doc-20](Media/sample-doc.pdf)")],
+            include_source: Some(include_source("includes/unsupported-doc.pdf")),
+            params: HashMap::new(),
+        };
+        let b = board_with(vec![col]);
+        let output = from_board(&b, &default_opts());
+        assert!(output.contains("![doc-20](Media/sample-doc.pdf)"));
+        assert!(!output.contains("includes/Media/sample-doc.pdf"));
+    }
+
+    #[test]
+    fn to_document_missing_include_column_keeps_board_relative_paths() {
+        let mut src = include_source("includes/nope.md");
+        src.missing = true;
+        let col = KanbanColumn {
+            id: "col1".to_string(),
+            title: "!!!include(includes/nope.md)!!!".to_string(),
+            cards: vec![card("![doc-20](Media/sample-doc.pdf)")],
+            include_source: Some(src),
+            params: HashMap::new(),
+        };
+        let b = board_with(vec![col]);
+        let output = to_document(&b, PageBreaks::Continuous, &default_opts());
+        assert!(output.contains("![doc-20](Media/sample-doc.pdf)"));
+        assert!(!output.contains("includes/Media/sample-doc.pdf"));
     }
 
     // ======================================================================
