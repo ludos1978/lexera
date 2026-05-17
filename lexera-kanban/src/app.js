@@ -80,6 +80,7 @@ var LexeraDashboard = (function () {
   var liveDraftSyncTimer = null;
   var liveDraftSyncRequest = null;
   var UndoRedo = window.LexeraUndoRedo;
+  var undoOperationSuppressDepth = 0;
   var SidebarSync = window.LexeraSidebarSync;
   var DiagramRegistry = window.LexeraDiagramRegistry;
   var CardContentRenderer = window.LexeraCardContentRenderer;
@@ -441,6 +442,8 @@ var LexeraDashboard = (function () {
     loadBoardDataForMutation: function(boardId) { return loadBoardDataForMutation(boardId); },
     commitBoardMutations: function(changed, opts) { return commitBoardMutations(changed, opts); },
     pushUndo: function() { pushUndo(); },
+    pushUndoOperation: function(operation) { pushUndoOperation(operation); },
+    finalizePendingUndo: function() { finalizePendingUndo(); },
     removeEmptyStacksAndRowsInBoard: function(d) { removeEmptyStacksAndRowsInBoard(d); },
     insertUnnamedRowForMutation: function(b, d, t, s) { return insertUnnamedRowForMutation(b, d, t, s); },
     insertUnnamedStackIntoRowForMutation: function(b, d, t) { return insertUnnamedStackIntoRowForMutation(b, d, t); },
@@ -450,6 +453,7 @@ var LexeraDashboard = (function () {
     getCanvasStackDropApi: function() { return getCanvasStackDropApi(); },
     cacheDropTargetGeometry: function() { if (DragDropHandlers) DragDropHandlers.cacheDropTargetGeometry(); },
     applyInternalHiddenTag: function(text, tag) { return applyInternalHiddenTag(text, tag); },
+    stripInternalHiddenTags: function(text) { return stripInternalHiddenTags(text); },
     openUrlInSystem: function(url) { openUrlInSystem(url); }
   });
   if (DndListeners) DndListeners.bindAll();
@@ -7208,6 +7212,18 @@ var LexeraDashboard = (function () {
   // Undo/redo delegated to LexeraUndoRedo module (core/undoRedoSystem.js)
   function finalizePendingUndo() { UndoRedo.finalizePendingUndo(); }
   function pushUndo() { UndoRedo.pushUndo(); }
+  function pushUndoOperation(operation) { UndoRedo.pushUndoOperation(operation); }
+  async function runWithoutUndoOperationRecording(fn) {
+    undoOperationSuppressDepth++;
+    try {
+      return await fn();
+    } finally {
+      undoOperationSuppressDepth--;
+    }
+  }
+  function isUndoOperationRecordingSuppressed() {
+    return undoOperationSuppressDepth > 0;
+  }
   function undo() { return UndoRedo.undo(); }
   function redo() { return UndoRedo.redo(); }
 
@@ -10491,6 +10507,144 @@ var LexeraDashboard = (function () {
     return -1;
   }
 
+  function cloneUndoMutationDescriptor(descriptor) {
+    var clone = {};
+    if (!descriptor || typeof descriptor !== 'object') return clone;
+    var keys = [
+      'boardId', 'kind', 'rowIndex', 'stackIndex', 'colIndex', 'flatColIndex',
+      'cardIndex', 'cardIndexMode', 'insertIdx', 'insertMode', 'indexMode',
+      'rowId', 'stackId', 'columnId', 'cardId', 'cardKid', 'cardDomId',
+      'before'
+    ];
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      if (Object.prototype.hasOwnProperty.call(descriptor, key)) clone[key] = descriptor[key];
+    }
+    if (descriptor.canvasPosition && typeof descriptor.canvasPosition === 'object') {
+      clone.canvasPosition = {
+        x: descriptor.canvasPosition.x,
+        y: descriptor.canvasPosition.y
+      };
+    }
+    return clone;
+  }
+
+  function cardMatchesStableUndoId(card, cardId, cardKid) {
+    if (!card) return false;
+    var stableCardId = normalizeStableCardMutationId(cardId);
+    var stableCardKid = normalizeStableCardMutationId(cardKid);
+    var candidateId = normalizeStableCardMutationId(card.id);
+    var candidateKid = normalizeStableCardMutationId(card.kid);
+    return !!(
+      (stableCardId && (candidateId === stableCardId || candidateKid === stableCardId)) ||
+      (stableCardKid && (candidateId === stableCardKid || candidateKid === stableCardKid))
+    );
+  }
+
+  function findCardUndoLocationInBoard(boardData, cardId, cardKid) {
+    var rows = Array.isArray(boardData && boardData.rows) ? boardData.rows : [];
+    for (var r = 0; r < rows.length; r++) {
+      var stacks = Array.isArray(rows[r] && rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        var columns = Array.isArray(stacks[s] && stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < columns.length; c++) {
+          var cards = Array.isArray(columns[c] && columns[c].cards) ? columns[c].cards : [];
+          for (var k = 0; k < cards.length; k++) {
+            if (cardMatchesStableUndoId(cards[k], cardId, cardKid)) {
+              return {
+                row: rows[r],
+                stack: stacks[s],
+                column: columns[c],
+                cards: cards,
+                rowIndex: r,
+                stackIndex: s,
+                colIndex: c,
+                cardIndex: k
+              };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function restoreUndoCardContent(card) {
+    if (!card) return card;
+    card.content = stripInternalHiddenTags(card.content || '');
+    return card;
+  }
+
+  async function undoCrossBoardCardMove(operation) {
+    if (!operation || !operation.sourceBoardId || !operation.targetBoardId) return;
+    var sourceBoardData = await loadBoardDataForMutation(operation.sourceBoardId);
+    var targetBoardData = await loadBoardDataForMutation(operation.targetBoardId);
+    if (!sourceBoardData || !targetBoardData) return;
+
+    var targetLoc = findCardUndoLocationInBoard(targetBoardData, operation.cardId, operation.cardKid);
+    if (!targetLoc || !targetLoc.cards) return;
+    var movedCard = targetLoc.cards.splice(targetLoc.cardIndex, 1)[0];
+    if (!movedCard) return;
+    restoreUndoCardContent(movedCard);
+
+    var sourceLoc = findCardUndoLocationInBoard(sourceBoardData, operation.cardId, operation.cardKid);
+    if (sourceLoc && sourceLoc.cards) {
+      sourceLoc.cards[sourceLoc.cardIndex] = movedCard;
+    } else {
+      var sourceRef = resolveColumnRefForCardMutation(operation.sourceBoardId, sourceBoardData, operation.source || {});
+      if (!sourceRef || !sourceRef.column || !Array.isArray(sourceRef.column.cards)) {
+        targetLoc.cards.splice(targetLoc.cardIndex, 0, movedCard);
+        return;
+      }
+      var insertAt = typeof operation.sourceCardIndex === 'number'
+        ? operation.sourceCardIndex
+        : sourceRef.column.cards.length;
+      if (insertAt < 0) insertAt = 0;
+      if (insertAt > sourceRef.column.cards.length) insertAt = sourceRef.column.cards.length;
+      sourceRef.column.cards.splice(insertAt, 0, movedCard);
+    }
+
+    removeEmptyStacksAndRowsInBoard(sourceBoardData);
+    if (sourceBoardData !== targetBoardData) removeEmptyStacksAndRowsInBoard(targetBoardData);
+    var changedBoards = {};
+    changedBoards[operation.sourceBoardId] = sourceBoardData;
+    if (operation.targetBoardId !== operation.sourceBoardId) changedBoards[operation.targetBoardId] = targetBoardData;
+    await commitBoardMutations(changedBoards, { refreshSidebar: true });
+  }
+
+  function recordCrossBoardCardMoveUndo(source, target, movedCard, sourceCardIdx) {
+    if (isUndoOperationRecordingSuppressed()) return;
+    if (!movedCard || typeof pushUndoOperation !== 'function') return;
+    var operation = {
+      type: 'cross-board-card-move',
+      sourceBoardId: source.boardId,
+      targetBoardId: target.boardId,
+      source: cloneUndoMutationDescriptor(source),
+      target: cloneUndoMutationDescriptor(target),
+      sourceCardIndex: sourceCardIdx,
+      cardId: normalizeStableCardMutationId(movedCard.id),
+      cardKid: normalizeStableCardMutationId(movedCard.kid)
+    };
+    if (!operation.cardId && !operation.cardKid) return;
+    pushUndoOperation({
+      meta: {
+        type: operation.type,
+        sourceBoardId: operation.sourceBoardId,
+        targetBoardId: operation.targetBoardId,
+        cardId: operation.cardId,
+        cardKid: operation.cardKid
+      },
+      undo: function () {
+        return undoCrossBoardCardMove(operation);
+      },
+      redo: function () {
+        return runWithoutUndoOperationRecording(function () {
+          return moveCard(operation.source, operation.target);
+        });
+      }
+    });
+  }
+
   async function moveCard(sourceOrFromColIdx, fromCardIdxOrTarget, toColIdx, toInsertIdx) {
     var _mcStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
     var _mcTrace = (typeof window !== 'undefined' && window.__lexeraProfileMutations) ? {} : null;
@@ -10570,11 +10724,14 @@ var LexeraDashboard = (function () {
       if (targetInsertIdx < 0) return;
       _mcMark('afterResolveRefs');
 
+      var isCrossBoard = source.boardId !== target.boardId;
       var activeTouched = source.boardId === activeBoardId || target.boardId === activeBoardId;
-      if (activeTouched && fullBoardData) pushUndo();
+      if (!isUndoOperationRecordingSuppressed() && activeTouched && fullBoardData) {
+        if (isCrossBoard) finalizePendingUndo();
+        else pushUndo();
+      }
       _mcMark('afterPushUndo');
 
-      var isCrossBoard = source.boardId !== target.boardId;
       var movedCard;
       if (isCrossBoard) {
         movedCard = structuredClone(sourceRef.column.cards[sourceCardIdx]);
@@ -10728,6 +10885,7 @@ var LexeraDashboard = (function () {
       changedBoards[source.boardId] = sourceBoardData;
       if (target.boardId !== source.boardId) changedBoards[target.boardId] = targetBoardData;
       await commitBoardMutations(changedBoards, { refreshSidebar: true });
+      if (isCrossBoard) recordCrossBoardCardMoveUndo(source, target, movedCard, sourceCardIdx);
     } catch (err) {
       lexeraLog('error', '[moveCard] Failed: ' + err);
     } finally {

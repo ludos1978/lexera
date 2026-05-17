@@ -189,6 +189,23 @@ function loadMutationHarness() {
     extractFunctionAny('function resolveColumnLocationForMutation('),
     extractFunctionAny('function resolveStackForMutation('),
     extractFunctionAny('function resolveRowForMutation('),
+    extractFunctionAny('function isDndUndoOperationRecordingSuppressed('),
+    extractFunctionAny('async function runWithoutDndUndoOperationRecording('),
+    extractFunctionAny('function captureUndoBeforeDndMutation('),
+    extractFunctionAny('function cloneDndUndoMutationDescriptor('),
+    extractFunctionAny('function stripDndUndoHiddenTags('),
+    extractFunctionAny('function restoreDndUndoColumnContent('),
+    extractFunctionAny('function restoreDndUndoStackContent('),
+    extractFunctionAny('function restoreDndUndoRowContent('),
+    extractFunctionAny('function restoreDndUndoEntityContent('),
+    extractFunctionAny('function getDndUndoEntityStableId('),
+    extractFunctionAny('function findDndUndoEntityLocation('),
+    extractFunctionAny('function removeDndUndoEntityAtLocation('),
+    extractFunctionAny('function replaceDndUndoEntityAtLocation('),
+    extractFunctionAny('function insertDndUndoEntityAtSource('),
+    extractFunctionAny('async function undoCrossBoardStructuralMove('),
+    extractFunctionAny('function getDndCrossBoardMoveFunction('),
+    extractFunctionAny('function recordCrossBoardStructuralMoveUndo('),
     extractFunctionAny('function trashRowContent('),
     extractFunction(findLine('function normalizeStableCardMutationId(')),
     extractFunction(findLine('function findColumnRefByStablePath(')),
@@ -208,6 +225,14 @@ function loadMutationHarness() {
     extractFunctionAny('function removeEmptyStacksAndRows()'),
     extractFunctionAny('function findVisibleCardIndexById('),
     extractFunction(findLine('function resolveFlatColIndexFromRef(')),
+    extractFunction(findLine('function cloneUndoMutationDescriptor(')),
+    extractFunction(findLine('function cardMatchesStableUndoId(')),
+    extractFunction(findLine('function findCardUndoLocationInBoard(')),
+    extractFunction(findLine('function restoreUndoCardContent(')),
+    extractFunction(findLine('async function undoCrossBoardCardMove(')),
+    extractFunction(findLine('function recordCrossBoardCardMoveUndo(')),
+    extractFunction(findLine('async function runWithoutUndoOperationRecording(')),
+    extractFunction(findLine('function isUndoOperationRecordingSuppressed(')),
   ].join('\n\n');
 
   // --- Mutation functions ---
@@ -270,9 +295,15 @@ function loadMutationHarness() {
     var canvasBoardLayout = false;
     var mutationEntityIdSeed = 0;
     var undoCalls = 0;
+    var finalizedUndoCalls = 0;
+    var undoOperations = [];
     var lastPersistTargets = null;
     var lastCommitBoardIds = null;
     function pushUndo() { undoCalls++; }
+    function finalizePendingUndo() { finalizedUndoCalls++; }
+    function pushUndoOperation(operation) { undoOperations.push(operation); }
+    var undoOperationSuppressDepth = 0;
+    var _undoOperationSuppressDepth = 0;
     function isCanvasBoardLayout() { return canvasBoardLayout; }
     async function persistBoardMutation(opts) {
       lastPersistTargets = (opts && opts.targets) ? opts.targets.map(function(t) { return t.type; }) : [];
@@ -392,6 +423,8 @@ function loadMutationHarness() {
         loadBoardDataForMutation: loadBoardDataForMutation,
         commitBoardMutations: commitBoardMutations,
         pushUndo: function () { pushUndo(); },
+        pushUndoOperation: function (operation) { pushUndoOperation(operation); },
+        finalizePendingUndo: function () { finalizePendingUndo(); },
         persistBoardMutation: function (opts) { return persistBoardMutation(opts); },
         isCanvasBoardLayout: isCanvasBoardLayout,
         getCanvasStackDropApi: getCanvasStackDropApi,
@@ -399,7 +432,13 @@ function loadMutationHarness() {
         getDisplayOrderedColumnEntries: typeof getDisplayOrderedColumnEntries === 'function' ? getDisplayOrderedColumnEntries : function (c) { return c; },
         stripInternalHiddenTags: typeof stripInternalHiddenTags === 'function' ? stripInternalHiddenTags : function (t) { return t; },
         stripHtmlComments: typeof stripHtmlComments === 'function' ? stripHtmlComments : function (t) { return t; },
-        addColumnToStack: typeof addColumnToStack === 'function' ? addColumnToStack : function () {}
+        addColumnToStack: typeof addColumnToStack === 'function' ? addColumnToStack : function () {},
+        removeEmptyStacksAndRowsInBoard: typeof removeEmptyStacksAndRowsInBoard === 'function' ? removeEmptyStacksAndRowsInBoard : function () {},
+        insertUnnamedRowForMutation: typeof insertUnnamedRowForMutation === 'function' ? insertUnnamedRowForMutation : function () { return null; },
+        insertUnnamedStackIntoRowForMutation: typeof insertUnnamedStackIntoRowForMutation === 'function' ? insertUnnamedStackIntoRowForMutation : function () { return null; },
+        createUnnamedStackForMutation: typeof createUnnamedStackForMutation === 'function' ? createUnnamedStackForMutation : function (columns) { return { id: 'stack-test', title: '', columns: columns || [] }; },
+        findInsertStackIndexInRow: typeof findInsertStackIndexInRow === 'function' ? findInsertStackIndexInRow : function (row) { return row && row.stacks ? row.stacks.length : 0; },
+        findInsertColumnIndexInStack: typeof findInsertColumnIndexInStack === 'function' ? findInsertColumnIndexInStack : function (stack) { return stack && stack.columns ? stack.columns.length : 0; }
       });
     }
 
@@ -499,6 +538,10 @@ function loadMutationHarness() {
         boardStore = {};
         boardStore[activeBoardId] = fullBoardData;
         undoCalls = 0;
+        finalizedUndoCalls = 0;
+        undoOperations = [];
+        undoOperationSuppressDepth = 0;
+        _undoOperationSuppressDepth = 0;
       },
       setBoardState: function(boardId, boardData) {
         boardStore[boardId] = boardData;
@@ -516,6 +559,17 @@ function loadMutationHarness() {
         return boardId === activeBoardId ? fullBoardData : boardStore[boardId];
       },
       getUndoCalls: function() { return undoCalls; },
+      getFinalizedUndoCalls: function() { return finalizedUndoCalls; },
+      getUndoOperationCount: function() { return undoOperations.length; },
+      getLastUndoOperation: function() { return undoOperations[undoOperations.length - 1] || null; },
+      runLastUndoOperation: function() {
+        var op = undoOperations[undoOperations.length - 1];
+        return op && typeof op.undo === 'function' ? op.undo() : undefined;
+      },
+      runLastRedoOperation: function() {
+        var op = undoOperations[undoOperations.length - 1];
+        return op && typeof op.redo === 'function' ? op.redo() : undefined;
+      },
 
       // Helpers
       getAllColumnsFromBoardData: getAllColumnsFromBoardData,
@@ -1183,6 +1237,80 @@ describe('Drag/drop structural parity', () => {
 
     var targetBoard = M.getBoardState('other-board');
     expect(targetBoard.rows[1].stacks[0].columns.map(function (column) { return column.id; })).toEqual(['col-target-b', 'col-a']);
+  });
+
+  it('moveColumnAcrossBoards undo moves the column back after target board changes', async () => {
+    var source = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-source', 'Source Stack', [
+          makeColumn('col-source', 'Source Column', [makeCard('card-a', 'Task A')]),
+          makeColumn('col-stay', 'Stay Column', []),
+        ]),
+      ]),
+    ]);
+    var target = makeBoard([
+      makeRow('row-target', 'Target Row', [
+        makeStack('stack-target', 'Target Stack', [
+          makeColumn('col-target', 'Target Column', []),
+        ]),
+      ]),
+    ]);
+    M.setState(source, buildActiveBoard(M, source), 'test-board');
+    M.setBoardState('other-board', target);
+
+    await M.moveColumnAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 0,
+        rowId: 'row-source',
+        stackId: 'stack-source',
+        columnId: 'col-source',
+        indexMode: 'display',
+      },
+      {
+        kind: 'stack',
+        boardId: 'other-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        rowId: 'row-target',
+        stackId: 'stack-target',
+        indexMode: 'full',
+      }
+    );
+
+    expect(M.getUndoCalls()).toBe(0);
+    expect(M.getFinalizedUndoCalls()).toBe(1);
+    expect(M.getUndoOperationCount()).toBe(1);
+
+    var targetBoard = M.getBoardState('other-board');
+    var targetStack = targetBoard.rows[0].stacks[0];
+    targetStack.columns.unshift(makeColumn('col-concurrent', 'Concurrent Column', []));
+    var movedIdx = targetStack.columns.findIndex(function (column) { return column.id === 'col-source'; });
+    var movedColumn = targetStack.columns.splice(movedIdx, 1)[0];
+    targetBoard.rows.push(makeRow('row-later', 'Later Row', [
+      makeStack('stack-later', 'Later Stack', [movedColumn])
+    ]));
+    movedColumn.title = 'Source Column edited on target';
+
+    await M.runLastUndoOperation();
+
+    var sourceCols = M.getBoardState('test-board').rows[0].stacks[0].columns;
+    expect(sourceCols.map(function (column) { return column.id; })).toEqual(['col-source', 'col-stay']);
+    expect(sourceCols[0].title).toBe('Source Column edited on target');
+    expect(sourceCols[0].title).not.toContain('#hidden-internal-deleted');
+
+    var remainingTargetIds = [];
+    var rows = M.getBoardState('other-board').rows;
+    for (var r = 0; r < rows.length; r++) {
+      var stacks = rows[r].stacks || [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = stacks[s].columns || [];
+        for (var c = 0; c < cols.length; c++) remainingTargetIds.push(cols[c].id);
+      }
+    }
+    expect(remainingTargetIds).toEqual(['col-concurrent', 'col-target']);
   });
 
   it('moveColumnAcrossBoards creates an unnamed stack inside an existing row drop target', async () => {
@@ -2299,6 +2427,46 @@ describe('Card move scenarios', () => {
     var targetCol = M.getBoardState('board-b').rows[0].stacks[0].columns[0];
     expect(targetCol.cards[0].id).toBe('card-1');
     expect(targetCol.cards[0].content).toBe('Card One');
+  });
+
+  it('cross-board card undo performs a reverse move against current boards', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.setBoardState('board-b', setup.boardB);
+
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-b', rowId: 'row-b1', stackId: 'stack-b1', columnId: 'col-b1', insertIdx: 1, insertMode: 'full', indexMode: 'full' }
+    );
+
+    expect(M.getUndoCalls()).toBe(0);
+    expect(M.getFinalizedUndoCalls()).toBe(1);
+    expect(M.getUndoOperationCount()).toBe(1);
+
+    var boardB = M.getBoardState('board-b');
+    var targetCol = boardB.rows[0].stacks[0].columns[0];
+    targetCol.cards.unshift(makeCard('card-b2', 'Concurrent target edit'));
+    var movedInTarget = targetCol.cards.find(function (card) { return card.id === 'card-1'; });
+    movedInTarget.content = 'Card One edited on board B';
+
+    await M.runLastUndoOperation();
+
+    var sourceCol = M.getBoardState('board-a').rows[0].stacks[0].columns[0];
+    expect(sourceCol.cards.map(function (card) { return card.id; })).toEqual(['card-1', 'card-2']);
+    expect(sourceCol.cards[0].content).toBe('Card One edited on board B');
+    expect(sourceCol.cards[0].content).not.toContain('#hidden-internal-deleted');
+
+    var targetIds = M.getBoardState('board-b').rows[0].stacks[0].columns[0].cards.map(function (card) { return card.id; });
+    expect(targetIds).toEqual(['card-b2', 'card-b1']);
+
+    await M.runLastRedoOperation();
+
+    var redoneSourceCard = M.getBoardState('board-a').rows[0].stacks[0].columns[0].cards[0];
+    expect(redoneSourceCard.id).toBe('card-1');
+    expect(redoneSourceCard.content).toContain('#hidden-internal-deleted');
+    expect(M.getBoardState('board-b').rows[0].stacks[0].columns[0].cards.map(function (card) { return card.id; }))
+      .toEqual(['card-b2', 'card-1', 'card-b1']);
+    expect(M.getUndoOperationCount()).toBe(1);
   });
 
   // ── View → Workspace with hidden items (regression) ──────────────────

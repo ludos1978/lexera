@@ -24,6 +24,7 @@ var LexeraDndListeners = (function () {
 
   var DRAG_THRESHOLD = 5;
   var _linkClickTimer = null;
+  var _undoOperationSuppressDepth = 0;
 
   function init(deps) {
     if (typeof window !== 'undefined' && window.LexeraRuntime) {
@@ -952,6 +953,250 @@ var LexeraDndListeners = (function () {
     return { row: boardData.rows[rowIndex], rowIndex: rowIndex };
   }
 
+  function isDndUndoOperationRecordingSuppressed() {
+    return _undoOperationSuppressDepth > 0;
+  }
+
+  async function runWithoutDndUndoOperationRecording(fn) {
+    _undoOperationSuppressDepth++;
+    try {
+      return await fn();
+    } finally {
+      _undoOperationSuppressDepth--;
+    }
+  }
+
+  function captureUndoBeforeDndMutation(isCrossBoard, activeTouched) {
+    if (isDndUndoOperationRecordingSuppressed()) return;
+    if (!activeTouched || !getFullBoardData()) return;
+    if (isCrossBoard) {
+      if (typeof _deps.finalizePendingUndo === 'function') _deps.finalizePendingUndo();
+      return;
+    }
+    if (typeof _deps.pushUndo === 'function') _deps.pushUndo();
+  }
+
+  function cloneDndUndoMutationDescriptor(descriptor) {
+    var clone = {};
+    if (!descriptor || typeof descriptor !== 'object') return clone;
+    var keys = [
+      'boardId', 'kind', 'rowIndex', 'stackIndex', 'colIndex', 'insertAtStackIdx',
+      'indexMode', 'rowId', 'stackId', 'columnId', 'before'
+    ];
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      if (Object.prototype.hasOwnProperty.call(descriptor, key)) clone[key] = descriptor[key];
+    }
+    if (descriptor.canvasPosition && typeof descriptor.canvasPosition === 'object') {
+      clone.canvasPosition = {
+        x: descriptor.canvasPosition.x,
+        y: descriptor.canvasPosition.y
+      };
+    }
+    return clone;
+  }
+
+  function stripDndUndoHiddenTags(text) {
+    if (typeof _deps.stripInternalHiddenTags === 'function') {
+      return _deps.stripInternalHiddenTags(text || '');
+    }
+    return String(text || '').replace(/(?:^|\s)#hidden-internal-[a-z0-9_-]+/gi, '').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  function restoreDndUndoColumnContent(column) {
+    if (!column) return column;
+    column.title = stripDndUndoHiddenTags(column.title || '');
+    var cards = Array.isArray(column.cards) ? column.cards : [];
+    for (var i = 0; i < cards.length; i++) {
+      if (cards[i]) cards[i].content = stripDndUndoHiddenTags(cards[i].content || '');
+    }
+    return column;
+  }
+
+  function restoreDndUndoStackContent(stack) {
+    if (!stack) return stack;
+    stack.title = stripDndUndoHiddenTags(stack.title || '');
+    var columns = Array.isArray(stack.columns) ? stack.columns : [];
+    for (var c = 0; c < columns.length; c++) restoreDndUndoColumnContent(columns[c]);
+    return stack;
+  }
+
+  function restoreDndUndoRowContent(row) {
+    if (!row) return row;
+    row.title = stripDndUndoHiddenTags(row.title || '');
+    var stacks = Array.isArray(row.stacks) ? row.stacks : [];
+    for (var s = 0; s < stacks.length; s++) restoreDndUndoStackContent(stacks[s]);
+    return row;
+  }
+
+  function restoreDndUndoEntityContent(kind, entity) {
+    if (kind === 'row') return restoreDndUndoRowContent(entity);
+    if (kind === 'stack') return restoreDndUndoStackContent(entity);
+    if (kind === 'column') return restoreDndUndoColumnContent(entity);
+    return entity;
+  }
+
+  function getDndUndoEntityStableId(kind, entity) {
+    if (!entity) return null;
+    return normalizeStableMutationEntityId(entity.id);
+  }
+
+  function findDndUndoEntityLocation(boardData, kind, entityId) {
+    if (kind === 'row') return findMutationRowLocationById(boardData, entityId);
+    if (kind === 'stack') return findMutationStackLocationById(boardData, null, entityId);
+    if (kind === 'column') return findMutationColumnLocationById(boardData, null, null, entityId);
+    return null;
+  }
+
+  function removeDndUndoEntityAtLocation(boardData, kind, loc) {
+    if (!loc) return null;
+    if (kind === 'row') {
+      var rows = Array.isArray(boardData && boardData.rows) ? boardData.rows : null;
+      if (!rows || loc.rowIndex < 0 || loc.rowIndex >= rows.length) return null;
+      return rows.splice(loc.rowIndex, 1)[0];
+    }
+    if (kind === 'stack') {
+      if (!loc.row || !Array.isArray(loc.row.stacks) || loc.stackIndex < 0 || loc.stackIndex >= loc.row.stacks.length) return null;
+      return loc.row.stacks.splice(loc.stackIndex, 1)[0];
+    }
+    if (kind === 'column') {
+      if (!loc.stack || !Array.isArray(loc.stack.columns) || loc.colIndex < 0 || loc.colIndex >= loc.stack.columns.length) return null;
+      return loc.stack.columns.splice(loc.colIndex, 1)[0];
+    }
+    return null;
+  }
+
+  function replaceDndUndoEntityAtLocation(kind, loc, entity) {
+    if (!loc) return false;
+    if (kind === 'row') {
+      if (!loc.row) return false;
+      var existingKeys = Object.keys(loc.row);
+      for (var k = 0; k < existingKeys.length; k++) delete loc.row[existingKeys[k]];
+      Object.assign(loc.row, entity);
+      return true;
+    }
+    if (kind === 'stack') {
+      if (!loc.row || !Array.isArray(loc.row.stacks) || loc.stackIndex < 0 || loc.stackIndex >= loc.row.stacks.length) return false;
+      loc.row.stacks[loc.stackIndex] = entity;
+      return true;
+    }
+    if (kind === 'column') {
+      if (!loc.stack || !Array.isArray(loc.stack.columns) || loc.colIndex < 0 || loc.colIndex >= loc.stack.columns.length) return false;
+      loc.stack.columns[loc.colIndex] = entity;
+      return true;
+    }
+    return false;
+  }
+
+  function insertDndUndoEntityAtSource(kind, boardId, boardData, source, entity) {
+    if (kind === 'row') {
+      if (!Array.isArray(boardData.rows)) boardData.rows = [];
+      var rowInsertAt = typeof source.rowIndex === 'number' ? source.rowIndex : boardData.rows.length;
+      if (rowInsertAt < 0) rowInsertAt = 0;
+      if (rowInsertAt > boardData.rows.length) rowInsertAt = boardData.rows.length;
+      boardData.rows.splice(rowInsertAt, 0, entity);
+      return true;
+    }
+    if (kind === 'stack') {
+      var rowInfo = resolveRowForMutation(boardId, boardData, source.rowIndex, source.indexMode || 'full', source);
+      if (!rowInfo || !rowInfo.row) return false;
+      if (!Array.isArray(rowInfo.row.stacks)) rowInfo.row.stacks = [];
+      var stackInsertAt = typeof source.stackIndex === 'number' ? source.stackIndex : rowInfo.row.stacks.length;
+      if (stackInsertAt < 0) stackInsertAt = 0;
+      if (stackInsertAt > rowInfo.row.stacks.length) stackInsertAt = rowInfo.row.stacks.length;
+      rowInfo.row.stacks.splice(stackInsertAt, 0, entity);
+      return true;
+    }
+    if (kind === 'column') {
+      var stackInfo = resolveStackForMutation(boardId, boardData, source.rowIndex, source.stackIndex, source.indexMode || 'full', source);
+      if (!stackInfo || !stackInfo.stack) return false;
+      if (!Array.isArray(stackInfo.stack.columns)) stackInfo.stack.columns = [];
+      var colInsertAt = typeof source.colIndex === 'number' ? source.colIndex : stackInfo.stack.columns.length;
+      if (colInsertAt < 0) colInsertAt = 0;
+      if (colInsertAt > stackInfo.stack.columns.length) colInsertAt = stackInfo.stack.columns.length;
+      stackInfo.stack.columns.splice(colInsertAt, 0, entity);
+      return true;
+    }
+    return false;
+  }
+
+  async function undoCrossBoardStructuralMove(operation) {
+    if (!operation || !operation.kind || !operation.sourceBoardId || !operation.targetBoardId || !operation.entityId) return;
+    var sourceBoardData = await _deps.loadBoardDataForMutation(operation.sourceBoardId);
+    var targetBoardData = await _deps.loadBoardDataForMutation(operation.targetBoardId);
+    if (!sourceBoardData || !targetBoardData) return;
+
+    var targetLoc = findDndUndoEntityLocation(targetBoardData, operation.kind, operation.entityId);
+    var movedEntity = removeDndUndoEntityAtLocation(targetBoardData, operation.kind, targetLoc);
+    if (!movedEntity) return;
+    restoreDndUndoEntityContent(operation.kind, movedEntity);
+
+    var sourceLoc = findDndUndoEntityLocation(sourceBoardData, operation.kind, operation.entityId);
+    var restored = sourceLoc
+      ? replaceDndUndoEntityAtLocation(operation.kind, sourceLoc, movedEntity)
+      : insertDndUndoEntityAtSource(operation.kind, operation.sourceBoardId, sourceBoardData, operation.source || {}, movedEntity);
+    if (!restored) {
+      if (targetLoc) {
+        if (operation.kind === 'row') {
+          targetBoardData.rows.splice(targetLoc.rowIndex, 0, movedEntity);
+        } else if (operation.kind === 'stack') {
+          targetLoc.row.stacks.splice(targetLoc.stackIndex, 0, movedEntity);
+        } else if (operation.kind === 'column') {
+          targetLoc.stack.columns.splice(targetLoc.colIndex, 0, movedEntity);
+        }
+      }
+      return;
+    }
+
+    _deps.removeEmptyStacksAndRowsInBoard(sourceBoardData);
+    if (sourceBoardData !== targetBoardData) _deps.removeEmptyStacksAndRowsInBoard(targetBoardData);
+    var changedBoards = {};
+    changedBoards[operation.sourceBoardId] = sourceBoardData;
+    if (operation.targetBoardId !== operation.sourceBoardId) changedBoards[operation.targetBoardId] = targetBoardData;
+    await _deps.commitBoardMutations(changedBoards, { refreshSidebar: true });
+  }
+
+  function getDndCrossBoardMoveFunction(kind) {
+    if (kind === 'row') return moveRowAcrossBoards;
+    if (kind === 'stack') return moveStackAcrossBoards;
+    if (kind === 'column') return moveColumnAcrossBoards;
+    return null;
+  }
+
+  function recordCrossBoardStructuralMoveUndo(kind, source, target, movedEntity) {
+    if (isDndUndoOperationRecordingSuppressed()) return;
+    if (typeof _deps.pushUndoOperation !== 'function') return;
+    var entityId = getDndUndoEntityStableId(kind, movedEntity);
+    if (!entityId) return;
+    var operation = {
+      type: 'cross-board-' + kind + '-move',
+      kind: kind,
+      sourceBoardId: source.boardId,
+      targetBoardId: target.boardId,
+      source: cloneDndUndoMutationDescriptor(source),
+      target: cloneDndUndoMutationDescriptor(target),
+      entityId: entityId
+    };
+    _deps.pushUndoOperation({
+      meta: {
+        type: operation.type,
+        sourceBoardId: operation.sourceBoardId,
+        targetBoardId: operation.targetBoardId,
+        entityId: operation.entityId
+      },
+      undo: function () {
+        return undoCrossBoardStructuralMove(operation);
+      },
+      redo: function () {
+        var moveFn = getDndCrossBoardMoveFunction(operation.kind);
+        if (!moveFn) return undefined;
+        return runWithoutDndUndoOperationRecording(function () {
+          return moveFn(operation.source, operation.target);
+        });
+      }
+    });
+  }
+
   // Tag all content in a row as deleted (row title + all stack/column/card titles/content)
   function trashRowContent(row) {
     var tag = '#hidden-internal-deleted';
@@ -999,14 +1244,14 @@ var LexeraDndListeners = (function () {
       target
     );
 
-    var activeTouched = sourceBoardId === getActiveBoardId() || targetBoardId === getActiveBoardId();
-    if (activeTouched && getFullBoardData()) _deps.pushUndo();
-
     var isCrossBoard = sourceBoardId !== targetBoardId;
+    var activeTouched = sourceBoardId === getActiveBoardId() || targetBoardId === getActiveBoardId();
+    captureUndoBeforeDndMutation(isCrossBoard, activeTouched);
 
+    var clonedRow = null;
     if (isCrossBoard) {
       // Cross-board: clone to target, trash source (never truly remove)
-      var clonedRow = structuredClone(sourceRowInfo.row);
+      clonedRow = structuredClone(sourceRowInfo.row);
       var insertAt = targetBoardData.rows.length;
       if (targetRowInfo && targetRowInfo.row) {
         insertAt = target.before ? targetRowInfo.rowIndex : (targetRowInfo.rowIndex + 1);
@@ -1038,6 +1283,7 @@ var LexeraDndListeners = (function () {
     changedRows[sourceBoardId] = sourceBoardData;
     if (isCrossBoard) changedRows[targetBoardId] = targetBoardData;
     await _deps.commitBoardMutations(changedRows, { refreshSidebar: true });
+    if (isCrossBoard) recordCrossBoardStructuralMoveUndo('row', source, target, clonedRow);
   }
 
   async function moveStackAcrossBoards(source, target) {
@@ -1062,6 +1308,7 @@ var LexeraDndListeners = (function () {
     );
     if (!sourceStackInfo || !sourceStackInfo.stack || !sourceStackInfo.row) return;
 
+    var isCrossBoard = sourceBoardId !== targetBoardId;
     var activeTouched = sourceBoardId === getActiveBoardId() || targetBoardId === getActiveBoardId();
     var targetRowInfo = null;
     if (target.kind !== 'new-row') {
@@ -1081,7 +1328,7 @@ var LexeraDndListeners = (function () {
       sourceStackInfo.row === targetRowInfo.row &&
       target.canvasPosition
     ) {
-      if (activeTouched && getFullBoardData()) _deps.pushUndo();
+      captureUndoBeforeDndMutation(isCrossBoard, activeTouched);
       _deps.getCanvasStackDropApi().applyCanvasDropPositionToStack(
         targetBoardId,
         getActiveBoardId(),
@@ -1094,9 +1341,8 @@ var LexeraDndListeners = (function () {
       await _deps.commitBoardMutations(changedCanvasPlacement, { refreshSidebar: true });
       return;
     }
-    if (activeTouched && getFullBoardData()) _deps.pushUndo();
+    captureUndoBeforeDndMutation(isCrossBoard, activeTouched);
 
-    var isCrossBoard = sourceBoardId !== targetBoardId;
     var stackToInsert;
     if (isCrossBoard) {
       // Cross-board: clone to target, trash source
@@ -1130,6 +1376,7 @@ var LexeraDndListeners = (function () {
       changedNewRows[sourceBoardId] = sourceBoardData;
       if (isCrossBoard) changedNewRows[targetBoardId] = targetBoardData;
       await _deps.commitBoardMutations(changedNewRows, { refreshSidebar: true });
+      if (isCrossBoard) recordCrossBoardStructuralMoveUndo('stack', source, target, stackToInsert);
       return;
     }
 
@@ -1145,6 +1392,7 @@ var LexeraDndListeners = (function () {
       changedRows[sourceBoardId] = sourceBoardData;
       if (isCrossBoard) changedRows[targetBoardId] = targetBoardData;
       await _deps.commitBoardMutations(changedRows, { refreshSidebar: true });
+      if (isCrossBoard) recordCrossBoardStructuralMoveUndo('stack', source, target, stackToInsert);
       return;
     }
 
@@ -1180,6 +1428,7 @@ var LexeraDndListeners = (function () {
     changedStacks[sourceBoardId] = sourceBoardData;
     if (isCrossBoard) changedStacks[targetBoardId] = targetBoardData;
     await _deps.commitBoardMutations(changedStacks, { refreshSidebar: true });
+    if (isCrossBoard) recordCrossBoardStructuralMoveUndo('stack', source, target, stackToInsert);
   }
 
   async function moveColumnAcrossBoards(source, target) {
@@ -1205,10 +1454,10 @@ var LexeraDndListeners = (function () {
     );
     if (!sourceLoc || !sourceLoc.stack || !sourceLoc.stack.columns) { lexeraLogWithTarget('warn', 'COL-XBOARD', 'abort: sourceLoc not resolved'); return; }
 
-    var activeTouched = sourceBoardId === getActiveBoardId() || targetBoardId === getActiveBoardId();
-    if (activeTouched && getFullBoardData()) _deps.pushUndo();
-
     var isCrossBoard = sourceBoardId !== targetBoardId;
+    var activeTouched = sourceBoardId === getActiveBoardId() || targetBoardId === getActiveBoardId();
+    captureUndoBeforeDndMutation(isCrossBoard, activeTouched);
+
     var movedColumn;
     if (isCrossBoard) {
       movedColumn = structuredClone(sourceLoc.stack.columns[sourceLoc.colIndex]);
@@ -1249,6 +1498,7 @@ var LexeraDndListeners = (function () {
       changedNewRows[sourceBoardId] = sourceBoardData;
       if (targetBoardId !== sourceBoardId) changedNewRows[targetBoardId] = targetBoardData;
       await _deps.commitBoardMutations(changedNewRows, { refreshSidebar: true });
+      if (isCrossBoard) recordCrossBoardStructuralMoveUndo('column', source, target, movedColumn);
       return;
     }
 
@@ -1266,6 +1516,7 @@ var LexeraDndListeners = (function () {
       changedNewStacks[sourceBoardId] = sourceBoardData;
       if (targetBoardId !== sourceBoardId) changedNewStacks[targetBoardId] = targetBoardData;
       await _deps.commitBoardMutations(changedNewStacks, { refreshSidebar: true });
+      if (isCrossBoard) recordCrossBoardStructuralMoveUndo('column', source, target, movedColumn);
       return;
     }
 
@@ -1303,6 +1554,7 @@ var LexeraDndListeners = (function () {
       changedNewStackBoards[sourceBoardId] = sourceBoardData;
       if (targetBoardId !== sourceBoardId) changedNewStackBoards[targetBoardId] = targetBoardData;
       await _deps.commitBoardMutations(changedNewStackBoards, { refreshSidebar: true });
+      if (isCrossBoard) recordCrossBoardStructuralMoveUndo('column', source, target, movedColumn);
       return;
     }
 
@@ -1368,6 +1620,7 @@ var LexeraDndListeners = (function () {
     changed[sourceBoardId] = sourceBoardData;
     if (targetBoardId !== sourceBoardId) changed[targetBoardId] = targetBoardData;
     await _deps.commitBoardMutations(changed, { refreshSidebar: true });
+    if (isCrossBoard) recordCrossBoardStructuralMoveUndo('column', source, target, movedColumn);
     return;
   }
 

@@ -74,6 +74,24 @@
     undoPendingSnapshot = null;
   }
 
+  function _trimUndoStack() {
+    while (undoStack.length > MAX_UNDO) {
+      undoTotalBytes -= undoStack.shift().size;
+    }
+    while (undoTotalBytes > MAX_UNDO_BYTES && undoStack.length > 0) {
+      undoTotalBytes -= undoStack.shift().size;
+    }
+  }
+
+  function _estimateOperationSize(operation) {
+    var payload = operation && operation.meta ? operation.meta : operation;
+    try {
+      return JSON.stringify(payload || {}).length;
+    } catch (err) {
+      return 0;
+    }
+  }
+
   /**
    * Capture a snapshot of the current board state for undo.
    * Call this BEFORE making a mutation.
@@ -111,6 +129,28 @@
   }
 
   /**
+   * Push an explicit async undo/redo operation.
+   *
+   * Use this for mutations that cannot be safely represented as a
+   * single-board snapshot delta. Cross-board drag operations must reload
+   * the current boards and perform the inverse move by stable id.
+   *
+   * @param {{undo:function(): Promise|void, redo:function(): Promise|void, meta?:Object}} operation
+   */
+  function pushUndoOperation(operation) {
+    _ensureDeps();
+    if (!operation || typeof operation.undo !== 'function') return;
+    finalizePendingUndo();
+    var size = _estimateOperationSize(operation);
+    undoStack.push({ operation: operation, size: size });
+    undoTotalBytes += size;
+    _trimUndoStack();
+    undoPendingSnapshot = null;
+    _lastMutationType = null;
+    redoStack = [];
+  }
+
+  /**
    * Resolve targets for an undo/redo operation. If the delta is card-content-only
    * and every affected card is visible in activeBoardData, returns targeted refresh
    * targets (fast path). Otherwise returns [{type: 'board'}] (full render fallback).
@@ -134,12 +174,28 @@
   async function undo() {
     _ensureDeps();
     finalizePendingUndo();
-    var fullBoardData = _deps.getFullBoardData();
-    var activeBoardId = _deps.getActiveBoardId();
-    if (undoStack.length === 0 || !fullBoardData || !activeBoardId) return;
-    var saveBase = _deps.getBoardSaveBase(fullBoardData);
+    if (undoStack.length === 0) return;
     var entry = undoStack.pop();
     undoTotalBytes -= entry.size;
+    if (entry.operation) {
+      try {
+        await entry.operation.undo();
+        redoStack.push(entry);
+      } catch (err) {
+        undoStack.push(entry);
+        undoTotalBytes += entry.size;
+        throw err;
+      }
+      return;
+    }
+    var fullBoardData = _deps.getFullBoardData();
+    var activeBoardId = _deps.getActiveBoardId();
+    if (!fullBoardData || !activeBoardId) {
+      undoStack.push(entry);
+      undoTotalBytes += entry.size;
+      return;
+    }
+    var saveBase = _deps.getBoardSaveBase(fullBoardData);
     redoStack.push(entry);
     // Resolve targets BEFORE applying — activeBoardData still reflects current
     // DOM state and card positions are stable across card-content deltas.
@@ -154,13 +210,34 @@
    */
   async function redo() {
     _ensureDeps();
+    if (redoStack.length === 0) return;
+    var entry = redoStack.pop();
+    if (entry.operation) {
+      if (typeof entry.operation.redo !== 'function') {
+        redoStack.push(entry);
+        return;
+      }
+      try {
+        await entry.operation.redo();
+        undoStack.push(entry);
+        undoTotalBytes += entry.size;
+        _trimUndoStack();
+      } catch (err) {
+        redoStack.push(entry);
+        throw err;
+      }
+      return;
+    }
     var fullBoardData = _deps.getFullBoardData();
     var activeBoardId = _deps.getActiveBoardId();
-    if (redoStack.length === 0 || !fullBoardData || !activeBoardId) return;
+    if (!fullBoardData || !activeBoardId) {
+      redoStack.push(entry);
+      return;
+    }
     var saveBase = _deps.getBoardSaveBase(fullBoardData);
-    var entry = redoStack.pop();
     undoStack.push(entry);
     undoTotalBytes += entry.size;
+    _trimUndoStack();
     var targets = _resolveTargetsForDelta(entry.delta);
     _deps.applyBoardDelta(fullBoardData, entry.delta, false);
     _deps.setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
@@ -207,6 +284,7 @@
   return {
     init: init,
     pushUndo: pushUndo,
+    pushUndoOperation: pushUndoOperation,
     undo: undo,
     redo: redo,
     finalizePendingUndo: finalizePendingUndo,
