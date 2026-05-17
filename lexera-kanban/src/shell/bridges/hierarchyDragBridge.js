@@ -43,6 +43,7 @@
   // identity alone is not enough to prevent duplicate listeners.
   var _installedWebviews = (typeof WeakSet === 'function') ? new WeakSet() : null;
   var _installedWebviewLabels = {};
+  var _undoOperationSuppressDepth = 0;
 
   // Diagnostic helper: collect a summary of every card's (id, kid)
   // pair from a loaded KanbanBoard plus an explicit presence check
@@ -244,6 +245,283 @@
     var byId = locateEntityByIds(board, kind, ids);
     if (byId) return byId;
     return locateEntityByPath(board, kind, entityRef);
+  }
+
+  function isUndoOperationRecordingSuppressed() {
+    return _undoOperationSuppressDepth > 0;
+  }
+
+  async function runWithoutUndoOperationRecording(fn) {
+    _undoOperationSuppressDepth++;
+    try {
+      return await fn();
+    } finally {
+      _undoOperationSuppressDepth--;
+    }
+  }
+
+  function cloneDropRef(ref) {
+    if (!ref || typeof ref !== 'object') return null;
+    try {
+      return JSON.parse(JSON.stringify(ref));
+    } catch (_) {
+      var out = {};
+      for (var key in ref) {
+        if (!Object.prototype.hasOwnProperty.call(ref, key)) continue;
+        var value = ref[key];
+        if (value == null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          out[key] = value;
+        }
+      }
+      return out;
+    }
+  }
+
+  function locateEntityWithPath(board, kind, entityRef) {
+    var found = locateEntity(board, kind, entityRef);
+    if (!found || !found.parent) return null;
+    var entity = found.parent[found.index];
+    var rows = Array.isArray(board && board.rows) ? board.rows : [];
+    if (kind === 'row' && found.parent === rows) {
+      return {
+        parent: found.parent,
+        index: found.index,
+        entity: entity,
+        row: entity,
+        rowIndex: found.index
+      };
+    }
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      var stacks = Array.isArray(row && row.stacks) ? row.stacks : [];
+      if (kind === 'stack' && found.parent === stacks) {
+        return {
+          parent: found.parent,
+          index: found.index,
+          entity: entity,
+          row: row,
+          rowIndex: r,
+          stack: entity,
+          stackIndex: found.index
+        };
+      }
+      for (var s = 0; s < stacks.length; s++) {
+        var stack = stacks[s];
+        var columns = Array.isArray(stack && stack.columns) ? stack.columns : [];
+        if (kind === 'column' && found.parent === columns) {
+          return {
+            parent: found.parent,
+            index: found.index,
+            entity: entity,
+            row: row,
+            rowIndex: r,
+            stack: stack,
+            stackIndex: s,
+            column: entity,
+            colIndex: found.index
+          };
+        }
+        for (var c = 0; c < columns.length; c++) {
+          var column = columns[c];
+          var cards = Array.isArray(column && column.cards) ? column.cards : [];
+          if (kind === 'card' && found.parent === cards) {
+            return {
+              parent: found.parent,
+              index: found.index,
+              entity: entity,
+              row: row,
+              rowIndex: r,
+              stack: stack,
+              stackIndex: s,
+              column: column,
+              colIndex: c,
+              cardIndex: found.index
+            };
+          }
+        }
+      }
+    }
+    return {
+      parent: found.parent,
+      index: found.index,
+      entity: entity
+    };
+  }
+
+  function captureEntityOrigin(board, source) {
+    if (!board || !source || !source.kind) return null;
+    var loc = locateEntityWithPath(board, source.kind, source);
+    if (!loc || !loc.entity) return null;
+    return {
+      boardId: source.boardId || null,
+      kind: source.kind,
+      index: loc.index,
+      rowId: loc.row && loc.row.id || null,
+      rowIndex: typeof loc.rowIndex === 'number' ? loc.rowIndex : null,
+      stackId: loc.stack && loc.stack.id || null,
+      stackIndex: typeof loc.stackIndex === 'number' ? loc.stackIndex : null,
+      columnId: loc.column && loc.column.id || null,
+      colIndex: typeof loc.colIndex === 'number' ? loc.colIndex : null,
+      entityIds: entityIdCandidates(source, source.kind)
+    };
+  }
+
+  function getRowForOrigin(board, origin) {
+    if (!board || !Array.isArray(board.rows)) return null;
+    if (origin && origin.rowId) {
+      var rowLoc = locateEntityByIds(board, 'row', [origin.rowId]);
+      if (rowLoc) return rowLoc.parent[rowLoc.index];
+    }
+    var rowIndex = toSafeIndex(origin && origin.rowIndex);
+    return rowIndex >= 0 && rowIndex < board.rows.length ? board.rows[rowIndex] : null;
+  }
+
+  function getStackForOrigin(board, origin) {
+    if (!board) return null;
+    if (origin && origin.stackId) {
+      var stackLoc = locateEntityByIds(board, 'stack', [origin.stackId]);
+      if (stackLoc) return stackLoc.parent[stackLoc.index];
+    }
+    var row = getRowForOrigin(board, origin);
+    var stacks = row && Array.isArray(row.stacks) ? row.stacks : null;
+    if (!stacks) return null;
+    var stackIndex = toSafeIndex(origin && origin.stackIndex);
+    return stackIndex >= 0 && stackIndex < stacks.length ? stacks[stackIndex] : null;
+  }
+
+  function getColumnForOrigin(board, origin) {
+    if (!board) return null;
+    if (origin && origin.columnId) {
+      var columnLoc = locateEntityByIds(board, 'column', [origin.columnId]);
+      if (columnLoc) return columnLoc.parent[columnLoc.index];
+    }
+    var stack = getStackForOrigin(board, origin);
+    var columns = stack && Array.isArray(stack.columns) ? stack.columns : null;
+    if (!columns) return null;
+    var colIndex = toSafeIndex(origin && origin.colIndex);
+    return colIndex >= 0 && colIndex < columns.length ? columns[colIndex] : null;
+  }
+
+  function insertEntityAtOrigin(board, origin, entity) {
+    if (!board || !origin || !entity) return false;
+    if (origin.kind === 'row') {
+      if (!Array.isArray(board.rows)) board.rows = [];
+      var rowIndex = typeof origin.index === 'number' ? origin.index : board.rows.length;
+      if (rowIndex < 0) rowIndex = 0;
+      if (rowIndex > board.rows.length) rowIndex = board.rows.length;
+      board.rows.splice(rowIndex, 0, entity);
+      return true;
+    }
+    if (origin.kind === 'stack') {
+      var row = getRowForOrigin(board, origin);
+      if (!row) return false;
+      if (!Array.isArray(row.stacks)) row.stacks = [];
+      var stackIndex = typeof origin.index === 'number' ? origin.index : row.stacks.length;
+      if (stackIndex < 0) stackIndex = 0;
+      if (stackIndex > row.stacks.length) stackIndex = row.stacks.length;
+      row.stacks.splice(stackIndex, 0, entity);
+      return true;
+    }
+    if (origin.kind === 'column') {
+      var stack = getStackForOrigin(board, origin);
+      if (!stack) return false;
+      if (!Array.isArray(stack.columns)) stack.columns = [];
+      var colIndex = typeof origin.index === 'number' ? origin.index : stack.columns.length;
+      if (colIndex < 0) colIndex = 0;
+      if (colIndex > stack.columns.length) colIndex = stack.columns.length;
+      stack.columns.splice(colIndex, 0, entity);
+      return true;
+    }
+    if (origin.kind === 'card') {
+      var column = getColumnForOrigin(board, origin);
+      if (!column) return false;
+      if (!Array.isArray(column.cards)) column.cards = [];
+      var cardIndex = typeof origin.index === 'number' ? origin.index : column.cards.length;
+      if (cardIndex < 0) cardIndex = 0;
+      if (cardIndex > column.cards.length) cardIndex = column.cards.length;
+      column.cards.splice(cardIndex, 0, entity);
+      return true;
+    }
+    return false;
+  }
+
+  function removeLocatedEntity(loc) {
+    if (!loc || !Array.isArray(loc.parent) || loc.index < 0 || loc.index >= loc.parent.length) return null;
+    return loc.parent.splice(loc.index, 1)[0] || null;
+  }
+
+  function putEntityBackAtLocation(loc, entity) {
+    if (!loc || !Array.isArray(loc.parent) || !entity) return;
+    var insertAt = loc.index;
+    if (insertAt < 0) insertAt = 0;
+    if (insertAt > loc.parent.length) insertAt = loc.parent.length;
+    loc.parent.splice(insertAt, 0, entity);
+  }
+
+  function normalizeDropAffectedBoardIds(source, target) {
+    if (!source || !target || !source.boardId || !target.boardId) return [];
+    return source.boardId === target.boardId ? [source.boardId] : [source.boardId, target.boardId];
+  }
+
+  async function loadDropBoards(io, source, target) {
+    var sameBoard = source.boardId === target.boardId;
+    var srcBoard = await io.loadBoard(source.boardId);
+    var tgtBoard = sameBoard ? srcBoard : await io.loadBoard(target.boardId);
+    return { sameBoard: sameBoard, srcBoard: srcBoard, tgtBoard: tgtBoard };
+  }
+
+  async function saveAndNotifyDropBoards(io, source, target, srcBoard, tgtBoard) {
+    var sameBoard = source.boardId === target.boardId;
+    if (sameBoard) {
+      await io.saveBoard(source.boardId, srcBoard);
+    } else {
+      await Promise.all([
+        io.saveBoard(source.boardId, srcBoard),
+        io.saveBoard(target.boardId, tgtBoard)
+      ]);
+    }
+    var affected = normalizeDropAffectedBoardIds(source, target);
+    for (var i = 0; i < affected.length; i++) {
+      if (typeof io.broadcastBoardChanged === 'function') {
+        io.broadcastBoardChanged(affected[i]).catch(function () { /* non-fatal */ });
+      }
+    }
+    if (typeof io.onApplied === 'function') {
+      io.onApplied(source.boardId);
+      if (!sameBoard) io.onApplied(target.boardId);
+    }
+  }
+
+  async function undoHierarchyDropOperation(io, operation) {
+    var source = cloneDropRef(operation && operation.source);
+    var target = cloneDropRef(operation && operation.target);
+    var origin = operation && operation.origin;
+    if (!source || !target || !origin) return false;
+    var loaded = await loadDropBoards(io, source, target);
+    if (!loaded.srcBoard || !loaded.tgtBoard) return false;
+    var currentBoard = loaded.sameBoard ? loaded.srcBoard : loaded.tgtBoard;
+    var currentLoc = locateEntityWithPath(currentBoard, source.kind, source);
+    if (!currentLoc) return false;
+    var moved = removeLocatedEntity(currentLoc);
+    if (!moved) return false;
+    var restored = insertEntityAtOrigin(loaded.srcBoard, origin, moved);
+    if (!restored) {
+      putEntityBackAtLocation(currentLoc, moved);
+      return false;
+    }
+    await saveAndNotifyDropBoards(io, source, target, loaded.srcBoard, loaded.tgtBoard);
+    return true;
+  }
+
+  async function redoHierarchyDropOperation(io, operation) {
+    var source = cloneDropRef(operation && operation.source);
+    var target = cloneDropRef(operation && operation.target);
+    if (!source || !target) return false;
+    var loaded = await loadDropBoards(io, source, target);
+    if (!loaded.srcBoard || !loaded.tgtBoard) return false;
+    if (!applyDrop(loaded.srcBoard, loaded.tgtBoard, source, target)) return false;
+    await saveAndNotifyDropBoards(io, source, target, loaded.srcBoard, loaded.tgtBoard);
+    return true;
   }
 
   /**
@@ -526,6 +804,7 @@
     var invoke = deps.invoke;
     var loadBoard = deps.loadBoard;
     var saveBoard = deps.saveBoard;
+    var pushUndoOperation = deps.pushUndoOperation;
     if (typeof getCurrentWebview !== 'function') return false;
     if (typeof invoke !== 'function') return false;
     if (typeof loadBoard !== 'function') return false;
@@ -603,6 +882,12 @@
         payload: { boardId: boardId }
       });
     }
+    var dropIo = {
+      loadBoard: loadBoard,
+      saveBoard: saveBoard,
+      broadcastBoardChanged: broadcastBoardChanged,
+      onApplied: deps.onApplied
+    };
     function getExternalDndType(source) {
       var kindToType = { row: 'tree-row', stack: 'tree-stack', column: 'tree-column', card: 'tree-card' };
       var kind = source && source.kind;
@@ -833,6 +1118,35 @@
           });
           return;
         }
+        var undoOperation = null;
+        if (!isUndoOperationRecordingSuppressed() && typeof pushUndoOperation === 'function') {
+          var origin = captureEntityOrigin(srcBoard, source);
+          if (origin) {
+            var operation = {
+              type: 'hierarchy-drop-reverse',
+              source: cloneDropRef(source),
+              target: cloneDropRef(target),
+              origin: origin
+            };
+            undoOperation = {
+              meta: {
+                type: operation.type,
+                sourceBoardId: source.boardId,
+                targetBoardId: target.boardId,
+                sourceKind: source.kind,
+                sourceIds: origin.entityIds
+              },
+              undo: function () {
+                return undoHierarchyDropOperation(dropIo, operation);
+              },
+              redo: function () {
+                return runWithoutUndoOperationRecording(function () {
+                  return redoHierarchyDropOperation(dropIo, operation);
+                });
+              }
+            };
+          }
+        }
         var applied = applyDrop(srcBoard, tgtBoard, source, target);
         if (!applied) {
           // Diagnose WHY applyDrop bailed. Re-runs locateEntity with
@@ -885,26 +1199,10 @@
           }
           return;
         }
-        var saves = sameBoard
-          ? [Promise.resolve(saveBoard(source.boardId, srcBoard))]
-          : [
-              Promise.resolve(saveBoard(source.boardId, srcBoard)),
-              Promise.resolve(saveBoard(target.boardId, tgtBoard))
-            ];
-        return Promise.all(saves).then(function () {
+        return saveAndNotifyDropBoards(dropIo, source, target, srcBoard, tgtBoard).then(function () {
           xviewLog('apply.local-drop.saved', { affected: sameBoard ? 1 : 2 });
-          // Notify every webview in the window that the affected boards
-          // changed so sub-apps can drop their cached hierarchy and
-          // refetch. Without this, the user sees no visible reorder
-          // because the workspaces / hierarchy sub-app re-renders from
-          // its stale `boardHierarchies` cache.
-          var affected = sameBoard ? [source.boardId] : [source.boardId, target.boardId];
-          for (var i = 0; i < affected.length; i++) {
-            broadcastBoardChanged(affected[i]).catch(function () { /* non-fatal */ });
-          }
-          if (typeof deps.onApplied === 'function') {
-            deps.onApplied(source.boardId);
-            if (!sameBoard) deps.onApplied(target.boardId);
+          if (undoOperation && typeof pushUndoOperation === 'function') {
+            pushUndoOperation(undoOperation);
           }
         });
       }).catch(function (err) {

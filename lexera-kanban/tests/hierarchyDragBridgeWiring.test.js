@@ -77,4 +77,11 @@ describe('hierarchy drag bridge — production wiring', () => {
     expect(code).toMatch(/getWebviewLabelAtTopPoint:\s*getWebviewLabelAtTopPoint/);
     expect(code).toMatch(/getWebviewRect:\s*getWebviewRect/);
   });
+
+  it('the wrapper forwards hierarchy drop undo operations to LexeraUndoRedo', () => {
+    const code = codeOnly(multiviewClientJs);
+    expect(code).toMatch(/window\.LexeraUndoRedo/);
+    expect(code).toMatch(/pushUndoOperation:\s*function/);
+    expect(code).toMatch(/undoRedo\.pushUndoOperation\(operation\)/);
+  });
 });

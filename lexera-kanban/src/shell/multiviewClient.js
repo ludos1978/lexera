@@ -747,6 +747,7 @@
       ? mvw.getWebviewLabelAtTopPoint : null;
     var getWebviewRect = (mvw && typeof mvw.getWebviewRect === 'function')
       ? mvw.getWebviewRect : null;
+    var undoRedo = (typeof window !== 'undefined' && window.LexeraUndoRedo) || null;
     bridge.install({
       getCurrentWebview: getCurrentWebview,
       invoke: invoke,
@@ -761,6 +762,10 @@
       },
       saveBoard: function (boardId, board) {
         return api.saveBoard(boardId, board);
+      },
+      pushUndoOperation: function (operation) {
+        if (!undoRedo || typeof undoRedo.pushUndoOperation !== 'function') return;
+        try { undoRedo.pushUndoOperation(operation); } catch (_) { /* undo stack not ready in this shell */ }
       },
       getWebviewLabelAtTopPoint: getWebviewLabelAtTopPoint,
       getWebviewRect: getWebviewRect,

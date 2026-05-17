@@ -1040,6 +1040,75 @@ describe('LexeraHierarchyDragBridge.install', () => {
     expect(onApplied).toHaveBeenCalledWith('B');
   });
 
+  it('registers shell-drop undo as a reverse move against current boards', async () => {
+    const wv = makeWebview('undo-shell-drop');
+    const invoke = vi.fn(() => Promise.resolve());
+    function makeBoardWithCards(prefix) {
+      return {
+        title: prefix,
+        columns: [],
+        rows: [{ id: prefix + '-r1', title: 'Row', stacks: [{
+          id: prefix + '-s1', title: 'Stack', columns: [{
+            id: prefix + '-c1', title: 'Col', cards: [
+              { id: prefix + '-card-1', title: 'A' },
+              { id: prefix + '-card-2', title: 'B' }
+            ]
+          }]
+        }] }]
+      };
+    }
+    const boardA = makeBoardWithCards('a');
+    const boardB = makeBoardWithCards('b');
+    const undoOperations = [];
+    const loadBoard = vi.fn((id) => Promise.resolve(id === 'A' ? boardA : boardB));
+    const saveBoard = vi.fn(() => Promise.resolve());
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: loadBoard,
+      saveBoard: saveBoard,
+      pushUndoOperation: (operation) => undoOperations.push(operation),
+      ...shellGeomDeps
+    });
+
+    wv._fire('hierarchy-entity-drop', {
+      source: { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      target: { boardId: 'B', kind: 'card', entityId: 'b-card-2' }
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(undoOperations.length).toBe(1);
+    expect(boardA.rows[0].stacks[0].columns[0].cards.map((c) => c.id)).toEqual(['a-card-2']);
+    expect(boardB.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['b-card-1', 'a-card-1', 'b-card-2']);
+
+    const targetCol = boardB.rows[0].stacks[0].columns[0];
+    targetCol.cards.unshift({ id: 'b-card-new', title: 'Concurrent B edit' });
+    const movedIdx = targetCol.cards.findIndex((card) => card.id === 'a-card-1');
+    const moved = targetCol.cards.splice(movedIdx, 1)[0];
+    moved.title = 'Edited after move';
+    boardB.rows[0].stacks[0].columns.push({ id: 'b-c2', title: 'Later', cards: [moved] });
+
+    await undoOperations[0].undo();
+
+    expect(boardA.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['a-card-1', 'a-card-2']);
+    expect(boardA.rows[0].stacks[0].columns[0].cards[0].title).toBe('Edited after move');
+    expect(boardB.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['b-card-new', 'b-card-1', 'b-card-2']);
+    expect(boardB.rows[0].stacks[0].columns[1].cards).toEqual([]);
+
+    await undoOperations[0].redo();
+
+    expect(undoOperations.length).toBe(1);
+    expect(boardA.rows[0].stacks[0].columns[0].cards.map((c) => c.id)).toEqual(['a-card-2']);
+    expect(boardB.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['b-card-new', 'b-card-1', 'a-card-1', 'b-card-2']);
+    expect(boardB.rows[0].stacks[0].columns[0].cards[2].title).toBe('Edited after move');
+  });
+
   it('routes cross-board cross-kind drops through applyCrossBoardEntityAbsorb', async () => {
     const wv = makeWebview();
     function makeBoardWithStructure(prefix) {
