@@ -136,6 +136,36 @@ describe('focusSearchResultCard', () => {
     );
     expect(result).toBe(false);
   });
+
+  // Regression (TODO: "dashboard links point to a different card"): the
+  // dashboard dataset can diverge from the live CRDT board, so the
+  // ephemeral data-card-id and the positional col/card index point at the
+  // WRONG card. The stable kid must win (Priority 0). Here cardId 'stale'
+  // and columnIndex/cardIndex resolve to the wrong card, but cardKid must
+  // pick the right one.
+  it('prefers the stable cardKid over a drifted cardId / position (Priority 0)', () => {
+    const wrongCard = makeCard({ 'data-card-kid': 'kid-wrong', 'data-card-id': 'stale', 'data-col-index': '1', 'data-card-index': '0' });
+    const rightCard = makeCard({ 'data-card-kid': 'kid-right', 'data-card-id': 'fresh', 'data-col-index': '4', 'data-card-index': '2' });
+    const focused = [];
+    const result = BoardNavigation.focusSearchResultCard(
+      { cardKid: 'kid-right', cardId: 'stale', columnIndex: 1, cardIndex: 0 },
+      { getColumnsContainer: () => makeContainer([wrongCard, rightCard]), escapeAttr: String, focusCard: (el) => focused.push(el) }
+    );
+    expect(result).toBe(true);
+    expect(focused).toHaveLength(1);
+    expect(focused[0]).toBe(rightCard);
+  });
+
+  it('falls back to cardId when the cardKid is not in the DOM (kid-less / pre-save card)', () => {
+    const card = makeCard({ 'data-card-id': 'abc', 'data-col-index': '2', 'data-card-index': '0' });
+    const focused = [];
+    const result = BoardNavigation.focusSearchResultCard(
+      { cardKid: 'kid-not-rendered', cardId: 'abc', columnIndex: 2, cardIndex: 0 },
+      { getColumnsContainer: () => makeContainer([card]), escapeAttr: String, focusCard: (el) => focused.push(el) }
+    );
+    expect(result).toBe(true);
+    expect(focused[0]).toBe(card);
+  });
 });
 
 describe('navigateToSearchResult', () => {

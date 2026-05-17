@@ -262,6 +262,7 @@ describe('dashboard tree click → nav payload (temporal-section routing)', () =
     const payload = DashboardTree.buildDashboardNavResultFromTreeNode(node);
     expect(payload).toEqual({
       boardId: 'board-1',
+      cardKid: null,
       cardId: 'card-42',
       columnIndex: 2,
       rowIndex: 0,
@@ -270,6 +271,23 @@ describe('dashboard tree click → nav payload (temporal-section routing)', () =
       cardIndex: 4,
       columnTitle: 'Doing'
     });
+  });
+
+  // The result node DOES carry the stable kid (backend dashboard.rs
+  // card_kid → data-dashboard-card-kid). It must reach the nav payload so
+  // focusSearchResultCard can prefer it over the drifty cardId — without
+  // this read-back the kid was written to the DOM but silently dropped.
+  it('carries the stable cardKid into the nav payload when present', () => {
+    const node = makeFakeNode({
+      'data-dashboard-target': 'result',
+      'data-dashboard-board-id': 'board-1',
+      'data-dashboard-card-kid': 'a1b2c3d4',
+      'data-dashboard-card-id': 'loro:container:42',
+      'data-dashboard-column-index': '2'
+    });
+    const payload = DashboardTree.buildDashboardNavResultFromTreeNode(node);
+    expect(payload.cardKid).toBe('a1b2c3d4');
+    expect(payload.cardId).toBe('loro:container:42');
   });
 
   it('returns null when the node carries no boardId — the focus chain bails before navigating', () => {
@@ -288,6 +306,7 @@ describe('dashboard tree click → nav payload (temporal-section routing)', () =
     const payload = DashboardTree.buildDashboardNavResultFromTreeNode(node);
     expect(payload).toEqual({
       boardId: 'board-1',
+      cardKid: null,
       cardId: 'card-no-position',
       columnIndex: null,
       rowIndex: null,

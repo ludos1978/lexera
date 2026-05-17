@@ -68,6 +68,8 @@
       target.colLocalIndex = attr('data-col-local-index');
       target.columnIndex = attr('data-col-index');
       target.cardIndex = attr('data-card-index');
+      var cardKid = String(node.getAttribute('data-card-kid') || '').trim();
+      if (cardKid) target.cardKid = cardKid;
       var cardId = String(node.getAttribute('data-card-id') || '').trim();
       if (cardId) target.cardId = cardId;
       return target;
@@ -160,6 +162,22 @@
       : function (value) { return String(value == null ? '' : value); };
     var focusCard = typeof options.focusCard === 'function' ? options.focusCard : null;
     
+    // Priority 0: the persistent card kid. The dashboard / search dataset
+    // can diverge from the live CRDT board (the Loro-assigned data-card-id
+    // drifts across reloads/syncs), so matching the ephemeral cardId or a
+    // positional index lands on a DIFFERENT card. The 8-char kid is stable
+    // across parses/syncs (backend dashboard.rs reports it precisely for
+    // this) — prefer it, mirroring the workspace focus path
+    // (orderHelpers.findBoardEntityElement).
+    var cardKid = result.cardKid ? String(result.cardKid) : '';
+    if (cardKid) {
+      var byKid = container.querySelector('.card[data-card-kid="' + escapeAttr(cardKid) + '"]');
+      if (byKid) {
+        if (focusCard) focusCard(byKid);
+        return true;
+      }
+    }
+
     // Priority 1: Try to find by cardId first
     var cardId = result.cardId ? String(result.cardId) : '';
     if (cardId) {

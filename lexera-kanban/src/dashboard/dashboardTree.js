@@ -425,6 +425,7 @@
   function buildDashboardNavResult(result) {
     return {
       boardId: result.boardId,
+      cardKid: result.cardKid || null,
       cardId: result.cardId,
       cardContent: result.cardContent,
       columnIndex: parseOptionalSearchIndex(result.columnIndex),
@@ -442,6 +443,10 @@
     if (!boardId) return null;
     return {
       boardId: boardId,
+      // Stable persistent identity — written by buildDashboard*TreeNodes as
+      // data-dashboard-card-kid (backend dashboard.rs card_kid). Carried so
+      // focusSearchResultCard can prefer the kid over the drifty cardId.
+      cardKid: String(node.getAttribute('data-dashboard-card-kid') || '').trim() || null,
       cardId: String(node.getAttribute('data-dashboard-card-id') || '').trim() || null,
       columnIndex: parseOptionalSearchIndex(node.getAttribute('data-dashboard-column-index')),
       rowIndex: parseOptionalSearchIndex(node.getAttribute('data-dashboard-row-index')),
