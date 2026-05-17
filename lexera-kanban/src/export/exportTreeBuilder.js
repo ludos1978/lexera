@@ -408,15 +408,26 @@ class ExportTreeBuilder {
             return this.findNodeById(tree, stackId) ? stackId : null;
         }
         if (scope === 'column') {
-            if (typeof selection.rowIndex === 'number' && typeof selection.stackIndex === 'number' && typeof selection.columnIndex === 'number') {
-                var columnId = 'column-' + selection.rowIndex + '-' + selection.stackIndex + '-' + selection.columnIndex;
-                if (this.findNodeById(tree, columnId)) return columnId;
-            }
+            // Stable column id FIRST. The column burger menu derives
+            // rowIndex/stackIndex/columnIndex from the rendered DOM
+            // (findColumnContainer), but the export tree's positional
+            // `column-R-S-C` node ids are built from the board DATA model.
+            // Hidden/folded columns or CRDT reordering shift those
+            // positions, so a positional id still resolves to *a* node —
+            // the wrong one — shadowing the correct column. Matching the
+            // stable id (set by buildExportSelectionForColumn from
+            // col.id) resolves the exact column the user clicked
+            // regardless of render-vs-data ordering. Positional lookups
+            // remain as fallbacks for callers that pass no columnId.
             if (selection.columnId) {
                 var byColumnId = this.findNode(tree, function (node) {
                     return node.type === 'column' && node.columnId === selection.columnId;
                 });
                 if (byColumnId) return this.generateNodeId(byColumnId);
+            }
+            if (typeof selection.rowIndex === 'number' && typeof selection.stackIndex === 'number' && typeof selection.columnIndex === 'number') {
+                var columnId = 'column-' + selection.rowIndex + '-' + selection.stackIndex + '-' + selection.columnIndex;
+                if (this.findNodeById(tree, columnId)) return columnId;
             }
             if (typeof selection.flatColumnIndex === 'number') {
                 var byFlatIndex = this.findNode(tree, function (node) {

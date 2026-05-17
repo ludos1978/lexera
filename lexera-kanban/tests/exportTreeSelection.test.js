@@ -91,6 +91,37 @@ describe('ExportTreeBuilder.resolveNodeIdForSelection', () => {
     // Guards against upstream bugs where data-row-index wasn't parseInt'd.
     expect(ExportTreeBuilder.resolveNodeIdForSelection(tree(), { scope: 'row', rowIndex: '0' })).toBeNull();
   });
+
+  // Regression: the column burger menu derives rowIndex/stackIndex/
+  // columnIndex from the rendered DOM, but the tree's positional ids come
+  // from the board data model. Hidden/folded/CRDT-reordered columns make
+  // those positions disagree — the positional id still resolves to a
+  // *different but existing* node. The stable columnId must win so the
+  // user exports the column they actually clicked.
+  it('prefers the stable columnId over conflicting positional indexes', () => {
+    // col-b2a really lives at column-1-1-0, but the menu also passed
+    // stale positional indexes pointing at column-1-0-1 (col-b1b).
+    expect(ExportTreeBuilder.resolveNodeIdForSelection(tree(), {
+      scope: 'column',
+      columnId: 'col-b2a',
+      rowIndex: 1,
+      stackIndex: 0,
+      columnIndex: 1,
+      flatColumnIndex: 3,
+    })).toBe('column-1-1-0');
+  });
+
+  it('falls back to positional indexes when the columnId does not resolve', () => {
+    // Unknown/stale columnId (e.g. CRDT regenerated it) must not strand the
+    // selection — positional resolution still applies.
+    expect(ExportTreeBuilder.resolveNodeIdForSelection(tree(), {
+      scope: 'column',
+      columnId: 'col-does-not-exist',
+      rowIndex: 1,
+      stackIndex: 0,
+      columnIndex: 1,
+    })).toBe('column-1-0-1');
+  });
 });
 
 describe('ExportTreeBuilder.setOnlySelection drives single-element selection', () => {
