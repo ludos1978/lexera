@@ -6042,7 +6042,6 @@ select.dialog-input option,
   padding: 16px;
   min-width: 320px;
   max-width: 480px;
-  max-height: 70vh;
   overflow-y: auto;
 }
 
