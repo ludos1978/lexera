@@ -35,6 +35,7 @@ beforeAll(() => {
       'plugins/formats/csv.js',
       'plugins/formats/tsv.js',
       'plugins/formats/pdf.js',
+      'plugins/formats/media.js',
       'plugins/formats/pptx.js',
       'plugins/formats/document.js',
       'plugins/formats/epub.js',
@@ -125,6 +126,31 @@ describe('mergeIncludesInline', () => {
     );
 
     expect(result.content).toBe('# Main\n\n## Inlined section\nBody.\n\n_foot_');
+    expect(report.skipped).toHaveLength(0);
+  });
+
+  it('normalizes relative media links from included markdown into the root board context', async () => {
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === 'read_text_file') {
+        if (args.path === '/src/workspace/includes/part.md') {
+          return Promise.resolve('![Clip](media/clip.mp4)\n\n[Doc](docs/readme.pdf)\n\n<video src="media/raw.mp4" title="Raw clip"></video>');
+        }
+        return Promise.reject(new Error('unexpected path ' + args.path));
+      }
+      return Promise.resolve();
+    });
+
+    const report = { skipped: [], embedded: [] };
+    const result = await ES.mergeIncludesInline(
+      '# Main\n\n!!!include(includes/part.md)!!!',
+      '/src/workspace/board.md',
+      10,
+      report
+    );
+
+    expect(result.content).toContain('![Clip](includes/media/clip.mp4)');
+    expect(result.content).toContain('[Doc](includes/docs/readme.pdf)');
+    expect(result.content).toContain('<video src="includes/media/raw.mp4" title="Raw clip"></video>');
     expect(report.skipped).toHaveLength(0);
   });
 
@@ -487,5 +513,46 @@ describe('prepareContentForOutput — include + embed wiring', () => {
       '/out/board/board.md'
     );
     expect(wroteReadme).toBe(true);
+  });
+
+  it('merges includes before plugin media conversion so Marp PDF gets rendered media from includes', async () => {
+    const absoluteVideo = '/src/workspace/includes/media/clip.mp4';
+    const mtimeMs = 1_700_000_222_000;
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === 'read_text_file') {
+        expect(args.path).toBe('/src/workspace/includes/part.md');
+        return Promise.resolve('![Clip](media/clip.mp4)');
+      }
+      if (cmd === 'get_file_mtime_ms') {
+        expect(args.path).toBe(absoluteVideo);
+        return Promise.resolve(mtimeMs);
+      }
+      if (cmd === 'render_embedded_file') {
+        expect(args.opts.pluginId).toBe('video');
+        expect(args.opts.sourcePath).toBe(absoluteVideo);
+        expect(args.opts.outputFormat).toBe('png');
+        return Promise.resolve({ success: true, outputPath: args.opts.targetPath, format: 'png', error: null });
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    const result = await ES.prepareContentForOutput(
+      '!!!include(includes/part.md)!!!',
+      {
+        mode: 'save',
+        format: 'presentation',
+        marpFormat: 'pdf',
+        sourceFilePath: '/src/workspace/board.md',
+        includeHandling: 'merge',
+        linkHandlingMode: 'rewrite-only',
+      },
+      '/out/board/board.md'
+    );
+
+    expect(result.content).toContain('video-cache');
+    expect(result.content).toContain('.png');
+    expect(result.content).not.toContain('clip.mp4');
+    const renderCalls = mockInvoke.mock.calls.filter((c) => c[0] === 'render_embedded_file');
+    expect(renderCalls).toHaveLength(1);
   });
 });

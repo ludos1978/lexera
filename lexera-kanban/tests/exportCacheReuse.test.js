@@ -425,6 +425,43 @@ describe('Video / audio embed export contract', () => {
     expect(writeCall[1].content).not.toContain('sample-video.mp4');
   });
 
+  it('renders HTML video tags through the same plugin path for Marp PDF export', async () => {
+    const absoluteSource = '/src/workspace/Media/sample-video.mp4';
+    const mtimeMs = 1_700_000_333_000;
+    const prev = Registry.getPreviewRenderConfig(absoluteSource, { pageNumber: 1 });
+    const exp = Registry.getExportRenderConfig(absoluteSource, { pageNumber: 1, outputFormat: 'pdf' });
+    const cacheDir = ES.buildDiagramCacheDir('/src/workspace/board.md', absoluteSource, prev.cacheFolderName);
+    const cacheFile = ES.buildDiagramCacheFileName(absoluteSource, mtimeMs, exp.outputExtension, exp.suffix);
+    const cacheAbsolute = cacheDir + '/' + cacheFile;
+    const expectedLink = ES.relativePath('/out/board', cacheAbsolute);
+
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === 'get_file_mtime_ms') return Promise.resolve(mtimeMs);
+      if (cmd === 'render_embedded_file') {
+        expect(args.opts.pluginId).toBe('video');
+        expect(args.opts.sourcePath).toBe(absoluteSource);
+        return Promise.resolve({ success: true, outputPath: args.opts.targetPath, format: 'png', error: null });
+      }
+      if (cmd === 'write_export_file') return Promise.resolve(undefined);
+      return Promise.resolve({ success: true });
+    });
+
+    await ES._output('<video src="Media/sample-video.mp4" title="Clip"></video>', {
+      mode: 'save',
+      format: 'presentation',
+      marpFormat: 'pdf',
+      targetFolder: '/out',
+      exportFolderName: 'board',
+      sourceFilePath: '/src/workspace/board.md',
+      linkHandlingMode: 'rewrite-only',
+    });
+
+    const renderCalls = mockInvoke.mock.calls.filter((c) => c[0] === 'render_embedded_file');
+    expect(renderCalls).toHaveLength(1);
+    const writeCall = mockInvoke.mock.calls.find((c) => c[0] === 'write_export_file');
+    expect(writeCall[1].content).toBe('![Clip](' + expectedLink + ')');
+  });
+
   it('leaves ![](clip.mp4) untouched for a Marp HTML export (stays playable)', async () => {
     mockInvoke.mockImplementation((cmd) => {
       if (cmd === 'write_export_file') return Promise.resolve(undefined);

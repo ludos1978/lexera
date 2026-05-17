@@ -778,6 +778,18 @@ class ExportService {
         let nextContent = content;
         let createdFiles = [];
 
+        // Include merge must run before any media/export conversion. Included
+        // markdown can itself contain plugin-backed embeds, and its relative
+        // media paths need to be normalized into the root board context before
+        // render / pack / data-URI passes inspect them.
+        const reportEntries = { skipped: [], embedded: [] };
+        const includeHandling = ExportService.normalizeIncludeHandling(options.includeHandling);
+        if (includeHandling === 'merge') {
+            const depthCap = ExportService.normalizeMergeIncludesMaxDepth(options.mergeIncludesMaxDepth);
+            const mergeResult = await ExportService.mergeIncludesInline(nextContent, sourceFilePath, depthCap, reportEntries);
+            nextContent = mergeResult.content;
+        }
+
         if (ExportService.shouldRenderFileEmbedsForExport(options)) {
             const renderedEmbeds = await ExportService.renderFileEmbedsForExport(
                 nextContent,
@@ -803,19 +815,6 @@ class ExportService {
             if (diagramResult.createdFiles.length > 0) {
                 createdFiles = createdFiles.concat(diagramResult.createdFiles);
             }
-        }
-
-        // Phase 3: include-handling dropdown. Backend already strips directives
-        // when stripIncludes=true (it stays false for 'merge' and 'keep').
-        // For 'merge' we expand the directive contents here, inlining nested
-        // markdown files. The report collects skipped/embedded entries for
-        // both Readme.txt and the processes popup.
-        const reportEntries = { skipped: [], embedded: [] };
-        const includeHandling = ExportService.normalizeIncludeHandling(options.includeHandling);
-        if (includeHandling === 'merge') {
-            const depthCap = ExportService.normalizeMergeIncludesMaxDepth(options.mergeIncludesMaxDepth);
-            const mergeResult = await ExportService.mergeIncludesInline(nextContent, sourceFilePath, depthCap, reportEntries);
-            nextContent = mergeResult.content;
         }
 
         // Embed media as data URIs, opt-in via the checkbox in the Output
@@ -1104,20 +1103,31 @@ class ExportService {
         const packCopies = ExportService.shouldCopyRenderedEmbedToPack(linkHandlingMode);
         const protectedCode = ExportService.protectCodeBlocks(content);
         const sourceDir = ExportService.dirnamePath(sourceFilePath);
-        const imagePattern = /!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g;
+        const refPattern = new RegExp(EXPORT_LINK_PATTERN.source, 'g');
         const matches = [];
         const jobs = {};
         const mtimeCache = {};
         let match;
 
-        while ((match = imagePattern.exec(protectedCode.content)) !== null) {
-            const raw = match[0];
-            const alt = match[1] || '';
-            const rawSrc = match[2] || '';
-            const attrsBlock = match[3] || '';
-            const pathMeta = ExportService.parseLinkPath(rawSrc);
-            const filePath = pathMeta.pathPart || '';
-            if (!filePath || ExportService.isUrl(filePath)) {
+        while ((match = refPattern.exec(protectedCode.content)) !== null) {
+            let raw = match[0];
+            const token = ExportService.parseLinkToken(raw);
+            if (!token || (token.kind !== 'markdown-image' && token.kind !== 'html')) {
+                continue;
+            }
+            if (token.kind === 'html') {
+                const pairTag = (raw.match(/^<\s*(video|audio)\b/i) || [])[1];
+                if (pairTag) {
+                    const tail = protectedCode.content.slice(refPattern.lastIndex);
+                    const closeMatch = tail.match(new RegExp('^\\s*<\\/\\s*' + pairTag + '\\s*>', 'i'));
+                    if (closeMatch) {
+                        raw += closeMatch[0];
+                        refPattern.lastIndex += closeMatch[0].length;
+                    }
+                }
+            }
+            const filePath = token.pathPart || '';
+            if (!filePath || ExportService.isUrl(filePath) || filePath.indexOf('data:') === 0) {
                 continue;
             }
 
@@ -1126,8 +1136,8 @@ class ExportService {
                 continue;
             }
 
-            const attrs = ExportService.parseAttributeBlock(attrsBlock);
-            const pageNumber = ExportService.resolvePluginRenderPageNumber(pathMeta.anchorPart, attrs);
+            const attrs = ExportService.parseAttributeBlock(token.attrsBlock || '');
+            const pageNumber = ExportService.resolvePluginRenderPageNumber(token.anchorPart, attrs);
             const renderConfig = registry.getExportRenderConfig(filePath, {
                 pageNumber: pageNumber,
                 outputFormat: renderTargetFormat,
@@ -1193,9 +1203,7 @@ class ExportService {
             matches.push({
                 index: match.index,
                 raw: raw,
-                alt: alt,
-                titleAttr: pathMeta.titleAttr || '',
-                attrsBlock: attrsBlock,
+                token: token,
                 jobKey: jobKey,
             });
         }
@@ -1306,7 +1314,7 @@ class ExportService {
             const row = matches[m];
             output += protectedCode.content.slice(cursor, row.index);
             if (renderedTargets[row.jobKey]) {
-                output += '![' + row.alt + '](' + renderedTargets[row.jobKey] + (row.titleAttr || '') + ')' + (row.attrsBlock || '');
+                output += ExportService.rebuildRenderedEmbedToken(row.token, renderedTargets[row.jobKey]);
             } else {
                 output += row.raw;
             }
@@ -1334,18 +1342,22 @@ class ExportService {
         const visited = Object.create(null);
         const entries = reportEntries || { skipped: [], embedded: [] };
         if (!entries.skipped) entries.skipped = [];
-        return { content: await ExportService._expandIncludes(content, sourceFilePath, depthCap, 0, visited, entries) };
+        return { content: await ExportService._expandIncludes(content, sourceFilePath, sourceFilePath, depthCap, 0, visited, entries, false) };
     }
 
-    static async _expandIncludes(content, baseFilePath, depthCap, depth, visited, report) {
+    static async _expandIncludes(content, baseFilePath, rootFilePath, depthCap, depth, visited, report, rewriteCurrentLinks) {
         if (!content || depth >= depthCap) return content;
+        let currentContent = String(content || '');
+        if (rewriteCurrentLinks) {
+            currentContent = ExportService.rewriteIncludedRelativeLinks(currentContent, baseFilePath, rootFilePath);
+        }
         const pattern = /!!!include\(([^)]+)\)!!!/g;
         let cursor = 0;
         let out = '';
         let match;
         const baseDir = ExportService.dirnamePath(baseFilePath);
-        while ((match = pattern.exec(content)) !== null) {
-            out += content.slice(cursor, match.index);
+        while ((match = pattern.exec(currentContent)) !== null) {
+            out += currentContent.slice(cursor, match.index);
             const rawPath = String(match[1] || '').trim();
             const resolved = ExportService.isAbsolutePath(rawPath)
                 ? ExportService.normalizePath(rawPath)
@@ -1391,13 +1403,27 @@ class ExportService {
                 continue;
             }
             visited[key] = true;
-            const expanded = await ExportService._expandIncludes(fileContent, resolved, depthCap, depth + 1, visited, report);
+            const expanded = await ExportService._expandIncludes(fileContent, resolved, rootFilePath, depthCap, depth + 1, visited, report, true);
             delete visited[key];
             out += expanded;
             cursor = match.index + match[0].length;
         }
-        out += content.slice(cursor);
+        out += currentContent.slice(cursor);
         return out;
+    }
+
+    static rewriteIncludedRelativeLinks(content, includeFilePath, rootFilePath) {
+        const includeDir = ExportService.dirnamePath(includeFilePath);
+        const rootDir = ExportService.dirnamePath(rootFilePath);
+        if (!includeDir || !rootDir) return content;
+        return ExportService.transformLinkTargets(content, function (token) {
+            if (!token || !token.pathPart) return null;
+            const pathPart = String(token.pathPart || '');
+            if (!pathPart || pathPart.charAt(0) === '#') return null;
+            if (ExportService.isUrl(pathPart) || ExportService.isAbsolutePath(pathPart) || pathPart.indexOf('data:') === 0) return null;
+            const absolute = ExportService.resolvePath(includeDir, pathPart);
+            return ExportService.relativePath(rootDir, absolute);
+        });
     }
 
     // Rewrite `![alt](path)` image/video/audio references to base64 data URIs
@@ -1754,6 +1780,8 @@ class ExportService {
                 pathPart: pathMeta.pathPart,
                 anchorPart: pathMeta.anchorPart,
                 titleAttr: pathMeta.titleAttr,
+                attrsBlock: match[3] || '',
+                altText: match[1] || '',
             };
         }
         if (raw.charAt(0) === '[' && raw.indexOf('[[') !== 0) {
@@ -1774,12 +1802,15 @@ class ExportService {
             match = raw.match(/src=["']([^"']+)["']/i);
             if (!match) return null;
             const pathMeta = ExportService.parseLinkPath(match[1]);
+            const altMatch = raw.match(/\b(?:alt|title)=["']([^"']*)["']/i);
             return {
                 kind: 'html',
                 raw: raw,
                 pathPart: pathMeta.pathPart,
                 anchorPart: pathMeta.anchorPart,
                 titleAttr: '',
+                attrsBlock: '',
+                altText: altMatch ? altMatch[1] : '',
             };
         }
         if (raw.indexOf('[[') === 0) {
@@ -1800,6 +1831,25 @@ class ExportService {
             };
         }
         return null;
+    }
+
+    static rebuildRenderedEmbedToken(token, nextPathPart) {
+        if (!token || !nextPathPart) return token && token.raw ? token.raw : '';
+        if (token.kind === 'markdown-image') {
+            return token.prefix + nextPathPart + (token.titleAttr || '') + token.suffix;
+        }
+        if (token.kind === 'html') {
+            const alt = ExportService.escapeMarkdownAlt(token.altText || ExportService.basenameWithoutExtension(token.pathPart || '') || 'embed');
+            return '![' + alt + '](' + nextPathPart + ')';
+        }
+        return ExportService.rebuildLinkToken(token, nextPathPart);
+    }
+
+    static escapeMarkdownAlt(value) {
+        return String(value == null ? '' : value)
+            .replace(/[\r\n]+/g, ' ')
+            .replace(/\]/g, '')
+            .trim();
     }
 
     static parseLinkPath(rawPath) {
