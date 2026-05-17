@@ -4617,6 +4617,16 @@ img[data-lazy-src] {
   margin: 8px 0;
 }
 
+.include-link-container .include-menu-btn,
+.include-inline-container .include-menu-btn {
+  position: static;
+  top: auto;
+  right: auto;
+  opacity: 1;
+  margin-left: 2px;
+  z-index: auto;
+}
+
 .include-inline-body {
   display: block;
   margin-top: 6px;
