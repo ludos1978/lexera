@@ -243,7 +243,7 @@ var LexeraFileFormatRegistry = (function () {
   // `data-file-path` and delegates to its `enhance` method.
   //
   // Returns:
-  //   Promise<true>  — plugin rendered successfully (or acknowledged)
+  //   Promise<true>  — plugin rendered successfully (or explicitly needs no runtime render)
   //   Promise<false> — plugin ran but reported failure
   //   Promise<null>  — no plugin matched this file type (caller may fall
   //                    back to a non-plugin code path, e.g. text preview)
@@ -255,7 +255,13 @@ var LexeraFileFormatRegistry = (function () {
         : '') || '';
     if (!filePath) return Promise.resolve(null);
     var plugin = findByFilePath(filePath);
-    if (!plugin || typeof plugin.enhance !== 'function') return Promise.resolve(null);
+    if (!plugin) return Promise.resolve(null);
+    if (typeof plugin.enhance !== 'function') {
+      if (plugin.preview && plugin.preview.supportsRuntimeRender === false) {
+        return Promise.resolve(true);
+      }
+      return Promise.resolve(null);
+    }
     var normalizedOpts = {
       boardId: opts.boardId || (container && typeof container.getAttribute === 'function'
         ? container.getAttribute('data-board-id') : '') || '',

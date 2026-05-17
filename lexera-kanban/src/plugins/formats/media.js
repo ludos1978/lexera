@@ -3,11 +3,10 @@
 // These plugins own the inline emission (`emit`) for their file kinds. No
 // runtime `enhance` is declared because the browser loads the media element
 // itself via the lazy-src loader in `contentEnhancerRegistry` — there's no
-// cache round-trip or worker call. `enhance` is deliberately absent so the
-// LexeraFileFormatRegistry.enhance dispatcher returns `null` for these types
-// and the embed-container placeholder stays empty (the lazy loader picks up
-// the baked `<img data-lazy-src>` / `<video data-lazy-src>` and swaps it
-// when it enters the viewport).
+// cache round-trip or worker call. Timed media declares
+// `supportsRuntimeRender:false`, so LexeraFileFormatRegistry.enhance
+// acknowledges the embed as handled and does not fall through to the text
+// preview path.
 //
 // Image needs no export conversion — Marp/Pandoc embed images natively.
 // Video and audio do: a presentation target that cannot play media

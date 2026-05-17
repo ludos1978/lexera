@@ -19,6 +19,7 @@ beforeAll(() => {
       'plugins/formats/document.js',
       'plugins/formats/epub.js',
       'plugins/formats/plaintext.js',
+      'plugins/formats/media.js',
       'plugins/fileFormatRegistry.js',
     ],
     'LexeraFileFormatRegistry',
@@ -196,5 +197,15 @@ describe('LexeraFileFormatRegistry', () => {
     expect(Registry.supportsExportReplacement('slides.pdf')).toBe(true);
     expect(Registry.supportsExportReplacement('deck.pptx')).toBe(true);
     expect(Registry.supportsExportReplacement('book.epub')).toBe(true);
+  });
+
+  it('treats playable audio and video as handled at runtime without text fallback', async () => {
+    expect(Registry.findByFilePath('media/sample.wav').id).toBe('audio');
+    expect(Registry.findByFilePath('media/sample.mp4').id).toBe('video');
+    expect(Registry.getPreviewRenderConfig('media/sample.wav', {}).supportsRuntimeRender).toBe(false);
+    expect(Registry.getPreviewRenderConfig('media/sample.mp4', {}).supportsRuntimeRender).toBe(false);
+
+    await expect(Registry.enhance(null, { filePath: 'media/sample.wav', boardId: 'board-1' })).resolves.toBe(true);
+    await expect(Registry.enhance(null, { filePath: 'media/sample.mp4', boardId: 'board-1' })).resolves.toBe(true);
   });
 });

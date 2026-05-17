@@ -2569,8 +2569,15 @@ var LexeraEmbedMenu = (function () {
         }
         return;
       }
-      // dispatchResult === null → no plugin for this kind; fall through to
-      // the text-fetch path below.
+      // dispatchResult === null → no plugin for this kind. Only known
+      // textual preview kinds may fall through to response.text(); binary
+      // media/document formats must stay with their emitted placeholder.
+      if (previewKind !== 'text' && previewKind !== 'markdown') {
+        logFrontendIssue('info', 'embed.enhance.trace', 'enhance: no runtime text fallback for non-text preview kind', {
+          filePath: filePath, previewKind: previewKind, variant: variant
+        });
+        return;
+      }
     }
 
     logFrontendIssue('info', 'embed.enhance.trace', 'enhance: branch=text-fetch', { previewKind: previewKind, filePath: filePath });
