@@ -102,7 +102,13 @@ pub async fn browse_files(
     if let Some(p) = &default_path {
         let path = std::path::PathBuf::from(p);
         // Walk up to find the closest existing ancestor directory
-        let dir = if path.is_dir() { path.clone() } else { path.parent().map(|p| p.to_path_buf()).unwrap_or(path.clone()) };
+        let dir = if path.is_dir() {
+            path.clone()
+        } else {
+            path.parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or(path.clone())
+        };
         let mut candidate = dir.as_path();
         while !candidate.exists() {
             match candidate.parent() {
@@ -119,7 +125,9 @@ pub async fn browse_files(
         builder = builder.add_filter("Files", &ext_refs);
     }
     let result = if multiple.unwrap_or(false) {
-        builder.pick_files().await
+        builder
+            .pick_files()
+            .await
             .unwrap_or_default()
             .into_iter()
             .map(|f| f.path().to_string_lossy().to_string())
@@ -451,12 +459,22 @@ pub fn discover_visual_themes(app: tauri::AppHandle) -> Result<VisualThemeDiscov
     seed_builtin_visual_themes(&app);
 
     let root = visual_themes_path();
-    std::fs::create_dir_all(&root)
-        .map_err(|e| format!("Failed to create visual themes directory '{}': {}", root.to_string_lossy(), e))?;
+    std::fs::create_dir_all(&root).map_err(|e| {
+        format!(
+            "Failed to create visual themes directory '{}': {}",
+            root.to_string_lossy(),
+            e
+        )
+    })?;
 
     let mut themes = Vec::new();
-    let entries = std::fs::read_dir(&root)
-        .map_err(|e| format!("Failed to read visual themes directory '{}': {}", root.to_string_lossy(), e))?;
+    let entries = std::fs::read_dir(&root).map_err(|e| {
+        format!(
+            "Failed to read visual themes directory '{}': {}",
+            root.to_string_lossy(),
+            e
+        )
+    })?;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -522,7 +540,9 @@ pub fn discover_visual_themes(app: tauri::AppHandle) -> Result<VisualThemeDiscov
             .map(normalize_theme_id)
             .filter(|value| !value.is_empty());
 
-        let css_file = manifest_file.css_file.unwrap_or_else(|| "theme.css".to_string());
+        let css_file = manifest_file
+            .css_file
+            .unwrap_or_else(|| "theme.css".to_string());
         let css_candidate = path.join(css_file);
         let css_path = if css_candidate.is_file() {
             Some(css_candidate.to_string_lossy().to_string())
@@ -602,8 +622,7 @@ pub fn write_keybindings(content: String) -> Result<(), String> {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create config directory: {}", e))?;
     }
-    std::fs::write(&path, content)
-        .map_err(|e| format!("Failed to write keybindings: {}", e))
+    std::fs::write(&path, content).map_err(|e| format!("Failed to write keybindings: {}", e))
 }
 
 /// Read the system clipboard as plain text.
@@ -823,7 +842,9 @@ pub async fn show_context_menu(
 
     log::info!(
         "[lexera-kanban.menu] open x={} y={} items={:?}",
-        x, y, menu_labels
+        x,
+        y,
+        menu_labels
     );
 
     // Build menu items on this thread (menu building is thread-safe)

@@ -209,9 +209,7 @@ async fn fetch_asset(
             correlation_id: cid,
             head,
         }) if cid == correlation_id => head,
-        Some(ServerFrame::Error {
-            code, message, ..
-        }) => {
+        Some(ServerFrame::Error { code, message, .. }) => {
             let status = match code.as_str() {
                 "not_found" | "not_a_file" => StatusCode::NOT_FOUND,
                 "forbidden" => StatusCode::FORBIDDEN,
@@ -263,9 +261,8 @@ fn build_response(
     headers: Vec<(String, Vec<u8>)>,
     body: Vec<u8>,
 ) -> Result<Response<Vec<u8>>, String> {
-    let mut builder = Response::builder().status(
-        StatusCode::from_u16(status).map_err(|e| format!("invalid status: {}", e))?,
-    );
+    let mut builder = Response::builder()
+        .status(StatusCode::from_u16(status).map_err(|e| format!("invalid status: {}", e))?);
     for (name, value) in &headers {
         builder = builder.header(name.as_str(), value.as_slice());
     }
@@ -281,7 +278,10 @@ fn build_response(
     // gated by `parse_asset_url` + the IPC backend's path check.
     builder = builder.header("Access-Control-Allow-Origin", "*");
     builder = builder.header("Access-Control-Allow-Headers", "Range, If-None-Match");
-    builder = builder.header("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, ETag");
+    builder = builder.header(
+        "Access-Control-Expose-Headers",
+        "Content-Length, Content-Range, Accept-Ranges, ETag",
+    );
     builder
         .body(body)
         .map_err(|e| format!("response build: {}", e))
@@ -329,10 +329,8 @@ mod tests {
 
     #[test]
     fn url_unicode_roundtrip() {
-        let p = parse_asset_url(
-            "lexera-asset://localhost/?b=b1&k=m&v=bild-%C3%BCberblick.jpg",
-        )
-        .unwrap();
+        let p = parse_asset_url("lexera-asset://localhost/?b=b1&k=m&v=bild-%C3%BCberblick.jpg")
+            .unwrap();
         assert!(
             matches!(p.kind, AssetKind::Media { filename } if filename == "bild-überblick.jpg")
         );
@@ -369,8 +367,12 @@ mod tests {
     /// "Failed to load PDF" again.
     #[test]
     fn build_response_emits_cors_headers() {
-        let resp = build_response(200, vec![("content-type".into(), b"application/pdf".to_vec())], vec![1, 2, 3])
-            .expect("build_response");
+        let resp = build_response(
+            200,
+            vec![("content-type".into(), b"application/pdf".to_vec())],
+            vec![1, 2, 3],
+        )
+        .expect("build_response");
         let headers = resp.headers();
         assert_eq!(
             headers

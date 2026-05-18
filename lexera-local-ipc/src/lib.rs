@@ -11,22 +11,22 @@
 //!
 //! Protocol version: [`PROTOCOL_VERSION`].
 
+pub mod client;
 pub mod descriptor;
 pub mod error;
 pub mod frame;
 pub mod handshake;
 pub mod server;
-pub mod client;
 pub mod transport;
 #[cfg(windows)]
 pub mod windows_security;
 
-pub use descriptor::{Descriptor, descriptor_path};
+pub use client::Client;
+pub use descriptor::{descriptor_path, Descriptor};
 pub use error::IpcError;
 pub use frame::{ClientFrame, ServerFrame, MAX_FRAME_BYTES};
 pub use handshake::{HandshakeRequest, HandshakeResponse};
 pub use server::{default_endpoint_string, Server};
-pub use client::Client;
 
 /// Wire protocol version. Mismatches are rejected; they are not negotiated.
 pub const PROTOCOL_VERSION: &str = "lexera-local-ipc/v1";

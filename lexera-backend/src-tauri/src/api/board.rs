@@ -434,9 +434,7 @@ pub async fn resolve_merge(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
     use lexera_core::merge::resolution::apply_resolution;
-    use lexera_core::storage::merge_engine::{
-        CardIdentityMergeEngine, MergeEngine, MergeRequest,
-    };
+    use lexera_core::storage::merge_engine::{CardIdentityMergeEngine, MergeEngine, MergeRequest};
 
     let current = state
         .storage
@@ -476,9 +474,7 @@ pub async fn resolve_merge(
                 &board_path,
                 &md,
             ) {
-                Ok(entry) => {
-                    conflict_backup_path = Some(entry.path.to_string_lossy().to_string())
-                }
+                Ok(entry) => conflict_backup_path = Some(entry.path.to_string_lossy().to_string()),
                 Err(e) => log_api_issue(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "lexera.api.resolve_merge",
@@ -501,8 +497,12 @@ pub async fn resolve_merge(
     emit_main_file_changed(&state, &board_id);
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
 
-    let mut response =
-        build_write_board_response(&state, &board_id, write_result.merge_result, &resolved.board);
+    let mut response = build_write_board_response(
+        &state,
+        &board_id,
+        write_result.merge_result,
+        &resolved.board,
+    );
     response["resolved"] = serde_json::Value::Bool(true);
     if let Some(p) = conflict_backup_path {
         response["conflictBackupPath"] = serde_json::Value::String(p);
@@ -1591,8 +1591,7 @@ kanban-plugin: board
     #[tokio::test]
     async fn resolve_merge_conflict_file_backup_keeps_ours_and_backs_up_current() {
         let tmp = tempfile::tempdir().unwrap();
-        let (state, board_id, base) =
-            add_new_format_board(tmp.path(), "resolve-merge.md").await;
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "resolve-merge.md").await;
         let token = register_test_user(&state);
 
         // Client draft adds a card; user chose ConflictFileBackup keeping

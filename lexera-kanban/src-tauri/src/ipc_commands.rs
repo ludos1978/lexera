@@ -42,11 +42,7 @@ pub fn backend_ipc_status() -> BackendStatus {
 /// abstraction point for opacity-sensitive callers and platform-specific
 /// URL rewriting if Tauri ever changes the Windows auto-rewrite rules.
 #[tauri::command]
-pub fn backend_asset_url(
-    board_id: String,
-    kind: String,
-    value: String,
-) -> Result<String, String> {
+pub fn backend_asset_url(board_id: String, kind: String, value: String) -> Result<String, String> {
     crate::asset_protocol::build_url(&board_id, &kind, &value)
 }
 

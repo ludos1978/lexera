@@ -229,8 +229,7 @@ fn write_column_cards(markdown: &mut String, column: &KanbanColumn) {
         // No-op with the `crdt` feature on (markdown stays marker-free);
         // re-attaches the kid marker when CRDT is compiled out so card
         // identity survives the file round-trip for the non-CRDT merge.
-        let normalized =
-            card_identity::persist_kid_for_markdown(&stripped, task.kid.as_deref());
+        let normalized = card_identity::persist_kid_for_markdown(&stripped, task.kid.as_deref());
         let content_lines: Vec<&str> = normalized.split('\n').collect();
         let summary = content_lines.first().copied().unwrap_or("");
 

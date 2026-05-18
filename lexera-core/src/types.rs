@@ -86,11 +86,7 @@ impl IncludeSource {
         cards
             .iter()
             .enumerate()
-            .map(|(i, c)| {
-                c.kid
-                    .clone()
-                    .unwrap_or_else(|| format!("@{}", i))
-            })
+            .map(|(i, c)| c.kid.clone().unwrap_or_else(|| format!("@{}", i)))
             .collect()
     }
 

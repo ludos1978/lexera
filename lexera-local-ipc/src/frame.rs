@@ -95,19 +95,14 @@ pub enum StreamTopic {
 pub enum ClientFrame {
     /// Initial frame. Server validates and responds with [`ServerFrame::HandshakeOk`]
     /// or [`ServerFrame::HandshakeRejected`].
-    Handshake {
-        protocol: String,
-        secret: String,
-    },
+    Handshake { protocol: String, secret: String },
     /// Request mapped to the backend's HTTP router.
     ApiRequest {
         correlation_id: Uuid,
         request: ApiRequest,
     },
     /// Abort an in-flight request or stream. Explicit, not inferred from channel close.
-    Cancel {
-        correlation_id: Uuid,
-    },
+    Cancel { correlation_id: Uuid },
     /// Liveness probe.
     Ping,
     /// Start a streaming asset fetch. The server replies with exactly one
@@ -148,9 +143,7 @@ pub enum ClientFrame {
     },
     /// Terminal marker for an upload: signals that no more `UploadChunk`
     /// frames will follow and the server can dispatch the request.
-    UploadEnd {
-        correlation_id: Uuid,
-    },
+    UploadEnd { correlation_id: Uuid },
 }
 
 /// Frames sent from server to client.

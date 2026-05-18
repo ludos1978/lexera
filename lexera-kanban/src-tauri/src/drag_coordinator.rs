@@ -55,7 +55,6 @@ struct ActiveDrag {
     current_target: Option<String>,
 }
 
-
 #[derive(Deserialize)]
 pub struct DragStartPayload {
     pub source: String,
@@ -111,13 +110,20 @@ pub fn drag_start(
     if state.contains_key(&window_label) {
         return Err("drag already in progress in this window".into());
     }
-    state.insert(window_label.clone(), ActiveDrag {
-        source_label: payload.source.clone(),
-        payload: payload.payload.clone(),
-        current_target: None,
-    });
+    state.insert(
+        window_label.clone(),
+        ActiveDrag {
+            source_label: payload.source.clone(),
+            payload: payload.payload.clone(),
+            current_target: None,
+        },
+    );
     drop(state);
-    log::info!("[drag] started by {} in window {}", payload.source, window_label);
+    log::info!(
+        "[drag] started by {} in window {}",
+        payload.source,
+        window_label
+    );
     // Auto-ensure the drag ghost window exists (first-drag cost: a
     // Tauri window build, ~50-100ms; subsequent drags reuse it).
     if app.get_webview_window("drag-ghost").is_none() {
@@ -136,7 +142,9 @@ pub fn drag_start(
     // Push the payload's text (if any) into the drag-ghost window
     // so it shows meaningful content during the drag.
     if let Some(ghost) = app.get_webview_window("drag-ghost") {
-        let text = payload.payload.get("text")
+        let text = payload
+            .payload
+            .get("text")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
@@ -161,8 +169,11 @@ pub fn drag_start(
 }
 
 fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
-        .replace('"', "&quot;").replace('\'', "&#39;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 /// Forward a pointer-move event during drag. Coordinates are in
@@ -262,10 +273,7 @@ pub fn drag_pointer_up(
     if let Some(target) = target_label {
         if let Some(meta) = get_meta(&registry, &target) {
             let (lx, ly) = to_local(&meta, pos.x, pos.y);
-            log::info!(
-                "[drag] drop on {} at local ({},{})",
-                target, lx, ly
-            );
+            log::info!("[drag] drop on {} at local ({},{})", target, lx, ly);
             let _ = app.emit_to(
                 target.as_str(),
                 "drop",
@@ -309,7 +317,11 @@ pub fn drag_cancel(
         Some(a) => a,
         None => return Ok(()),
     };
-    log::info!("[drag] cancelled by source {} in window {}", active.source_label, window_label);
+    log::info!(
+        "[drag] cancelled by source {} in window {}",
+        active.source_label,
+        window_label
+    );
     if let Some(target) = active.current_target {
         let _ = app.emit_to(target.as_str(), "drag-leave", ());
     }

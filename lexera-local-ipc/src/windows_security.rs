@@ -77,13 +77,7 @@ fn sd_from_sddl(sddl: &str) -> Result<PSECURITY_DESCRIPTOR, IpcError> {
 pub fn restrict_file_to_current_user(path: &Path) -> Result<(), IpcError> {
     let psd = sd_from_sddl(OWNER_ONLY_SDDL)?;
     let path_w = wide(&path.to_string_lossy());
-    let ok = unsafe {
-        SetFileSecurityW(
-            path_w.as_ptr(),
-            DACL_SECURITY_INFORMATION,
-            psd as *mut _,
-        )
-    };
+    let ok = unsafe { SetFileSecurityW(path_w.as_ptr(), DACL_SECURITY_INFORMATION, psd as *mut _) };
     let err = std::io::Error::last_os_error();
     unsafe {
         LocalFree(psd as *mut _);
@@ -104,10 +98,8 @@ pub fn restrict_file_to_current_user(path: &Path) -> Result<(), IpcError> {
 ///
 /// Returns `(SECURITY_ATTRIBUTES, PSECURITY_DESCRIPTOR)` — keep both alive
 /// across the `ServerOptions::create` call, then free the PSD.
-pub fn owner_only_security_attributes() -> Result<
-    (SECURITY_ATTRIBUTES, PSECURITY_DESCRIPTOR),
-    IpcError,
-> {
+pub fn owner_only_security_attributes(
+) -> Result<(SECURITY_ATTRIBUTES, PSECURITY_DESCRIPTOR), IpcError> {
     let psd = sd_from_sddl(OWNER_ONLY_SDDL)?;
     let sa = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
@@ -151,13 +143,7 @@ fn process_user_sid(pid: u32) -> Result<Vec<u8>, IpcError> {
 
         // Two-step GetTokenInformation: size, then allocate, then read.
         let mut needed: u32 = 0;
-        GetTokenInformation(
-            token,
-            TokenUser,
-            std::ptr::null_mut(),
-            0,
-            &mut needed,
-        );
+        GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut needed);
         if needed == 0 {
             CloseHandle(token);
             return Err(IpcError::Descriptor(

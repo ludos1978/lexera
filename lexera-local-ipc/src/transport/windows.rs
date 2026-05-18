@@ -16,7 +16,9 @@ use std::pin::Pin;
 use std::sync::Mutex;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions};
+use tokio::net::windows::named_pipe::{
+    ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions,
+};
 use windows_sys::Win32::Foundation::LocalFree;
 
 #[derive(Debug)]
@@ -58,9 +60,9 @@ impl Listener {
     pub async fn accept(&self) -> Result<Stream, IpcError> {
         let server = {
             let mut guard = self.next.lock().expect("listener mutex poisoned");
-            guard.take().ok_or_else(|| IpcError::Descriptor(
-                "listener missing prepared pipe instance".into(),
-            ))?
+            guard.take().ok_or_else(|| {
+                IpcError::Descriptor("listener missing prepared pipe instance".into())
+            })?
         };
         server.connect().await.map_err(IpcError::Io)?;
 

@@ -24,9 +24,7 @@ pub async fn handle_subscribe(
     topic: StreamTopic,
 ) -> Result<(), IpcError> {
     match topic {
-        StreamTopic::Events => {
-            forward_events(write_half, control_rx, state, correlation_id).await
-        }
+        StreamTopic::Events => forward_events(write_half, control_rx, state, correlation_id).await,
         StreamTopic::Logs => forward_logs(write_half, control_rx, correlation_id).await,
         StreamTopic::Sync { board_id } => {
             crate::ipc_sync::forward_sync(write_half, control_rx, state, correlation_id, board_id)
@@ -51,7 +49,7 @@ async fn forward_events(
     let heartbeat_duration = std::time::Duration::from_secs(30);
     let mut heartbeat_interval = tokio::time::interval_at(
         tokio::time::Instant::now() + heartbeat_duration,
-        heartbeat_duration
+        heartbeat_duration,
     );
     heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
@@ -147,7 +145,7 @@ async fn forward_logs(
     let heartbeat_duration = std::time::Duration::from_secs(30);
     let mut heartbeat_interval = tokio::time::interval_at(
         tokio::time::Instant::now() + heartbeat_duration,
-        heartbeat_duration
+        heartbeat_duration,
     );
     heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
@@ -208,10 +206,7 @@ mod tests {
         Descriptor::new(dir.path().join("ipc.sock").to_string_lossy().into_owned())
     }
 
-    async fn drive_handler(
-        server: Server,
-        app_state: AppState,
-    ) -> tokio::task::JoinHandle<()> {
+    async fn drive_handler(server: Server, app_state: AppState) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let mut stream = server.accept().await.expect("accept");
             let frame = read_frame::<_, ClientFrame>(&mut stream)

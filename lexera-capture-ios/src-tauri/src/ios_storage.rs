@@ -522,7 +522,8 @@ impl BoardStorage for IosStorage {
     }
 
     fn search(&self, query: &str) -> Vec<SearchResult> {
-        self.search_with_options(query, SearchOptions::default()).results
+        self.search_with_options(query, SearchOptions::default())
+            .results
     }
 
     fn search_with_options(&self, query: &str, options: SearchOptions) -> PaginatedSearchResults {
@@ -584,7 +585,12 @@ impl BoardStorage for IosStorage {
                 }
             }
         }
-        PaginatedSearchResults { results: page, total, limit, offset }
+        PaginatedSearchResults {
+            results: page,
+            total,
+            limit,
+            offset,
+        }
     }
 
     fn calendar_tasks(&self) -> Vec<SearchResult> {

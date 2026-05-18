@@ -1,4 +1,6 @@
-use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{
+    CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+};
 use tauri::{Manager, Runtime};
 
 /// One entry for the dynamic "File > Open Workspace ▶" submenu.
@@ -19,7 +21,11 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
 ) -> Result<tauri::menu::Menu<R>, Box<dyn std::error::Error>> {
     // ── App menu (macOS only, first submenu = app name) ──
     let app_menu = SubmenuBuilder::new(app, "Lexera Kanban")
-        .item(&PredefinedMenuItem::about(app, Some("About Lexera Kanban"), Default::default())?)
+        .item(&PredefinedMenuItem::about(
+            app,
+            Some("About Lexera Kanban"),
+            Default::default(),
+        )?)
         .separator()
         .item(&PredefinedMenuItem::services(app, Some("Services"))?)
         .separator()
@@ -27,7 +33,11 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .item(&PredefinedMenuItem::hide_others(app, Some("Hide Others"))?)
         .item(&PredefinedMenuItem::show_all(app, Some("Show All"))?)
         .separator()
-        .item(&MenuItemBuilder::with_id("app-quit", "Quit Lexera Kanban").accelerator("CmdOrCtrl+Q").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("app-quit", "Quit Lexera Kanban")
+                .accelerator("CmdOrCtrl+Q")
+                .build(app)?,
+        )
         .build()?;
 
     // ── File > Open Workspace submenu (dynamic) ──
@@ -37,14 +47,21 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
     // see `set_workspaces_submenu` Tauri command.
     let mut open_workspace_builder = SubmenuBuilder::new(app, "Open Workspace");
     if workspaces.is_empty() {
-        let placeholder = MenuItemBuilder::with_id("file-open-workspace::__none__", "(no workspaces — create one in Workspace Settings)")
-            .enabled(false)
-            .build(app)?;
+        let placeholder = MenuItemBuilder::with_id(
+            "file-open-workspace::__none__",
+            "(no workspaces — create one in Workspace Settings)",
+        )
+        .enabled(false)
+        .build(app)?;
         open_workspace_builder = open_workspace_builder.item(&placeholder);
     } else {
         for ws in workspaces {
             let id = format!("{}{}", OPEN_WORKSPACE_ITEM_PREFIX, ws.id);
-            let label = if ws.name.is_empty() { "(untitled)" } else { ws.name.as_str() };
+            let label = if ws.name.is_empty() {
+                "(untitled)"
+            } else {
+                ws.name.as_str()
+            };
             let item = MenuItemBuilder::with_id(id, label).build(app)?;
             open_workspace_builder = open_workspace_builder.item(&item);
         }
@@ -53,10 +70,18 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
 
     // ── File menu ──
     let file_menu = SubmenuBuilder::new(app, "File")
-        .item(&MenuItemBuilder::with_id("file-new-window", "New Window").accelerator("CmdOrCtrl+N").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("file-new-window", "New Window")
+                .accelerator("CmdOrCtrl+N")
+                .build(app)?,
+        )
         .item(&open_workspace_submenu)
         .separator()
-        .item(&MenuItemBuilder::with_id("file-save", "Save").accelerator("CmdOrCtrl+S").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("file-save", "Save")
+                .accelerator("CmdOrCtrl+S")
+                .build(app)?,
+        )
         .separator()
         .item(&MenuItemBuilder::with_id("file-rename", "Rename Board File").build(app)?)
         .item(&MenuItemBuilder::with_id("file-reveal", "Reveal in Finder").build(app)?)
@@ -70,16 +95,32 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
 
     // ── Edit menu ──
     let edit_menu = SubmenuBuilder::new(app, "Edit")
-        .item(&MenuItemBuilder::with_id("edit-undo", "Undo").accelerator("CmdOrCtrl+Z").build(app)?)
-        .item(&MenuItemBuilder::with_id("edit-redo", "Redo").accelerator("CmdOrCtrl+Shift+Z").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("edit-undo", "Undo")
+                .accelerator("CmdOrCtrl+Z")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("edit-redo", "Redo")
+                .accelerator("CmdOrCtrl+Shift+Z")
+                .build(app)?,
+        )
         .separator()
         .item(&PredefinedMenuItem::cut(app, Some("Cut"))?)
         .item(&PredefinedMenuItem::copy(app, Some("Copy"))?)
         .item(&PredefinedMenuItem::paste(app, Some("Paste"))?)
         .item(&PredefinedMenuItem::select_all(app, Some("Select All"))?)
         .separator()
-        .item(&MenuItemBuilder::with_id("edit-find", "Find…").accelerator("CmdOrCtrl+F").build(app)?)
-        .item(&MenuItemBuilder::with_id("edit-find-replace", "Find & Replace…").accelerator("CmdOrCtrl+Shift+H").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("edit-find", "Find…")
+                .accelerator("CmdOrCtrl+F")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("edit-find-replace", "Find & Replace…")
+                .accelerator("CmdOrCtrl+Shift+H")
+                .build(app)?,
+        )
         .separator()
         .item(&MenuItemBuilder::with_id("edit-paste-as-card", "Paste as Card").build(app)?)
         .item(&MenuItemBuilder::with_id("edit-smart-paste", "Smart Paste").build(app)?)
@@ -100,7 +141,10 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
 
     let tag_visibility_sub = SubmenuBuilder::new(app, "Tag Visibility")
         .item(&MenuItemBuilder::with_id("view-tags-all", "All Tags").build(app)?)
-        .item(&MenuItemBuilder::with_id("view-tags-no-layout", "All Except Layout Tags").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("view-tags-no-layout", "All Except Layout Tags")
+                .build(app)?,
+        )
         .item(&MenuItemBuilder::with_id("view-tags-custom", "Custom Tags Only").build(app)?)
         .item(&MenuItemBuilder::with_id("view-tags-mentions", "Mentions Only").build(app)?)
         .item(&MenuItemBuilder::with_id("view-tags-dim", "Dim Tags").build(app)?)
@@ -119,9 +163,21 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .build()?;
 
     let zoom_sub = SubmenuBuilder::new(app, "Zoom")
-        .item(&MenuItemBuilder::with_id("view-zoom-in", "Zoom In").accelerator("CmdOrCtrl+=").build(app)?)
-        .item(&MenuItemBuilder::with_id("view-zoom-out", "Zoom Out").accelerator("CmdOrCtrl+-").build(app)?)
-        .item(&MenuItemBuilder::with_id("view-zoom-reset", "Reset Zoom (100%)").accelerator("CmdOrCtrl+0").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("view-zoom-in", "Zoom In")
+                .accelerator("CmdOrCtrl+=")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("view-zoom-out", "Zoom Out")
+                .accelerator("CmdOrCtrl+-")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("view-zoom-reset", "Reset Zoom (100%)")
+                .accelerator("CmdOrCtrl+0")
+                .build(app)?,
+        )
         .build()?;
 
     let panels_sub = SubmenuBuilder::new(app, "Panels")
@@ -133,8 +189,14 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .separator()
         .item(&MenuItemBuilder::with_id("view-panel-files", "Workspace Settings").build(app)?)
         .item(&MenuItemBuilder::with_id("view-panel-logs", "Logs").build(app)?)
-        .item(&MenuItemBuilder::with_id("view-panel-backend-settings", "Backend Settings").build(app)?)
-        .item(&MenuItemBuilder::with_id("view-panel-frontend-settings", "Frontend Settings").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("view-panel-backend-settings", "Backend Settings")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("view-panel-frontend-settings", "Frontend Settings")
+                .build(app)?,
+        )
         .item(&MenuItemBuilder::with_id("view-panel-render-apps", "Plugin Settings").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("view-panel-frontend-tests", "Frontend Tests").build(app)?)
@@ -153,15 +215,33 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .item(&html_comments_sub)
         .item(&html_content_sub)
         .separator()
-        .item(&CheckMenuItemBuilder::with_id("view-special-chars", "Show Special Characters").build(app)?)
+        .item(
+            &CheckMenuItemBuilder::with_id("view-special-chars", "Show Special Characters")
+                .build(app)?,
+        )
         .item(&CheckMenuItemBuilder::with_id("view-overlay-editor", "Overlay Editor").build(app)?)
         .separator()
         .item(&zoom_sub)
         .separator()
-        .item(&MenuItemBuilder::with_id("view-inspector", "Developer Tools").accelerator("F12").build(app)?)
-        .item(&MenuItemBuilder::with_id("view-inspector-all", "Developer Tools (All Views)").accelerator("CmdOrCtrl+Alt+Shift+I").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("view-inspector", "Developer Tools")
+                .accelerator("F12")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("view-inspector-all", "Developer Tools (All Views)")
+                .accelerator("CmdOrCtrl+Alt+Shift+I")
+                .build(app)?,
+        )
         .separator()
-        .item(&MenuItemBuilder::with_id("view-debug-hide-overlays", "Hide All Overlay Webviews (toggle)").accelerator("CmdOrCtrl+Alt+H").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id(
+                "view-debug-hide-overlays",
+                "Hide All Overlay Webviews (toggle)",
+            )
+            .accelerator("CmdOrCtrl+Alt+H")
+            .build(app)?,
+        )
         .build()?;
 
     // ── Format menu ──
@@ -279,7 +359,11 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
 
     // ── Help menu ──
     let help_menu = SubmenuBuilder::new(app, "Help")
-        .item(&MenuItemBuilder::with_id("help-keyboard-shortcuts", "Keyboard Shortcuts…").accelerator("Shift+?").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("help-keyboard-shortcuts", "Keyboard Shortcuts…")
+                .accelerator("Shift+?")
+                .build(app)?,
+        )
         .build()?;
 
     // ── Assemble ──
@@ -333,8 +417,14 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("view-panel-hierarchy", "reveal-panel:hierarchy"),
     ("view-panel-dashboard", "reveal-panel:dashboard"),
     ("view-panel-logs", "reveal-panel:logs"),
-    ("view-panel-backend-settings", "reveal-panel:backendSettings"),
-    ("view-panel-frontend-settings", "reveal-panel:frontendSettings"),
+    (
+        "view-panel-backend-settings",
+        "reveal-panel:backendSettings",
+    ),
+    (
+        "view-panel-frontend-settings",
+        "reveal-panel:frontendSettings",
+    ),
     ("view-panel-render-apps", "reveal-panel:renderApps"),
     ("view-panel-frontend-tests", "reveal-panel:frontendTests"),
     ("view-panel-week-calendar", "reveal-panel:weekCalendar"),
@@ -353,7 +443,10 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("view-split-horizontal", "split-enable-horizontal"),
     // View – tag visibility
     ("view-tags-all", "set-tag-visibility:all"),
-    ("view-tags-no-layout", "set-tag-visibility:allexcludinglayout"),
+    (
+        "view-tags-no-layout",
+        "set-tag-visibility:allexcludinglayout",
+    ),
     ("view-tags-custom", "set-tag-visibility:custom"),
     ("view-tags-mentions", "set-tag-visibility:mentions"),
     ("view-tags-dim", "set-tag-visibility:dim"),
@@ -461,10 +554,13 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
 /// dispatches to `LexeraWorkspaceShell.openWorkspaceWindow(id)`.
 pub fn menu_id_to_action(id: &str) -> Option<String> {
     if let Some(workspace_id) = id.strip_prefix(OPEN_WORKSPACE_ITEM_PREFIX) {
-        if workspace_id == "__none__" { return None; }
+        if workspace_id == "__none__" {
+            return None;
+        }
         return Some(format!("open-workspace:{}", workspace_id));
     }
-    MENU_ACTION_MAP.iter()
+    MENU_ACTION_MAP
+        .iter()
         .find(|(menu_id, _)| *menu_id == id)
         .map(|(_, action)| (*action).to_string())
 }

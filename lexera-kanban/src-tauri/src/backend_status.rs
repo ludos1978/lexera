@@ -63,10 +63,9 @@ fn same_status(a: &BackendStatus, b: &BackendStatus) -> bool {
             BackendStatus::Reconnecting { attempt: a1 },
             BackendStatus::Reconnecting { attempt: a2 },
         ) => a1 == a2,
-        (
-            BackendStatus::Unavailable { reason: r1 },
-            BackendStatus::Unavailable { reason: r2 },
-        ) => r1 == r2,
+        (BackendStatus::Unavailable { reason: r1 }, BackendStatus::Unavailable { reason: r2 }) => {
+            r1 == r2
+        }
         _ => false,
     }
 }

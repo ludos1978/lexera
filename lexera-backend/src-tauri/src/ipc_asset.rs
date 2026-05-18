@@ -9,8 +9,8 @@ use crate::state::AppState;
 use axum::http::StatusCode;
 use lexera_core::media::content_type_for_ext;
 use lexera_local_ipc::frame::{
-    write_frame, AssetKind, AssetRequestPayload, AssetResponseHeadPayload, ServerFrame,
-    ASSET_CHUNK_SIZE, ClientFrame,
+    write_frame, AssetKind, AssetRequestPayload, AssetResponseHeadPayload, ClientFrame,
+    ServerFrame, ASSET_CHUNK_SIZE,
 };
 use lexera_local_ipc::transport::Stream;
 use lexera_local_ipc::IpcError;
@@ -356,18 +356,27 @@ async fn stream_file(
         }
     };
 
-    let rs = ranges.unwrap_or_else(|| vec![ByteRange { start: 0, end: total_len - 1 }]);
-    
+    let rs = ranges.unwrap_or_else(|| {
+        vec![ByteRange {
+            start: 0,
+            end: total_len - 1,
+        }]
+    });
+
     for (i, r) in rs.iter().enumerate() {
         if let Some(ref b) = boundary {
             let part_header = format!(
                 "\r\n--{}\r\ncontent-type: {}\r\ncontent-range: bytes {}-{}/{}\r\n\r\n",
                 b, content_type, r.start, r.end, total_len
             );
-            write_frame(write_half, &ServerFrame::AssetChunk {
-                correlation_id,
-                bytes: part_header.into_bytes(),
-            }).await?;
+            write_frame(
+                write_half,
+                &ServerFrame::AssetChunk {
+                    correlation_id,
+                    bytes: part_header.into_bytes(),
+                },
+            )
+            .await?;
         }
 
         if let Err(e) = file.seek(std::io::SeekFrom::Start(r.start)).await {
@@ -441,10 +450,14 @@ async fn stream_file(
         if i == rs.len() - 1 {
             if let Some(ref b) = boundary {
                 let final_boundary = format!("\r\n--{}--\r\n", b);
-                write_frame(write_half, &ServerFrame::AssetChunk {
-                    correlation_id,
-                    bytes: final_boundary.into_bytes(),
-                }).await?;
+                write_frame(
+                    write_half,
+                    &ServerFrame::AssetChunk {
+                        correlation_id,
+                        bytes: final_boundary.into_bytes(),
+                    },
+                )
+                .await?;
             }
         }
     }
@@ -602,9 +615,15 @@ mod e2e {
                         let _ = tx.send(f).await;
                     }
                 });
-                super::handle_asset_request(&mut write_half, &mut rx, &app_state, correlation_id, request)
-                    .await
-                    .expect("handler io error");
+                super::handle_asset_request(
+                    &mut write_half,
+                    &mut rx,
+                    &app_state,
+                    correlation_id,
+                    request,
+                )
+                .await
+                .expect("handler io error");
             } else {
                 panic!("expected AssetRequest frame");
             }
@@ -822,12 +841,9 @@ mod e2e {
         assert!(matches!(chunk, ServerFrame::AssetChunk { .. }));
 
         // Send Cancel
-        write_frame(
-            client.stream(),
-            &ClientFrame::Cancel { correlation_id },
-        )
-        .await
-        .unwrap();
+        write_frame(client.stream(), &ClientFrame::Cancel { correlation_id })
+            .await
+            .unwrap();
 
         // Drain until close
         loop {
@@ -858,7 +874,9 @@ mod e2e {
             &desc,
             AssetRequestPayload {
                 board_id,
-                kind: AssetKind::Media { filename: "multi.bin".into() },
+                kind: AssetKind::Media {
+                    filename: "multi.bin".into(),
+                },
                 range: Some("bytes=0-49, 900-949".into()),
                 if_none_match: None,
             },
@@ -870,7 +888,11 @@ mod e2e {
             other => panic!("expected head, got {:?}", other),
         };
         assert_eq!(head.status, 206);
-        let ct = head.headers.iter().find(|(k, _)| k == "content-type").unwrap();
+        let ct = head
+            .headers
+            .iter()
+            .find(|(k, _)| k == "content-type")
+            .unwrap();
         assert!(String::from_utf8_lossy(&ct.1).contains("multipart/byteranges"));
 
         let mut got_body = Vec::new();

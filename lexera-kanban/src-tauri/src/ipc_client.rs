@@ -8,7 +8,9 @@
 //! drops mid-request, the cached client is cleared and the next request
 //! reconnects from scratch.
 
-use lexera_local_ipc::frame::{read_frame, write_frame, ApiRequest, ApiResponse, ClientFrame, ServerFrame};
+use lexera_local_ipc::frame::{
+    read_frame, write_frame, ApiRequest, ApiResponse, ClientFrame, ServerFrame,
+};
 use lexera_local_ipc::{Client, Descriptor, IpcError, PROTOCOL_VERSION};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -61,9 +63,9 @@ impl IpcClientState {
                         Ok(response)
                     }
                 }
-                Some(ServerFrame::Error {
-                    code, message, ..
-                }) => Err(IpcError::Descriptor(format!("{}: {}", code, message))),
+                Some(ServerFrame::Error { code, message, .. }) => {
+                    Err(IpcError::Descriptor(format!("{}: {}", code, message)))
+                }
                 Some(other) => Err(IpcError::Descriptor(format!(
                     "unexpected frame: {:?}",
                     other
@@ -120,20 +122,16 @@ impl IpcClientState {
                 )
                 .await?;
             }
-            write_frame(
-                client.stream(),
-                &ClientFrame::UploadEnd { correlation_id },
-            )
-            .await?;
+            write_frame(client.stream(), &ClientFrame::UploadEnd { correlation_id }).await?;
 
             match read_frame::<_, ServerFrame>(client.stream()).await? {
                 Some(ServerFrame::ApiResponse {
                     correlation_id: cid,
                     response,
                 }) if cid == correlation_id => Ok(response),
-                Some(ServerFrame::Error {
-                    code, message, ..
-                }) => Err(IpcError::Descriptor(format!("{}: {}", code, message))),
+                Some(ServerFrame::Error { code, message, .. }) => {
+                    Err(IpcError::Descriptor(format!("{}: {}", code, message)))
+                }
                 Some(other) => Err(IpcError::Descriptor(format!(
                     "unexpected frame: {:?}",
                     other

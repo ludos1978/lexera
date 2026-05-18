@@ -45,7 +45,10 @@ fn b64() -> base64::engine::general_purpose::GeneralPurpose {
 pub(super) enum ReplicationError {
     #[error("{}", _0)]
     CrdtDisabled(String),
-    #[error("WebSocket connection failed: {} (check that the remote server is running and accessible)", _0)]
+    #[error(
+        "WebSocket connection failed: {} (check that the remote server is running and accessible)",
+        _0
+    )]
     WsConnect(String),
     #[error("Failed to serialize {}: {}", _0, _1)]
     Serialize(String, String),
@@ -151,7 +154,9 @@ async fn run_sync_client(
     use tokio_tungstenite::tungstenite::Message;
 
     if !CrdtSyncStorage::crdt_sync_available(storage.as_ref()) {
-        return Err(ReplicationError::CrdtDisabled(CRDT_SYNC_DISABLED_MESSAGE.to_string()));
+        return Err(ReplicationError::CrdtDisabled(
+            CRDT_SYNC_DISABLED_MESSAGE.to_string(),
+        ));
     }
 
     let (ws_stream, _) = tokio_tungstenite::connect_async(&ws_url)
@@ -714,8 +719,7 @@ mod tests {
 
     #[test]
     fn replication_error_crdt_disabled_carries_message() {
-        let err =
-            ReplicationError::CrdtDisabled("CRDT sync is disabled in this build".into());
+        let err = ReplicationError::CrdtDisabled("CRDT sync is disabled in this build".into());
         assert!(err.to_string().contains("CRDT sync is disabled"));
     }
 

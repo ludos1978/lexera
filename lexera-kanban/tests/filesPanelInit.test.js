@@ -5,8 +5,21 @@
  * Verifies that the files panel mounts, loads data, renders workspaces,
  * and removes the loading indicator.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadIIFE } from './load-iife.js';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const HierarchyContract = require('../src/hierarchy/hierarchyContract.js');
+const HierarchyController = require('../src/hierarchy/hierarchyController.js');
+
+function loadTreeView() {
+  return loadIIFE('treeView.js', 'TreeView', {
+    window,
+    document,
+    getComputedStyle: window.getComputedStyle.bind(window)
+  });
+}
 
 function loadManagementUI() {
   return loadIIFE(['managementLogViewer.js', 'management.js'], 'ManagementUI', {
@@ -24,6 +37,12 @@ function loadManagementUI() {
 }
 
 describe('files panel initialization', () => {
+  beforeEach(() => {
+    window.TreeView = loadTreeView();
+    window.LexeraHierarchyContract = HierarchyContract;
+    window.LexeraHierarchyController = HierarchyController;
+  });
+
   it('mounts the workspace-config shell HTML into the container', () => {
     const ManagementUI = loadManagementUI();
     const container = document.createElement('div');
@@ -93,7 +112,7 @@ describe('files panel initialization', () => {
 
     const configTree = container.querySelector('#mgmt-config-tree');
     expect(configTree).toBeTruthy();
-    // Config tree should have content (workspace nodes or legacy HTML)
+    // Config tree should have content (TreeView workspace nodes)
     expect(configTree.innerHTML.length).toBeGreaterThan(0);
     // Should not just be the default "Select a workspace or board" placeholder
     expect(configTree.innerHTML).not.toBe('');

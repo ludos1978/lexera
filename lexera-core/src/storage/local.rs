@@ -774,6 +774,7 @@ impl LocalStorage {
         index
     }
 
+    #[cfg(feature = "crdt")]
     fn refresh_board_state_caches(board_id: &str, state: &mut BoardState) {
         state.summary = Self::build_board_summary(
             board_id,
@@ -786,6 +787,7 @@ impl LocalStorage {
         state.search_index = Self::build_search_index(&state.search_docs);
     }
 
+    #[cfg(feature = "crdt")]
     fn ensure_board_state_crdt_loaded(
         &self,
         board_id: &str,
@@ -851,6 +853,15 @@ impl LocalStorage {
                 );
             }
         }
+        Ok(())
+    }
+
+    #[cfg(not(feature = "crdt"))]
+    fn ensure_board_state_crdt_loaded(
+        &self,
+        _board_id: &str,
+        _state: &mut BoardState,
+    ) -> Result<(), StorageError> {
         Ok(())
     }
 
@@ -1163,6 +1174,7 @@ impl LocalStorage {
         }
     }
 
+    #[cfg(feature = "crdt")]
     fn card_id_map(board: &KanbanBoard) -> HashMap<String, String> {
         let mut map = HashMap::new();
         for column in board.all_columns() {
@@ -1177,6 +1189,7 @@ impl LocalStorage {
         map
     }
 
+    #[cfg(feature = "crdt")]
     fn restore_card_ids(board: &mut KanbanBoard, id_map: &HashMap<String, String>) {
         for column in board.all_columns_mut() {
             for card in &mut column.cards {
@@ -1190,18 +1203,21 @@ impl LocalStorage {
         }
     }
 
+    #[cfg(feature = "crdt")]
     fn board_visible_signature(board: &KanbanBoard) -> String {
         let mut normalized = super::generation::board_without_generation_meta(board);
         normalized.reconcile_format_hint();
         parser::generate_markdown(&normalized)
     }
 
+    #[cfg(feature = "crdt")]
     fn boards_match_visible_content(a: &KanbanBoard, b: &KanbanBoard) -> bool {
         Self::board_visible_signature(a) == Self::board_visible_signature(b)
     }
 
     /// Compare the card content of include columns between two boards.
     /// Returns true when every include column has the same cards in both boards.
+    #[cfg(feature = "crdt")]
     fn include_columns_match(a: &KanbanBoard, b: &KanbanBoard) -> bool {
         let a_cols = a.all_columns();
         let b_cols = b.all_columns();
@@ -1222,6 +1238,7 @@ impl LocalStorage {
         true
     }
 
+    #[cfg(feature = "crdt")]
     fn board_from_crdt_if_semantically_equal(
         board: &KanbanBoard,
         crdt: &CrdtStore,
@@ -1296,6 +1313,7 @@ impl LocalStorage {
         Some(crdt_board)
     }
 
+    #[cfg(feature = "crdt")]
     fn align_loaded_board_with_crdt(
         board_id: &str,
         board: &KanbanBoard,
@@ -1982,6 +2000,7 @@ impl LocalStorage {
             }
         }
 
+        #[cfg(feature = "crdt")]
         let (stored_board, crdt_board, has_crdt) = {
             let boards = self
                 .boards
@@ -2006,7 +2025,20 @@ impl LocalStorage {
                 state.crdt.is_some(),
             )
         };
+        #[cfg(not(feature = "crdt"))]
+        let stored_board = {
+            let boards = self
+                .boards
+                .read()
+                .map_err(|e| StorageError::LockPoisoned(format!("boards read: {}", e)))?;
+            boards
+                .get(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?
+                .board
+                .clone()
+        };
 
+        #[cfg(feature = "crdt")]
         log::info!(
             "[lexera.storage.write] board={} has_crdt={} has_base={} disk_diverged={} incoming={}",
             board_id,
@@ -2015,7 +2047,16 @@ impl LocalStorage {
             disk_diverged,
             board_card_summary(&normalized_board)
         );
+        #[cfg(not(feature = "crdt"))]
+        log::info!(
+            "[lexera.storage.write] board={} has_base={} disk_diverged={} incoming={}",
+            board_id,
+            normalized_base.is_some(),
+            disk_diverged,
+            board_card_summary(&normalized_board)
+        );
 
+        #[cfg(feature = "crdt")]
         let current = if disk_diverged {
             Self::normalize_board_for_write(
                 &self.parse_with_includes(&disk_content, board_id, &board_dir, &file_path)?,
@@ -2023,6 +2064,15 @@ impl LocalStorage {
             )
         } else if let Some(crdt_board) = crdt_board {
             Self::normalize_board_for_write(&crdt_board, &board_dir)
+        } else {
+            Self::normalize_board_for_write(&stored_board, &board_dir)
+        };
+        #[cfg(not(feature = "crdt"))]
+        let current = if disk_diverged {
+            Self::normalize_board_for_write(
+                &self.parse_with_includes(&disk_content, board_id, &board_dir, &file_path)?,
+                &board_dir,
+            )
         } else {
             Self::normalize_board_for_write(&stored_board, &board_dir)
         };
@@ -2211,11 +2261,7 @@ impl LocalStorage {
                     // open the merge view and POST a resolution. Nothing is
                     // lost; the save still succeeds.
                     let _ = self
-                        .write_crashsave_for_file(
-                            &file_path,
-                            &ensured,
-                            "non-crdt-merge-conflict",
-                        )
+                        .write_crashsave_for_file(&file_path, &ensured, "non-crdt-merge-conflict")
                         .ok();
                     log::warn!(
                         "[lexera.storage.merge] {} unresolved conflicts during non-CRDT save on board {} — persisted auto-merge, surfaced for merge view",
@@ -2480,7 +2526,13 @@ impl LocalStorage {
         }
 
         let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        #[cfg(feature = "crdt")]
         let mut board = Self::normalize_board_for_write(
+            &self.parse_with_includes(&content, &board_id, &board_dir, &file_path)?,
+            &board_dir,
+        );
+        #[cfg(not(feature = "crdt"))]
+        let board = Self::normalize_board_for_write(
             &self.parse_with_includes(&content, &board_id, &board_dir, &file_path)?,
             &board_dir,
         );
@@ -2488,68 +2540,74 @@ impl LocalStorage {
         let metadata = fs::metadata(&file_path)?;
         let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
 
-        // Initialize CRDT: load from .crdt file or create from board
-        let crdt_path = file_path.with_extension("md.crdt");
-        let crdt = if crdt_path.exists() {
-            match CrdtStore::load_from_file(&crdt_path) {
-                Ok(mut c) => {
-                    c.set_metadata(
-                        board.yaml_header.clone(),
-                        board.kanban_footer.clone(),
-                        board.board_settings.clone(),
-                        board.generation_meta.clone(),
-                    );
-                    match Self::align_loaded_board_with_crdt(&board_id, &board, c, &board_dir) {
-                        Ok((canonical_board, c)) => {
-                            board = canonical_board;
-                            Some(c)
-                        }
-                        Err(e) => {
-                            log::error!("[lexera.crdt] Failed to align loaded CRDT: {}", e);
-                            None
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::warn!("[lexera.crdt] Failed to load .crdt file: {}", e);
-                    match CrdtStore::from_board(&board) {
-                        Ok(c) => {
-                            if let Err(error) =
-                                super::crdt_artifact::save_store_snapshot(&crdt_path, &c)
-                            {
-                                log::warn!(
-                                    "[lexera.crdt] Failed to persist rebuilt .crdt file {:?}: {}",
-                                    crdt_path,
-                                    error
-                                );
-                            }
-                            Some(c)
-                        }
-                        Err(e) => {
-                            log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
-                            None
-                        }
-                    }
-                }
-            }
-        } else {
-            match CrdtStore::from_board(&board) {
-                Ok(c) => {
-                    if let Err(error) = super::crdt_artifact::save_store_snapshot(&crdt_path, &c) {
-                        log::warn!(
-                            "[lexera.crdt] Failed to persist new .crdt file {:?}: {}",
-                            crdt_path,
-                            error
+        #[cfg(feature = "crdt")]
+        let crdt = {
+            let crdt_path = file_path.with_extension("md.crdt");
+            if crdt_path.exists() {
+                match CrdtStore::load_from_file(&crdt_path) {
+                    Ok(mut c) => {
+                        c.set_metadata(
+                            board.yaml_header.clone(),
+                            board.kanban_footer.clone(),
+                            board.board_settings.clone(),
+                            board.generation_meta.clone(),
                         );
+                        match Self::align_loaded_board_with_crdt(&board_id, &board, c, &board_dir) {
+                            Ok((canonical_board, c)) => {
+                                board = canonical_board;
+                                Some(c)
+                            }
+                            Err(e) => {
+                                log::error!("[lexera.crdt] Failed to align loaded CRDT: {}", e);
+                                None
+                            }
+                        }
                     }
-                    Some(c)
+                    Err(e) => {
+                        log::warn!("[lexera.crdt] Failed to load .crdt file: {}", e);
+                        match CrdtStore::from_board(&board) {
+                            Ok(c) => {
+                                if let Err(error) =
+                                    super::crdt_artifact::save_store_snapshot(&crdt_path, &c)
+                                {
+                                    log::warn!(
+                                        "[lexera.crdt] Failed to persist rebuilt .crdt file {:?}: {}",
+                                        crdt_path,
+                                        error
+                                    );
+                                }
+                                Some(c)
+                            }
+                            Err(e) => {
+                                log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
+                                None
+                            }
+                        }
+                    }
                 }
-                Err(e) => {
-                    log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
-                    None
+            } else {
+                match CrdtStore::from_board(&board) {
+                    Ok(c) => {
+                        if let Err(error) =
+                            super::crdt_artifact::save_store_snapshot(&crdt_path, &c)
+                        {
+                            log::warn!(
+                                "[lexera.crdt] Failed to persist new .crdt file {:?}: {}",
+                                crdt_path,
+                                error
+                            );
+                        }
+                        Some(c)
+                    }
+                    Err(e) => {
+                        log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
+                        None
+                    }
                 }
             }
         };
+        #[cfg(not(feature = "crdt"))]
+        let crdt = None;
 
         let generation = board
             .generation_meta
@@ -2716,7 +2774,10 @@ impl LocalStorage {
                 return Err(e);
             }
         };
+        #[cfg(feature = "crdt")]
         let mut board = Self::normalize_board_for_write(&parsed, &board_dir);
+        #[cfg(not(feature = "crdt"))]
+        let board = Self::normalize_board_for_write(&parsed, &board_dir);
 
         // Staleness check: reject loads with a lower generation than what we have in memory
         let new_gen = board
@@ -2782,50 +2843,58 @@ impl LocalStorage {
         };
         let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
 
-        // Update CRDT with changes from disk
-        let crdt_path = file_path.with_extension("md.crdt");
-        let crdt = if let Some(mut c) = old_crdt {
-            c.set_metadata(
-                board.yaml_header.clone(),
-                board.kanban_footer.clone(),
-                board.board_settings.clone(),
-                board.generation_meta.clone(),
-            );
-            match Self::align_loaded_board_with_crdt(board_id, &board, c, &board_dir) {
-                Ok((canonical_board, c)) => {
-                    board = canonical_board;
-                    if let Err(error) = super::crdt_artifact::save_store_snapshot(&crdt_path, &c) {
-                        log::warn!(
-                            "[lexera.crdt] Failed to persist aligned .crdt file {:?}: {}",
-                            crdt_path,
-                            error
-                        );
+        #[cfg(feature = "crdt")]
+        let crdt = {
+            let crdt_path = file_path.with_extension("md.crdt");
+            if let Some(mut c) = old_crdt {
+                c.set_metadata(
+                    board.yaml_header.clone(),
+                    board.kanban_footer.clone(),
+                    board.board_settings.clone(),
+                    board.generation_meta.clone(),
+                );
+                match Self::align_loaded_board_with_crdt(board_id, &board, c, &board_dir) {
+                    Ok((canonical_board, c)) => {
+                        board = canonical_board;
+                        if let Err(error) =
+                            super::crdt_artifact::save_store_snapshot(&crdt_path, &c)
+                        {
+                            log::warn!(
+                                "[lexera.crdt] Failed to persist aligned .crdt file {:?}: {}",
+                                crdt_path,
+                                error
+                            );
+                        }
+                        Some(c)
                     }
-                    Some(c)
-                }
-                Err(e) => {
-                    log::error!("[lexera.crdt] Failed to align board reload CRDT: {}", e);
-                    None
-                }
-            }
-        } else {
-            match CrdtStore::from_board(&board) {
-                Ok(c) => {
-                    if let Err(error) = super::crdt_artifact::save_store_snapshot(&crdt_path, &c) {
-                        log::warn!(
-                            "[lexera.crdt] Failed to persist rebuilt .crdt file {:?}: {}",
-                            crdt_path,
-                            error
-                        );
+                    Err(e) => {
+                        log::error!("[lexera.crdt] Failed to align board reload CRDT: {}", e);
+                        None
                     }
-                    Some(c)
                 }
-                Err(e) => {
-                    log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
-                    None
+            } else {
+                match CrdtStore::from_board(&board) {
+                    Ok(c) => {
+                        if let Err(error) =
+                            super::crdt_artifact::save_store_snapshot(&crdt_path, &c)
+                        {
+                            log::warn!(
+                                "[lexera.crdt] Failed to persist rebuilt .crdt file {:?}: {}",
+                                crdt_path,
+                                error
+                            );
+                        }
+                        Some(c)
+                    }
+                    Err(e) => {
+                        log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
+                        None
+                    }
                 }
             }
         };
+        #[cfg(not(feature = "crdt"))]
+        let crdt = None;
 
         let new_generation = board
             .generation_meta
@@ -3000,8 +3069,7 @@ impl LocalStorage {
                     // Full-fidelity payload — `generate_slides` keeps kid
                     // markers in non-CRDT builds so the backup is exactly
                     // the persisted form the user can recover from.
-                    let in_memory_serialized =
-                        slide_parser::generate_slides(&column.cards);
+                    let in_memory_serialized = slide_parser::generate_slides(&column.cards);
                     match super::backup::BackupManager::create_conflict_backup(
                         &state.file_path,
                         &in_memory_serialized,
@@ -3051,7 +3119,10 @@ impl LocalStorage {
         let search_docs = Self::build_search_documents(&next_board);
         let search_index = Self::build_search_index(&search_docs);
         let recent_generations = Self::build_recent_generations(Some(state), generation);
+        #[cfg(feature = "crdt")]
         let crdt = CrdtStore::from_board(&next_board).ok();
+        #[cfg(not(feature = "crdt"))]
+        let crdt = None;
 
         state.board = next_board;
         state.summary = summary;
@@ -3161,7 +3232,16 @@ impl LocalStorage {
             version,
             generation,
             recent_generations: Self::build_recent_generations(previous_state.as_ref(), generation),
-            crdt: CrdtStore::from_board(&normalized_board).ok(),
+            crdt: {
+                #[cfg(feature = "crdt")]
+                {
+                    CrdtStore::from_board(&normalized_board).ok()
+                }
+                #[cfg(not(feature = "crdt"))]
+                {
+                    None
+                }
+            },
         };
         match self.boards.write() {
             Ok(mut boards) => {
@@ -4101,8 +4181,7 @@ impl LocalStorage {
                 }
                 let candidates =
                     Self::candidate_indices_for_prefilter(&search_index, &query.prefilter);
-                for (doc_index, doc) in
-                    Self::iter_candidate_doc_indices(&search_docs, &candidates)
+                for (doc_index, doc) in Self::iter_candidate_doc_indices(&search_docs, &candidates)
                 {
                     let search_doc = SearchDocument {
                         board_title: &board_title,
@@ -4166,9 +4245,7 @@ impl LocalStorage {
                         .map(|scope| scope.contains(board_id.as_str()))
                         .unwrap_or(true)
                 })
-                .map(|(board_id, state)| {
-                    (board_id.clone(), state.summary.title.clone())
-                })
+                .map(|(board_id, state)| (board_id.clone(), state.summary.title.clone()))
                 .collect()
         };
 
@@ -4294,27 +4371,30 @@ impl BoardStorage for LocalStorage {
         let _guard = Self::acquire_board_write_guard(board_id, lock.as_ref(), "read_board");
         let mut boards = self.boards.write().ok()?;
         let state = boards.get_mut(board_id)?;
-        let _ = self.ensure_board_state_crdt_loaded(board_id, state);
-        let board_dir = state
-            .file_path
-            .parent()
-            .unwrap_or(Path::new("."))
-            .to_path_buf();
-        if let Some(crdt) = state.crdt.as_ref() {
-            if let Some(canonical_board) =
-                Self::board_from_crdt_if_semantically_equal(&state.board, crdt, &board_dir)
-            {
-                log::info!(
-                    target: "lexera.storage.read_board",
-                    "Returning CRDT-aligned board source=crdt board_id={} state_kids={:?} returned_kids={:?}",
-                    board_id,
-                    board_kid_sample(&state.board, 6),
-                    board_kid_sample(&canonical_board, 6)
-                );
-                return Some(canonical_board);
+        #[cfg(feature = "crdt")]
+        {
+            let _ = self.ensure_board_state_crdt_loaded(board_id, state);
+            let board_dir = state
+                .file_path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_path_buf();
+            if let Some(crdt) = state.crdt.as_ref() {
+                if let Some(canonical_board) =
+                    Self::board_from_crdt_if_semantically_equal(&state.board, crdt, &board_dir)
+                {
+                    log::debug!(
+                        target: "lexera.storage.read_board",
+                        "Returning CRDT-aligned board source=crdt board_id={} state_kids={:?} returned_kids={:?}",
+                        board_id,
+                        board_kid_sample(&state.board, 6),
+                        board_kid_sample(&canonical_board, 6)
+                    );
+                    return Some(canonical_board);
+                }
             }
         }
-        log::warn!(
+        log::debug!(
             target: "lexera.storage.read_board",
             "Returning stored board source=state board_id={} state_kids={:?}",
             board_id,
@@ -4335,19 +4415,22 @@ impl BoardStorage for LocalStorage {
             Self::acquire_board_write_guard(board_id, lock.as_ref(), "read_board_hierarchy");
         let mut boards = self.boards.write().ok()?;
         let state = boards.get_mut(board_id)?;
-        let _ = self.ensure_board_state_crdt_loaded(board_id, state);
-        let board_dir = state
-            .file_path
-            .parent()
-            .unwrap_or(Path::new("."))
-            .to_path_buf();
-        if let Some(crdt) = state.crdt.as_ref() {
-            if let Some(canonical_board) =
-                Self::board_from_crdt_if_semantically_equal(&state.board, crdt, &board_dir)
-            {
-                let hierarchy_rows = Self::build_board_hierarchy(board_id, &canonical_board);
-                state.hierarchy_rows = hierarchy_rows.clone();
-                return Some(hierarchy_rows);
+        #[cfg(feature = "crdt")]
+        {
+            let _ = self.ensure_board_state_crdt_loaded(board_id, state);
+            let board_dir = state
+                .file_path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_path_buf();
+            if let Some(crdt) = state.crdt.as_ref() {
+                if let Some(canonical_board) =
+                    Self::board_from_crdt_if_semantically_equal(&state.board, crdt, &board_dir)
+                {
+                    let hierarchy_rows = Self::build_board_hierarchy(board_id, &canonical_board);
+                    state.hierarchy_rows = hierarchy_rows.clone();
+                    return Some(hierarchy_rows);
+                }
             }
         }
         Some(state.hierarchy_rows.clone())
@@ -4782,6 +4865,23 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(not(feature = "crdt"))]
+    fn test_read_board_does_not_hydrate_crdt_when_feature_is_disabled() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(tmp, "{}", TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let (id, state) = storage.prepare_board_state(tmp.path()).unwrap();
+        assert!(state.crdt.is_none());
+        storage.batch_add_boards(vec![(id.clone(), state)]).unwrap();
+
+        assert!(storage.read_board(&id).is_some());
+        let boards = storage.boards.read().unwrap();
+        assert!(boards.get(&id).unwrap().crdt.is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "crdt")]
     fn test_export_crdt_snapshot_rebuilds_deferred_crdt() {
         let mut tmp = NamedTempFile::new().unwrap();
         write!(tmp, "{}", TEST_BOARD).unwrap();
@@ -5932,11 +6032,7 @@ kanban-plugin: board
         .unwrap();
         // Seed include with INITIAL slide content. Parser will merge these
         // into col.cards on load.
-        fs::write(
-            &include_path,
-            "# Slide A\n\nUser-initial content\n",
-        )
-        .unwrap();
+        fs::write(&include_path, "# Slide A\n\nUser-initial content\n").unwrap();
 
         let storage = LocalStorage::new();
         let board_id = storage.add_board(&board_path).unwrap();
@@ -5961,7 +6057,10 @@ kanban-plugin: board
         let changed = storage
             .reload_board_include_path(&board_id, &include_path)
             .expect("reload must not error");
-        assert!(changed, "reload must report changed=true on divergent disk change");
+        assert!(
+            changed,
+            "reload must report changed=true on divergent disk change"
+        );
 
         // Post-condition #1: main .md is unchanged on disk (we only
         // touched the include).
@@ -5982,8 +6081,7 @@ kanban-plugin: board
                 )
             });
 
-        let backup_content =
-            fs::read_to_string(dir.path().join(backup_name)).unwrap();
+        let backup_content = fs::read_to_string(dir.path().join(backup_name)).unwrap();
         assert!(
             backup_content.contains("User-initial content"),
             "conflict backup must preserve the in-memory cards' content; got:\n{}",
@@ -6034,9 +6132,7 @@ kanban-plugin: board
             .filter_map(|r| r.ok())
             .map(|e| e.file_name().to_string_lossy().to_string())
             .collect();
-        let has_backup = entries
-            .iter()
-            .any(|n| n.starts_with("board-conflict-"));
+        let has_backup = entries.iter().any(|n| n.starts_with("board-conflict-"));
         assert!(
             !has_backup,
             "empty-in-memory case must NOT write a conflict backup; entries: {:?}",

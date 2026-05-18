@@ -171,22 +171,17 @@ impl MergeEngine for CardIdentityMergeEngine {
 
         for ch in &incoming_changes {
             let kid = ch.kid();
-            let cur = current_by_kid
-                .get(kid)
-                .map(|v| v.as_slice())
-                .unwrap_or(&[]);
+            let cur = current_by_kid.get(kid).map(|v| v.as_slice()).unwrap_or(&[]);
             let cur_removed = cur.iter().any(|c| matches!(c, CardChange::Removed { .. }));
-            let cur_modified = cur
-                .iter()
-                .find_map(|c| match c {
-                    CardChange::Modified {
-                        new_content,
-                        new_checked,
-                        new_params,
-                        ..
-                    } => Some((new_content.clone(), *new_checked, new_params.clone())),
-                    _ => None,
-                });
+            let cur_modified = cur.iter().find_map(|c| match c {
+                CardChange::Modified {
+                    new_content,
+                    new_checked,
+                    new_params,
+                    ..
+                } => Some((new_content.clone(), *new_checked, new_params.clone())),
+                _ => None,
+            });
             let cur_moved = cur.iter().find_map(|c| match c {
                 CardChange::Moved { new_column_id, .. } => Some(new_column_id.clone()),
                 _ => None,
@@ -198,7 +193,8 @@ impl MergeEngine for CardIdentityMergeEngine {
                 } => {
                     if let Some(existing) = current_snap.get(kid) {
                         // Both sides introduced the same kid.
-                        let incoming_content = crate::merge::card_identity::strip_kid(&card.content);
+                        let incoming_content =
+                            crate::merge::card_identity::strip_kid(&card.content);
                         if existing.content != incoming_content {
                             conflicts.push(Self::conflict(
                                 kid,

@@ -172,12 +172,13 @@ async fn upload_media_file(
     local_media_dir: &std::path::Path,
 ) -> Result<(), MediaSyncError> {
     let file_path = local_media_dir.join(filename);
-    let data = tokio::fs::read(&file_path)
-        .await
-        .map_err(|source| MediaSyncError::ReadLocalMedia {
-            filename: filename.to_string(),
-            source,
-        })?;
+    let data =
+        tokio::fs::read(&file_path)
+            .await
+            .map_err(|source| MediaSyncError::ReadLocalMedia {
+                filename: filename.to_string(),
+                source,
+            })?;
 
     let part = reqwest::multipart::Part::bytes(data)
         .file_name(filename.to_string())

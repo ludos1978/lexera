@@ -88,11 +88,7 @@ impl FileEncryptor {
         let ciphertext = self
             .cipher
             .encrypt(nonce, plaintext.as_bytes())
-            .map_err(|e| {
-                std::io::Error::other(
-                    format!("Encryption failed: {}", e),
-                )
-            })?;
+            .map_err(|e| std::io::Error::other(format!("Encryption failed: {}", e)))?;
 
         let mut out = Vec::with_capacity(MAGIC.len() + NONCE_LEN + ciphertext.len());
         out.extend_from_slice(MAGIC);

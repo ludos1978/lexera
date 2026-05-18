@@ -152,8 +152,14 @@ fn create_temp_render_dir(prefix: &str) -> Result<PathBuf, String> {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!("lexera-kanban-{}-{}-{}", prefix, std::process::id(), stamp));
-    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp render directory: {}", e))?;
+    let dir = std::env::temp_dir().join(format!(
+        "lexera-kanban-{}-{}-{}",
+        prefix,
+        std::process::id(),
+        stamp
+    ));
+    fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create temp render directory: {}", e))?;
     Ok(dir)
 }
 
@@ -162,7 +168,8 @@ const DRAWIO_RENDER_TIMEOUT_MS: u64 = 60_000;
 
 fn ensure_parent_dir(path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
     }
     Ok(())
 }
@@ -231,9 +238,9 @@ fn run_command_output_with_timeout(
     loop {
         match child.try_wait() {
             Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .map_err(|e| format!("Failed to collect output for {}: {}", command.display(), e));
+                return child.wait_with_output().map_err(|e| {
+                    format!("Failed to collect output for {}: {}", command.display(), e)
+                });
             }
             Ok(None) => {
                 if started_at.elapsed() >= timeout {
@@ -337,7 +344,11 @@ fn find_drawio_cli() -> Option<PathBuf> {
 
 fn find_pdftoppm_cli() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
-    let candidates = ["/opt/homebrew/bin/pdftoppm", "/usr/local/bin/pdftoppm", "pdftoppm"];
+    let candidates = [
+        "/opt/homebrew/bin/pdftoppm",
+        "/usr/local/bin/pdftoppm",
+        "pdftoppm",
+    ];
     #[cfg(target_os = "windows")]
     let candidates = [
         "C:\\Program Files\\poppler\\bin\\pdftoppm.exe",
@@ -351,7 +362,11 @@ fn find_pdftoppm_cli() -> Option<PathBuf> {
 
 fn find_mutool_cli() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
-    let candidates = ["/opt/homebrew/bin/mutool", "/usr/local/bin/mutool", "mutool"];
+    let candidates = [
+        "/opt/homebrew/bin/mutool",
+        "/usr/local/bin/mutool",
+        "mutool",
+    ];
     #[cfg(target_os = "windows")]
     let candidates = [
         "C:\\Program Files\\mupdf\\mutool.exe",
@@ -367,13 +382,23 @@ fn find_node_cli() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     let candidates = ["node.exe", "node"];
     #[cfg(not(target_os = "windows"))]
-    let candidates = ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node", "node"];
+    let candidates = [
+        "/opt/homebrew/bin/node",
+        "/usr/local/bin/node",
+        "/usr/bin/node",
+        "node",
+    ];
     probe_command(&candidates, &["--version"])
 }
 
 fn find_ffmpeg_cli() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
-    let candidates = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/opt/local/bin/ffmpeg", "ffmpeg"];
+    let candidates = [
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/opt/local/bin/ffmpeg",
+        "ffmpeg",
+    ];
     #[cfg(target_os = "windows")]
     let candidates = [
         "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
@@ -402,7 +427,12 @@ fn find_java_cli() -> Option<PathBuf> {
 
 fn find_graphviz_dot_cli() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
-    let candidates = ["/opt/homebrew/bin/dot", "/usr/local/bin/dot", "/usr/bin/dot", "dot"];
+    let candidates = [
+        "/opt/homebrew/bin/dot",
+        "/usr/local/bin/dot",
+        "/usr/bin/dot",
+        "dot",
+    ];
     #[cfg(target_os = "windows")]
     let candidates = ["dot.exe", "dot"];
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
@@ -494,14 +524,21 @@ fn build_plantuml_renderer_status() -> EmbeddedRendererStatus {
         path: java_path
             .as_ref()
             .map(|path| path.to_string_lossy().to_string())
-            .or_else(|| jar_path.as_ref().map(|path| path.to_string_lossy().to_string())),
+            .or_else(|| {
+                jar_path
+                    .as_ref()
+                    .map(|path| path.to_string_lossy().to_string())
+            }),
         details: Some(details.join(" | ")),
     }
 }
 
 fn render_plantuml_svg_content(code: &str) -> Result<String, String> {
-    let java = find_java_cli().ok_or_else(|| "Java not found for PlantUML rendering".to_string())?;
-    let jar = find_plantuml_jar().ok_or_else(|| "PlantUML JAR not found (node-plantuml vendor package missing)".to_string())?;
+    let java =
+        find_java_cli().ok_or_else(|| "Java not found for PlantUML rendering".to_string())?;
+    let jar = find_plantuml_jar().ok_or_else(|| {
+        "PlantUML JAR not found (node-plantuml vendor package missing)".to_string()
+    })?;
     let temp_dir = create_temp_render_dir("plantuml")?;
     let input_path = temp_dir.join("diagram.puml");
     let output_path = temp_dir.join("diagram.svg");
@@ -522,8 +559,10 @@ fn render_plantuml_svg_content(code: &str) -> Result<String, String> {
     }
     args.push(input_path.to_string_lossy().to_string());
 
-    let render_result = run_command_capture(&java, &args, Some(&temp_dir))
-        .and_then(|_| fs::read_to_string(&output_path).map_err(|e| format!("Failed to read rendered PlantUML SVG: {}", e)));
+    let render_result = run_command_capture(&java, &args, Some(&temp_dir)).and_then(|_| {
+        fs::read_to_string(&output_path)
+            .map_err(|e| format!("Failed to read rendered PlantUML SVG: {}", e))
+    });
 
     let _ = fs::remove_dir_all(&temp_dir);
 
@@ -678,10 +717,15 @@ fn path_stem_lossy(path: &Path) -> String {
         .to_string()
 }
 
-fn find_generated_file_with_prefix(dir: &Path, prefix: &str, extension: &str) -> Result<PathBuf, String> {
+fn find_generated_file_with_prefix(
+    dir: &Path,
+    prefix: &str,
+    extension: &str,
+) -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     let wanted_ext = format!(".{}", extension.trim_start_matches('.')).to_lowercase();
-    let read_dir = fs::read_dir(dir).map_err(|e| format!("Failed to scan {}: {}", dir.display(), e))?;
+    let read_dir =
+        fs::read_dir(dir).map_err(|e| format!("Failed to scan {}: {}", dir.display(), e))?;
     for entry in read_dir.flatten() {
         let path = entry.path();
         if !path.is_file() {
@@ -696,15 +740,18 @@ fn find_generated_file_with_prefix(dir: &Path, prefix: &str, extension: &str) ->
         }
     }
     candidates.sort();
-    candidates
-        .into_iter()
-        .next()
-        .ok_or_else(|| format!("Expected rendered {} output for prefix {}", extension, prefix))
+    candidates.into_iter().next().ok_or_else(|| {
+        format!(
+            "Expected rendered {} output for prefix {}",
+            extension, prefix
+        )
+    })
 }
 
 fn find_spreadsheet_png(dir: &Path, base_name: &str, sheet_number: u32) -> Result<PathBuf, String> {
     let mut pngs = Vec::new();
-    let read_dir = fs::read_dir(dir).map_err(|e| format!("Failed to scan {}: {}", dir.display(), e))?;
+    let read_dir =
+        fs::read_dir(dir).map_err(|e| format!("Failed to scan {}: {}", dir.display(), e))?;
     for entry in read_dir.flatten() {
         let path = entry.path();
         let Some(name) = path.file_name().and_then(|v| v.to_str()) else {
@@ -747,7 +794,11 @@ fn find_spreadsheet_png(dir: &Path, base_name: &str, sheet_number: u32) -> Resul
     Ok(pngs.get(index).cloned().unwrap_or_else(|| pngs[0].clone()))
 }
 
-fn render_drawio_file(source_path: &Path, target_path: &Path, output_format: &str) -> Result<(), String> {
+fn render_drawio_file(
+    source_path: &Path,
+    target_path: &Path,
+    output_format: &str,
+) -> Result<(), String> {
     let cli = find_drawio_cli().ok_or_else(|| {
         let msg = "draw.io CLI not found (tried common install locations)".to_string();
         log::warn!(target: "lexera.kanban.render.drawio", "{}", msg);
@@ -788,7 +839,8 @@ fn render_drawio_file(source_path: &Path, target_path: &Path, output_format: &st
         if !rendered_path.is_file() {
             let msg = format!(
                 "draw.io exited 0 but did not create {} (args: {:?})",
-                rendered_path.display(), args
+                rendered_path.display(),
+                args
             );
             log::warn!(target: "lexera.kanban.render.drawio", "{}", msg);
             return Err(msg);
@@ -802,7 +854,11 @@ fn render_drawio_file(source_path: &Path, target_path: &Path, output_format: &st
     result
 }
 
-fn render_spreadsheet_file(source_path: &Path, target_path: &Path, sheet_number: u32) -> Result<(), String> {
+fn render_spreadsheet_file(
+    source_path: &Path,
+    target_path: &Path,
+    sheet_number: u32,
+) -> Result<(), String> {
     let cli = find_soffice_cli().ok_or_else(|| "LibreOffice CLI not found".to_string())?;
     let temp_dir = create_temp_render_dir("xlsx")?;
     let result = (|| {
@@ -815,9 +871,11 @@ fn render_spreadsheet_file(source_path: &Path, target_path: &Path, sheet_number:
             source_path.to_string_lossy().to_string(),
         ];
         run_command_capture(&cli, &args, source_path.parent())?;
-        let rendered = find_spreadsheet_png(&temp_dir, &path_stem_lossy(source_path), sheet_number)?;
+        let rendered =
+            find_spreadsheet_png(&temp_dir, &path_stem_lossy(source_path), sheet_number)?;
         ensure_parent_dir(target_path)?;
-        fs::copy(&rendered, target_path).map_err(|e| format!("Failed to copy rendered spreadsheet: {}", e))?;
+        fs::copy(&rendered, target_path)
+            .map_err(|e| format!("Failed to copy rendered spreadsheet: {}", e))?;
         Ok(())
     })();
     let _ = fs::remove_dir_all(&temp_dir);
@@ -977,7 +1035,12 @@ fn render_csv_text_to_svg(source: &str, title: &str, page_number: u32) -> String
         rows
     };
 
-    let total_columns = normalized_rows.iter().map(|row| row.len()).max().unwrap_or(1).max(1);
+    let total_columns = normalized_rows
+        .iter()
+        .map(|row| row.len())
+        .max()
+        .unwrap_or(1)
+        .max(1);
     for row in &mut normalized_rows {
         while row.len() < total_columns {
             row.push(String::new());
@@ -998,7 +1061,9 @@ fn render_csv_text_to_svg(source: &str, title: &str, page_number: u32) -> String
     let body_start = page_index
         .saturating_mul(max_body_rows)
         .min(body_rows.len());
-    let body_end = body_start.saturating_add(max_body_rows).min(body_rows.len());
+    let body_end = body_start
+        .saturating_add(max_body_rows)
+        .min(body_rows.len());
     let visible_columns = total_columns.min(max_columns);
 
     let mut display_rows = Vec::new();
@@ -1029,14 +1094,31 @@ fn render_csv_text_to_svg(source: &str, title: &str, page_number: u32) -> String
     let outer_padding = 18f32;
     let table_width: f32 = col_widths.iter().sum();
     let width = outer_padding * 2.0 + table_width;
-    let height = outer_padding * 2.0 + title_height + meta_height + footer_height + row_height * display_rows.len() as f32;
+    let height = outer_padding * 2.0
+        + title_height
+        + meta_height
+        + footer_height
+        + row_height * display_rows.len() as f32;
 
-    let row_from = if body_start < body_rows.len() { body_start + 1 } else { 0 };
-    let row_to = if body_start < body_rows.len() { body_end } else { 0 };
+    let row_from = if body_start < body_rows.len() {
+        body_start + 1
+    } else {
+        0
+    };
+    let row_to = if body_start < body_rows.len() {
+        body_end
+    } else {
+        0
+    };
     let footer_note = if total_columns > visible_columns {
         format!("Showing {} of {} columns", visible_columns, total_columns)
     } else if body_end < body_rows.len() {
-        format!("Showing rows {}-{} of {}", row_from, row_to, body_rows.len())
+        format!(
+            "Showing rows {}-{} of {}",
+            row_from,
+            row_to,
+            body_rows.len()
+        )
     } else {
         format!("Rows {} | Columns {}", body_rows.len(), total_columns)
     };
@@ -1065,7 +1147,13 @@ fn render_csv_text_to_svg(source: &str, title: &str, page_number: u32) -> String
     let mut x = outer_padding;
 
     for (col_idx, col_width) in col_widths.iter().enumerate() {
-        let header_value = truncate_svg_cell_text(display_rows[0].get(col_idx).map(|v| v.as_str()).unwrap_or(""), 28);
+        let header_value = truncate_svg_cell_text(
+            display_rows[0]
+                .get(col_idx)
+                .map(|v| v.as_str())
+                .unwrap_or(""),
+            28,
+        );
         svg.push_str(&format!(
             "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#2f4f4f\" rx=\"4\" ry=\"4\"/>",
             x, table_top, col_width, header_height
@@ -1081,14 +1169,19 @@ fn render_csv_text_to_svg(source: &str, title: &str, page_number: u32) -> String
 
     for (row_idx, row) in display_rows.iter().enumerate().skip(1) {
         let y = table_top + header_height + row_height * (row_idx as f32 - 1.0);
-        let fill = if row_idx % 2 == 1 { "#fffdf9" } else { "#f0e8da" };
+        let fill = if row_idx % 2 == 1 {
+            "#fffdf9"
+        } else {
+            "#f0e8da"
+        };
         let mut cell_x = outer_padding;
         for (col_idx, col_width) in col_widths.iter().enumerate() {
             svg.push_str(&format!(
                 "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"{}\" stroke=\"#d7c9b1\" stroke-width=\"1\"/>",
                 cell_x, y, col_width, row_height, fill
             ));
-            let cell_value = truncate_svg_cell_text(row.get(col_idx).map(|v| v.as_str()).unwrap_or(""), 36);
+            let cell_value =
+                truncate_svg_cell_text(row.get(col_idx).map(|v| v.as_str()).unwrap_or(""), 36);
             svg.push_str(&format!(
                 "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"ui-sans-serif, system-ui, sans-serif\" font-size=\"12\" fill=\"#2b2b2b\">{}</text>",
                 cell_x + 10.0,
@@ -1112,7 +1205,11 @@ fn render_csv_text_to_svg(source: &str, title: &str, page_number: u32) -> String
 fn render_plaintext_to_svg(source: &str, title: &str, page_number: u32) -> String {
     let max_lines_per_page = 30usize;
     let max_line_chars = 80usize;
-    let title_text = if title.trim().is_empty() { "Text file" } else { title.trim() };
+    let title_text = if title.trim().is_empty() {
+        "Text file"
+    } else {
+        title.trim()
+    };
 
     let all_lines: Vec<&str> = source.lines().collect();
     let total_lines = all_lines.len().max(1);
@@ -1205,7 +1302,11 @@ fn render_plaintext_to_svg(source: &str, title: &str, page_number: u32) -> Strin
     svg
 }
 
-fn render_plaintext_file(source_path: &Path, target_path: &Path, page_number: u32) -> Result<(), String> {
+fn render_plaintext_file(
+    source_path: &Path,
+    target_path: &Path,
+    page_number: u32,
+) -> Result<(), String> {
     let output_format = target_path
         .extension()
         .and_then(|value| value.to_str())
@@ -1214,8 +1315,13 @@ fn render_plaintext_file(source_path: &Path, target_path: &Path, page_number: u3
     if output_format != "svg" {
         return Err("Plain text rendering currently supports SVG output only".to_string());
     }
-    let source = fs::read_to_string(source_path)
-        .map_err(|e| format!("Failed to read text source {}: {}", source_path.display(), e))?;
+    let source = fs::read_to_string(source_path).map_err(|e| {
+        format!(
+            "Failed to read text source {}: {}",
+            source_path.display(),
+            e
+        )
+    })?;
     let title = source_path
         .file_name()
         .and_then(|value| value.to_str())
@@ -1250,7 +1356,12 @@ fn render_csv_file(source_path: &Path, target_path: &Path, page_number: u32) -> 
     Ok(())
 }
 
-fn render_pdf_page_to_png(source_path: &Path, target_path: &Path, page_number: u32, dpi: u32) -> Result<(), String> {
+fn render_pdf_page_to_png(
+    source_path: &Path,
+    target_path: &Path,
+    page_number: u32,
+    dpi: u32,
+) -> Result<(), String> {
     let cli = find_pdftoppm_cli().ok_or_else(|| "pdftoppm CLI not found".to_string())?;
     let temp_dir = create_temp_render_dir("pdf")?;
     let result = (|| {
@@ -1269,14 +1380,19 @@ fn render_pdf_page_to_png(source_path: &Path, target_path: &Path, page_number: u
         run_command_capture(&cli, &args, source_path.parent())?;
         let rendered = find_generated_file_with_prefix(&temp_dir, "page", "png")?;
         ensure_parent_dir(target_path)?;
-        fs::copy(&rendered, target_path).map_err(|e| format!("Failed to copy rendered PDF page: {}", e))?;
+        fs::copy(&rendered, target_path)
+            .map_err(|e| format!("Failed to copy rendered PDF page: {}", e))?;
         Ok(())
     })();
     let _ = fs::remove_dir_all(&temp_dir);
     result
 }
 
-fn render_document_file(source_path: &Path, target_path: &Path, page_number: u32) -> Result<(), String> {
+fn render_document_file(
+    source_path: &Path,
+    target_path: &Path,
+    page_number: u32,
+) -> Result<(), String> {
     let soffice = find_soffice_cli().ok_or_else(|| "LibreOffice CLI not found".to_string())?;
     let temp_dir = create_temp_render_dir("document")?;
     let result = (|| {
@@ -1299,7 +1415,11 @@ fn render_document_file(source_path: &Path, target_path: &Path, page_number: u32
     result
 }
 
-fn render_epub_file(source_path: &Path, target_path: &Path, page_number: u32) -> Result<(), String> {
+fn render_epub_file(
+    source_path: &Path,
+    target_path: &Path,
+    page_number: u32,
+) -> Result<(), String> {
     let cli = find_mutool_cli().ok_or_else(|| "mutool CLI not found".to_string())?;
     ensure_parent_dir(target_path)?;
     let args = vec![
@@ -1368,7 +1488,11 @@ fn render_audio_waveform_file(source_path: &Path, target_path: &Path) -> Result<
     Ok(())
 }
 
-fn render_excalidraw_file(source_path: &Path, target_path: &Path, output_format: &str) -> Result<(), String> {
+fn render_excalidraw_file(
+    source_path: &Path,
+    target_path: &Path,
+    output_format: &str,
+) -> Result<(), String> {
     if output_format.eq_ignore_ascii_case("svg")
         && source_path
             .file_name()
@@ -1391,7 +1515,9 @@ fn render_excalidraw_file(source_path: &Path, target_path: &Path, output_format:
         log::warn!(target: "lexera.kanban.render.excalidraw", "{}", msg);
         msg
     })?;
-    let worker = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts").join("excalidraw-worker.cjs");
+    let worker = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("scripts")
+        .join("excalidraw-worker.cjs");
     if !worker.is_file() {
         let msg = format!("Excalidraw worker script missing at {}", worker.display());
         log::error!(target: "lexera.kanban.render.excalidraw", "{}", msg);
@@ -1424,7 +1550,8 @@ fn render_excalidraw_file(source_path: &Path, target_path: &Path, output_format:
     if !target_path.is_file() {
         let msg = format!(
             "Excalidraw worker exited 0 but did not create {} (src={})",
-            target_path.display(), source_path.display()
+            target_path.display(),
+            source_path.display()
         );
         log::warn!(target: "lexera.kanban.render.excalidraw", "{}", msg);
         return Err(msg);
@@ -1443,73 +1570,174 @@ struct EmbeddedRendererStatusDefinition {
     build_status: fn() -> EmbeddedRendererStatus,
 }
 
-fn render_drawio_embedded(source_path: &Path, target_path: &Path, _page_number: u32, output_format: &str) -> Result<(), String> {
+fn render_drawio_embedded(
+    source_path: &Path,
+    target_path: &Path,
+    _page_number: u32,
+    output_format: &str,
+) -> Result<(), String> {
     render_drawio_file(source_path, target_path, output_format)
 }
 
-fn render_excalidraw_embedded(source_path: &Path, target_path: &Path, _page_number: u32, output_format: &str) -> Result<(), String> {
+fn render_excalidraw_embedded(
+    source_path: &Path,
+    target_path: &Path,
+    _page_number: u32,
+    output_format: &str,
+) -> Result<(), String> {
     render_excalidraw_file(source_path, target_path, output_format)
 }
 
-fn render_spreadsheet_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+fn render_spreadsheet_embedded(
+    source_path: &Path,
+    target_path: &Path,
+    page_number: u32,
+    _output_format: &str,
+) -> Result<(), String> {
     render_spreadsheet_file(source_path, target_path, page_number)
 }
 
-fn render_csv_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+fn render_csv_embedded(
+    source_path: &Path,
+    target_path: &Path,
+    page_number: u32,
+    _output_format: &str,
+) -> Result<(), String> {
     render_csv_file(source_path, target_path, page_number)
 }
 
-fn render_plaintext_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+fn render_plaintext_embedded(
+    source_path: &Path,
+    target_path: &Path,
+    page_number: u32,
+    _output_format: &str,
+) -> Result<(), String> {
     render_plaintext_file(source_path, target_path, page_number)
 }
 
-fn render_pdf_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+fn render_pdf_embedded(
+    source_path: &Path,
+    target_path: &Path,
+    page_number: u32,
+    _output_format: &str,
+) -> Result<(), String> {
     render_pdf_page_to_png(source_path, target_path, page_number, 150)
 }
 
-fn render_document_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+fn render_document_embedded(
+    source_path: &Path,
+    target_path: &Path,
+    page_number: u32,
+    _output_format: &str,
+) -> Result<(), String> {
     render_document_file(source_path, target_path, page_number)
 }
 
-fn render_epub_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+fn render_epub_embedded(
+    source_path: &Path,
+    target_path: &Path,
+    page_number: u32,
+    _output_format: &str,
+) -> Result<(), String> {
     render_epub_file(source_path, target_path, page_number)
 }
 
-fn render_video_embedded(source_path: &Path, target_path: &Path, _page_number: u32, _output_format: &str) -> Result<(), String> {
+fn render_video_embedded(
+    source_path: &Path,
+    target_path: &Path,
+    _page_number: u32,
+    _output_format: &str,
+) -> Result<(), String> {
     render_video_poster_file(source_path, target_path)
 }
 
-fn render_audio_embedded(source_path: &Path, target_path: &Path, _page_number: u32, _output_format: &str) -> Result<(), String> {
+fn render_audio_embedded(
+    source_path: &Path,
+    target_path: &Path,
+    _page_number: u32,
+    _output_format: &str,
+) -> Result<(), String> {
     render_audio_waveform_file(source_path, target_path)
 }
 
 const EMBEDDED_RENDERERS: &[EmbeddedRendererDefinition] = &[
-    EmbeddedRendererDefinition { id: "drawio", render: render_drawio_embedded },
-    EmbeddedRendererDefinition { id: "excalidraw", render: render_excalidraw_embedded },
-    EmbeddedRendererDefinition { id: "xlsx", render: render_spreadsheet_embedded },
-    EmbeddedRendererDefinition { id: "csv", render: render_csv_embedded },
-    EmbeddedRendererDefinition { id: "tsv", render: render_csv_embedded },
-    EmbeddedRendererDefinition { id: "plaintext", render: render_plaintext_embedded },
-    EmbeddedRendererDefinition { id: "pdf", render: render_pdf_embedded },
-    EmbeddedRendererDefinition { id: "document", render: render_document_embedded },
-    EmbeddedRendererDefinition { id: "epub", render: render_epub_embedded },
-    EmbeddedRendererDefinition { id: "video", render: render_video_embedded },
-    EmbeddedRendererDefinition { id: "audio", render: render_audio_embedded },
+    EmbeddedRendererDefinition {
+        id: "drawio",
+        render: render_drawio_embedded,
+    },
+    EmbeddedRendererDefinition {
+        id: "excalidraw",
+        render: render_excalidraw_embedded,
+    },
+    EmbeddedRendererDefinition {
+        id: "xlsx",
+        render: render_spreadsheet_embedded,
+    },
+    EmbeddedRendererDefinition {
+        id: "csv",
+        render: render_csv_embedded,
+    },
+    EmbeddedRendererDefinition {
+        id: "tsv",
+        render: render_csv_embedded,
+    },
+    EmbeddedRendererDefinition {
+        id: "plaintext",
+        render: render_plaintext_embedded,
+    },
+    EmbeddedRendererDefinition {
+        id: "pdf",
+        render: render_pdf_embedded,
+    },
+    EmbeddedRendererDefinition {
+        id: "document",
+        render: render_document_embedded,
+    },
+    EmbeddedRendererDefinition {
+        id: "epub",
+        render: render_epub_embedded,
+    },
+    EmbeddedRendererDefinition {
+        id: "video",
+        render: render_video_embedded,
+    },
+    EmbeddedRendererDefinition {
+        id: "audio",
+        render: render_audio_embedded,
+    },
 ];
 
 const EMBEDDED_RENDERER_STATUSES: &[EmbeddedRendererStatusDefinition] = &[
-    EmbeddedRendererStatusDefinition { build_status: build_plantuml_renderer_status },
-    EmbeddedRendererStatusDefinition { build_status: build_drawio_renderer_status },
-    EmbeddedRendererStatusDefinition { build_status: build_soffice_renderer_status },
-    EmbeddedRendererStatusDefinition { build_status: build_pdftoppm_renderer_status },
-    EmbeddedRendererStatusDefinition { build_status: build_mutool_renderer_status },
-    EmbeddedRendererStatusDefinition { build_status: build_node_renderer_status },
-    EmbeddedRendererStatusDefinition { build_status: build_ffmpeg_renderer_status },
-    EmbeddedRendererStatusDefinition { build_status: build_excalidraw_worker_asset_status },
+    EmbeddedRendererStatusDefinition {
+        build_status: build_plantuml_renderer_status,
+    },
+    EmbeddedRendererStatusDefinition {
+        build_status: build_drawio_renderer_status,
+    },
+    EmbeddedRendererStatusDefinition {
+        build_status: build_soffice_renderer_status,
+    },
+    EmbeddedRendererStatusDefinition {
+        build_status: build_pdftoppm_renderer_status,
+    },
+    EmbeddedRendererStatusDefinition {
+        build_status: build_mutool_renderer_status,
+    },
+    EmbeddedRendererStatusDefinition {
+        build_status: build_node_renderer_status,
+    },
+    EmbeddedRendererStatusDefinition {
+        build_status: build_ffmpeg_renderer_status,
+    },
+    EmbeddedRendererStatusDefinition {
+        build_status: build_excalidraw_worker_asset_status,
+    },
 ];
 
 fn find_embedded_renderer(plugin_id: &str) -> Option<&'static EmbeddedRendererDefinition> {
-    EMBEDDED_RENDERERS.iter().find(|renderer| renderer.id == plugin_id)
+    EMBEDDED_RENDERERS
+        .iter()
+        .find(|renderer| renderer.id == plugin_id)
 }
 
 fn collect_marp_scan_dirs(dirs: &[String]) -> Vec<PathBuf> {
@@ -1648,7 +1876,10 @@ fn insert_marp_config_classes(scan_dirs: &[PathBuf], out: &mut BTreeSet<String>)
             let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
                 continue;
             };
-            let Some(classes) = json.get("availableClasses").and_then(|value| value.as_array()) else {
+            let Some(classes) = json
+                .get("availableClasses")
+                .and_then(|value| value.as_array())
+            else {
                 continue;
             };
 
@@ -1843,7 +2074,10 @@ fn find_pandoc() -> Option<(PathBuf, String)> {
 /// `cargo tauri dev` (runs from lexera-kanban/src-tauri/) and built-app locations.
 #[tauri::command]
 pub fn get_marp_engine_path() -> Result<Option<String>, String> {
-    let relative = Path::new("packages").join("marp-engine").join("engine").join("engine.js");
+    let relative = Path::new("packages")
+        .join("marp-engine")
+        .join("engine")
+        .join("engine.js");
 
     let mut seeds: Vec<PathBuf> = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
@@ -1958,8 +2192,7 @@ pub fn read_file_as_data_uri(
     max_bytes: Option<u64>,
 ) -> Result<ReadFileAsDataUriResult, String> {
     let p = PathBuf::from(&path);
-    let meta = fs::metadata(&p)
-        .map_err(|e| format!("Failed to stat {}: {}", p.display(), e))?;
+    let meta = fs::metadata(&p).map_err(|e| format!("Failed to stat {}: {}", p.display(), e))?;
     let size_bytes = meta.len();
     let ext = p
         .extension()
@@ -2005,8 +2238,11 @@ pub fn get_file_mtime_ms(path: String) -> Result<Option<u64>, String> {
     if !p.exists() {
         return Ok(None);
     }
-    let meta = fs::metadata(&p).map_err(|e| format!("Failed to read metadata for {}: {}", p.display(), e))?;
-    let modified = meta.modified().map_err(|e| format!("No mtime for {}: {}", p.display(), e))?;
+    let meta = fs::metadata(&p)
+        .map_err(|e| format!("Failed to read metadata for {}: {}", p.display(), e))?;
+    let modified = meta
+        .modified()
+        .map_err(|e| format!("No mtime for {}: {}", p.display(), e))?;
     let ms = modified
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -2015,7 +2251,9 @@ pub fn get_file_mtime_ms(path: String) -> Result<Option<u64>, String> {
 }
 
 #[tauri::command]
-pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<RenderEmbeddedFileResult, String> {
+pub async fn render_embedded_file(
+    opts: RenderEmbeddedFileOptions,
+) -> Result<RenderEmbeddedFileResult, String> {
     let page_number = opts.page_number.unwrap_or(1).max(1);
     let output_format = opts
         .output_format
@@ -2139,7 +2377,9 @@ pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<Ren
 }
 
 #[tauri::command]
-pub async fn render_plantuml_code(opts: RenderPlantUmlOptions) -> Result<RenderPlantUmlResult, String> {
+pub async fn render_plantuml_code(
+    opts: RenderPlantUmlOptions,
+) -> Result<RenderPlantUmlResult, String> {
     if let Some(target) = opts.target_path.as_ref() {
         let target_path = PathBuf::from(target);
         if target_path.is_file() {
@@ -2159,8 +2399,13 @@ pub async fn render_plantuml_code(opts: RenderPlantUmlOptions) -> Result<RenderP
             if let Some(target) = opts.target_path.as_ref() {
                 let target_path = PathBuf::from(target);
                 ensure_parent_dir(&target_path)?;
-                fs::write(&target_path, svg.as_bytes())
-                    .map_err(|e| format!("Failed to write PlantUML cache {}: {}", target_path.display(), e))?;
+                fs::write(&target_path, svg.as_bytes()).map_err(|e| {
+                    format!(
+                        "Failed to write PlantUML cache {}: {}",
+                        target_path.display(),
+                        e
+                    )
+                })?;
             }
             Ok(RenderPlantUmlResult {
                 success: true,
@@ -2370,7 +2615,11 @@ pub async fn marp_stop_watch(
             }
         }
 
-        log::info!("[export] Stopped Marp watch PID: {} (window {})", p, window_label);
+        log::info!(
+            "[export] Stopped Marp watch PID: {} (window {})",
+            p,
+            window_label
+        );
     }
 
     Ok(())
@@ -2412,7 +2661,11 @@ pub async fn marp_stop_all_watches(
         state.retain(|(wl, _), _| wl != &window_label);
     }
 
-    log::info!("[export] Stopped {} Marp watch processes (window {})", count, window_label);
+    log::info!(
+        "[export] Stopped {} Marp watch processes (window {})",
+        count,
+        window_label
+    );
     Ok(count)
 }
 
@@ -2562,7 +2815,11 @@ pub struct FunctionalResult {
 fn normalize_user_path(raw: Option<String>) -> Option<String> {
     raw.and_then(|s| {
         let trimmed = s.trim();
-        if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
     })
 }
 
@@ -2748,7 +3005,9 @@ fn build_minimal_pdf() -> Vec<u8> {
     offsets.push(buf.len());
     buf.extend_from_slice(b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
     offsets.push(buf.len());
-    buf.extend_from_slice(b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 72] /Contents 4 0 R >>\nendobj\n");
+    buf.extend_from_slice(
+        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 72] /Contents 4 0 R >>\nendobj\n",
+    );
     offsets.push(buf.len());
     let stream: &[u8] = b"q Q";
     let obj4_head = format!("4 0 obj\n<< /Length {} >>\nstream\n", stream.len());
@@ -2861,8 +3120,7 @@ fn functional_test_marp(source: &str, path_str: &str) -> Result<String, String> 
 fn functional_test_pandoc(path: &Path) -> Result<String, String> {
     let dir = create_temp_render_dir("rt-pandoc")?;
     let src = dir.join("in.md");
-    fs::write(&src, "# Hello\n\nBody paragraph.\n")
-        .map_err(|e| format!("write fixture: {}", e))?;
+    fs::write(&src, "# Hello\n\nBody paragraph.\n").map_err(|e| format!("write fixture: {}", e))?;
     let args = [
         "-f",
         "markdown",
@@ -3206,7 +3464,9 @@ pub async fn remove_export_files(paths: Vec<String>) -> Result<(), String> {
 
 /// Copy export assets into the export folder without failing the whole export on one bad file.
 #[tauri::command]
-pub async fn copy_export_assets(items: Vec<ExportAssetCopyItem>) -> Result<Vec<ExportAssetCopyResult>, String> {
+pub async fn copy_export_assets(
+    items: Vec<ExportAssetCopyItem>,
+) -> Result<Vec<ExportAssetCopyResult>, String> {
     let mut results = Vec::with_capacity(items.len());
 
     for item in items {
@@ -3266,8 +3526,8 @@ pub async fn copy_export_assets(items: Vec<ExportAssetCopyItem>) -> Result<Vec<E
 #[cfg(test)]
 mod tests {
     use super::{
-        build_minimal_pdf, detect_delimited_text_separator, find_embedded_renderer,
-        is_cache_fresh, normalize_plantuml_source, parse_delimited_rows, render_csv_text_to_svg,
+        build_minimal_pdf, detect_delimited_text_separator, find_embedded_renderer, is_cache_fresh,
+        normalize_plantuml_source, parse_delimited_rows, render_csv_text_to_svg,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -3279,7 +3539,12 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!("lexera-cache-fresh-{}-{}-{}", tag, std::process::id(), stamp));
+        let dir = std::env::temp_dir().join(format!(
+            "lexera-cache-fresh-{}-{}-{}",
+            tag,
+            std::process::id(),
+            stamp
+        ));
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
     }
@@ -3301,7 +3566,10 @@ mod tests {
         let tgt = dir.join("rendered.svg");
         write_then_stamp(&src, b"{}", 0);
         write_then_stamp(&tgt, b"<svg/>", 20);
-        assert!(is_cache_fresh(&src, &tgt), "target newer than source should be fresh");
+        assert!(
+            is_cache_fresh(&src, &tgt),
+            "target newer than source should be fresh"
+        );
     }
 
     #[test]
@@ -3311,7 +3579,10 @@ mod tests {
         let tgt = dir.join("rendered.svg");
         write_then_stamp(&tgt, b"<svg/>", 0);
         write_then_stamp(&src, b"{}", 20);
-        assert!(!is_cache_fresh(&src, &tgt), "source newer than target should be stale");
+        assert!(
+            !is_cache_fresh(&src, &tgt),
+            "source newer than target should be stale"
+        );
     }
 
     #[test]
@@ -3337,10 +3608,22 @@ mod tests {
         // Marp PDF/PPTX export dispatches embedded video/audio through these
         // ids (frontend media.js renderFile → render_embedded_file). A missing
         // registration would surface as "Unknown embedded file renderer".
-        assert!(find_embedded_renderer("video").is_some(), "video renderer must be registered");
-        assert!(find_embedded_renderer("audio").is_some(), "audio renderer must be registered");
-        assert!(find_embedded_renderer("pdf").is_some(), "pdf renderer must remain registered");
-        assert!(find_embedded_renderer("nope").is_none(), "unknown id must not resolve");
+        assert!(
+            find_embedded_renderer("video").is_some(),
+            "video renderer must be registered"
+        );
+        assert!(
+            find_embedded_renderer("audio").is_some(),
+            "audio renderer must be registered"
+        );
+        assert!(
+            find_embedded_renderer("pdf").is_some(),
+            "pdf renderer must remain registered"
+        );
+        assert!(
+            find_embedded_renderer("nope").is_none(),
+            "unknown id must not resolve"
+        );
     }
 
     #[test]
@@ -3358,7 +3641,10 @@ mod tests {
         assert_eq!(super::mime_for_extension("JPG"), "image/jpeg");
         assert_eq!(super::mime_for_extension("mp4"), "video/mp4");
         assert_eq!(super::mime_for_extension("mp3"), "audio/mpeg");
-        assert_eq!(super::mime_for_extension("unknown-ext"), "application/octet-stream");
+        assert_eq!(
+            super::mime_for_extension("unknown-ext"),
+            "application/octet-stream"
+        );
     }
 
     #[test]
@@ -3371,7 +3657,10 @@ mod tests {
         assert!(!result.skipped);
         assert_eq!(result.mime_type, "image/png");
         assert_eq!(result.size_bytes, 3);
-        assert_eq!(result.data_uri.as_deref(), Some("data:image/png;base64,Zm9v"));
+        assert_eq!(
+            result.data_uri.as_deref(),
+            Some("data:image/png;base64,Zm9v")
+        );
     }
 
     #[test]
@@ -3387,7 +3676,6 @@ mod tests {
         assert!(result.data_uri.is_none());
         assert!(result.skipped_reason.is_some());
     }
-
 
     #[test]
     fn detects_semicolon_delimiter_for_semicolon_csv() {

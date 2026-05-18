@@ -12,15 +12,15 @@
 // and Linux (WebKitGTK with per-WebContext config). This gives true
 // process-level isolation and parallel rendering for board content.
 
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{NSView, NSWindow};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tauri::{
-    webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager,
-    State, WebviewUrl, Window,
+    webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager, State, WebviewUrl,
+    Window,
 };
-#[cfg(target_os = "macos")]
-use objc2_app_kit::{NSView, NSWindow};
 
 fn is_reserved_window_label(app: &AppHandle, label: &str) -> bool {
     let trimmed = label.trim();
@@ -140,7 +140,9 @@ impl WebviewRegistry {
     /// runs and the registry would otherwise accumulate stale
     /// geometry for webviews that no longer exist.
     pub fn drop_labels(&self, dead_labels: &[String]) {
-        if dead_labels.is_empty() { return; }
+        if dead_labels.is_empty() {
+            return;
+        }
         let mut w = self.inner.write();
         for label in dead_labels {
             w.remove(label);
@@ -198,7 +200,11 @@ fn default_host_geometry() -> HostGeometry {
 }
 
 #[cfg(target_os = "macos")]
-fn top_inset_for_view_rect(parent_height: f64, rect: objc2_foundation::NSRect, parent_is_flipped: bool) -> f64 {
+fn top_inset_for_view_rect(
+    parent_height: f64,
+    rect: objc2_foundation::NSRect,
+    parent_is_flipped: bool,
+) -> f64 {
     if parent_is_flipped {
         rect.origin.y
     } else {
@@ -256,8 +262,7 @@ fn current_host_geometry(caller: &tauri::Webview) -> Result<HostGeometry, String
         .recv()
         .map_err(|e| format!("host webview geometry unavailable: {}", e))?;
 
-    let content_top_inset =
-        top_inset_for_view_rect(window_frame.size.height, content_rect, false);
+    let content_top_inset = top_inset_for_view_rect(window_frame.size.height, content_rect, false);
     let layout_top_inset =
         top_inset_for_view_rect(window_frame.size.height, content_layout_rect, false);
     let content_view_top_inset = content_view_frame
@@ -391,7 +396,11 @@ pub fn spawn_internal(
     );
     log::info!(
         "[webview_mgr] spawned '{}' at ({},{}) size ({},{})",
-        label, position.0, position.1, size.0, size.1
+        label,
+        position.0,
+        position.1,
+        size.0,
+        size.1
     );
     Ok(())
 }
@@ -433,7 +442,14 @@ pub fn multiview_spawn(
     let window = app
         .get_window(parent)
         .ok_or_else(|| format!("parent window '{}' not found", parent))?;
-    spawn_internal(&app, &window, &req.label, &req.url, (req.x, req.y), (req.width, req.height))
+    spawn_internal(
+        &app,
+        &window,
+        &req.label,
+        &req.url,
+        (req.x, req.y),
+        (req.width, req.height),
+    )
 }
 
 #[tauri::command]
@@ -492,7 +508,9 @@ pub fn multiview_destroy(app: AppHandle, label: String) -> Result<(), String> {
     let sub_registry: State<SubscriptionRegistry> = app.state();
     {
         let mut w = sub_registry.inner.write();
-        for (_, s) in w.iter_mut() { s.remove(&label); }
+        for (_, s) in w.iter_mut() {
+            s.remove(&label);
+        }
     }
     // Notify only the sibling webviews of the destroyed one. Using
     // `app.emit("multiview-destroyed", …)` would broadcast to every
@@ -549,8 +567,7 @@ pub fn multiview_destroy_all_for_window(
         .webviews()
         .iter()
         .filter(|(label, wv)| {
-            label.as_str() != window_label.as_str()
-                && wv.window().label() == window_label.as_str()
+            label.as_str() != window_label.as_str() && wv.window().label() == window_label.as_str()
         })
         .map(|(label, _)| label.clone())
         .collect();
@@ -587,7 +604,11 @@ pub fn multiview_destroy_all_for_window(
     // hear it, but this matches the per-tab `multiview_destroy` contract
     // and keeps state consistent for any peer windows still alive.
     let payload_window = serde_json::json!({ "window": window_label });
-    let _ = app.emit_to(window_label.as_str(), "multiview-destroyed-all", payload_window);
+    let _ = app.emit_to(
+        window_label.as_str(),
+        "multiview-destroyed-all",
+        payload_window,
+    );
     eprintln!(
         "[webview_mgr] multiview_destroy_all_for_window window='{}' done destroyed={}",
         window_label, destroyed
@@ -605,10 +626,7 @@ pub fn multiview_destroy_all_for_window(
 /// not receive the geometry update, leaving them painted at their
 /// previous position while the placeholder DIV moves underneath.
 #[tauri::command]
-pub fn multiview_set_geometry(
-    app: AppHandle,
-    updates: Vec<GeometryUpdate>,
-) -> Result<(), String> {
+pub fn multiview_set_geometry(app: AppHandle, updates: Vec<GeometryUpdate>) -> Result<(), String> {
     let registry: State<WebviewRegistry> = app.state();
     let webviews = app.webviews();
     for update in updates {
@@ -673,8 +691,7 @@ pub fn multiview_list(caller: tauri::Webview, app: AppHandle) -> Vec<WebviewMeta
 pub fn multiview_navigate(app: AppHandle, label: String, url: String) -> Result<(), String> {
     eprintln!(
         "[webview_mgr] multiview_navigate label='{}' url='{}'",
-        label,
-        url
+        label, url
     );
     log::info!(
         "[webview_mgr] multiview_navigate label='{}' url='{}'",
@@ -701,10 +718,12 @@ pub fn multiview_navigate(app: AppHandle, label: String, url: String) -> Result<
         let base = webview
             .url()
             .map_err(|e| format!("get webview url for '{}': {}", label, e))?;
-        base.join(&url).map_err(|e| format!(
-            "could not resolve '{}' against webview url '{}': {}",
-            url, base, e
-        ))
+        base.join(&url).map_err(|e| {
+            format!(
+                "could not resolve '{}' against webview url '{}': {}",
+                url, base, e
+            )
+        })
     })?;
 
     webview
@@ -714,7 +733,12 @@ pub fn multiview_navigate(app: AppHandle, label: String, url: String) -> Result<
     if let Some(meta) = registry.inner.write().get_mut(&label) {
         meta.url = url.clone();
     }
-    log::info!("[webview_mgr] navigated '{}' to '{}' (resolved: {})", label, url, parsed);
+    log::info!(
+        "[webview_mgr] navigated '{}' to '{}' (resolved: {})",
+        label,
+        url,
+        parsed
+    );
     Ok(())
 }
 
@@ -722,11 +746,7 @@ pub fn multiview_navigate(app: AppHandle, label: String, url: String) -> Result<
 /// inactive tabs so we can keep the webview alive (state preserved)
 /// but not visible.
 #[tauri::command]
-pub fn multiview_set_visible(
-    app: AppHandle,
-    label: String,
-    visible: bool,
-) -> Result<(), String> {
+pub fn multiview_set_visible(app: AppHandle, label: String, visible: bool) -> Result<(), String> {
     ensure_child_webview_label(&app, &label, "multiview_set_visible")?;
     // Resolve via `app.webviews()` so secondary-window child webviews
     // can also be hidden / shown — hardcoded `"main"` would silently
@@ -778,7 +798,8 @@ pub fn multiview_set_visible(
 #[derive(Default)]
 pub struct SubscriptionRegistry {
     // event_name -> set of webview labels subscribed
-    inner: parking_lot::RwLock<std::collections::HashMap<String, std::collections::HashSet<String>>>,
+    inner:
+        parking_lot::RwLock<std::collections::HashMap<String, std::collections::HashSet<String>>>,
 }
 
 impl SubscriptionRegistry {
@@ -786,7 +807,9 @@ impl SubscriptionRegistry {
     /// webview labels. Called from the window-close handler so the
     /// registry doesn't accumulate stale labels of destroyed webviews.
     pub fn drop_labels(&self, labels: &[String]) {
-        if labels.is_empty() { return; }
+        if labels.is_empty() {
+            return;
+        }
         let mut w = self.inner.write();
         for (_event, subs) in w.iter_mut() {
             for label in labels {
@@ -823,7 +846,9 @@ pub fn multiview_subscribe(
     let reg: State<SubscriptionRegistry> = app.state();
     let mut w = reg.inner.write();
     for e in events {
-        w.entry(e).or_insert_with(Default::default).insert(label.clone());
+        w.entry(e)
+            .or_insert_with(Default::default)
+            .insert(label.clone());
     }
     Ok(())
 }
@@ -863,12 +888,16 @@ pub fn multiview_unsubscribe(
     match events {
         Some(evs) => {
             for e in evs {
-                if let Some(s) = w.get_mut(&e) { s.remove(&label); }
+                if let Some(s) = w.get_mut(&e) {
+                    s.remove(&label);
+                }
             }
         }
         None => {
             // Remove this label from all event subscriber lists
-            for (_, s) in w.iter_mut() { s.remove(&label); }
+            for (_, s) in w.iter_mut() {
+                s.remove(&label);
+            }
         }
     }
     Ok(())
@@ -876,7 +905,9 @@ pub fn multiview_unsubscribe(
 
 fn subscribers_for(reg: &SubscriptionRegistry, event: &str) -> Vec<String> {
     let r = reg.inner.read();
-    r.get(event).map(|s| s.iter().cloned().collect()).unwrap_or_default()
+    r.get(event)
+        .map(|s| s.iter().cloned().collect())
+        .unwrap_or_default()
 }
 
 // ── Cross-webview event broadcasting ────────────────────────────
@@ -985,7 +1016,9 @@ pub fn multiview_broadcast(
         }
     } else {
         for label in subs {
-            if !window_webview_labels.contains(&label) { continue; }
+            if !window_webview_labels.contains(&label) {
+                continue;
+            }
             let _ = app.emit_to(label.as_str(), &event, payload.clone());
         }
     }
@@ -1167,26 +1200,25 @@ pub fn multiview_route_external_dnd(
         .as_deref()
         .filter(|label| !label.trim().is_empty())
         .unwrap_or(caller_label.as_str());
-    let same_window_hit =
-        if let (Some(source_client_x), Some(source_client_y)) =
-            (request.source_client_x, request.source_client_y)
-        {
-            let source_meta = registry.inner.read().get(source_webview_label).cloned();
-            source_meta.and_then(|meta| {
-                webview_at_window_point(
-                    &app,
-                    &registry,
-                    caller_window_label.as_str(),
-                    meta.x + source_client_x,
-                    meta.y + source_client_y,
-                    Some(source_webview_label),
-                    request.screen_x,
-                    request.screen_y,
-                )
-            })
-        } else {
-            None
-        };
+    let same_window_hit = if let (Some(source_client_x), Some(source_client_y)) =
+        (request.source_client_x, request.source_client_y)
+    {
+        let source_meta = registry.inner.read().get(source_webview_label).cloned();
+        source_meta.and_then(|meta| {
+            webview_at_window_point(
+                &app,
+                &registry,
+                caller_window_label.as_str(),
+                meta.x + source_client_x,
+                meta.y + source_client_y,
+                Some(source_webview_label),
+                request.screen_x,
+                request.screen_y,
+            )
+        })
+    } else {
+        None
+    };
     let screen_hit = || match (request.screen_x, request.screen_y) {
         (Some(screen_x), Some(screen_y)) => webview_at_screen_point(
             &app,
@@ -1356,11 +1388,7 @@ struct FocusChangedEvent {
 }
 
 #[tauri::command]
-pub fn multiview_set_focused(
-    app: AppHandle,
-    label: String,
-    focused: bool,
-) -> Result<(), String> {
+pub fn multiview_set_focused(app: AppHandle, label: String, focused: bool) -> Result<(), String> {
     // Resolve the affected webview's parent window so we update the
     // right window's slot. If the webview has already been destroyed
     // by the time the report arrives (typical end-of-frame race),
@@ -1398,7 +1426,10 @@ pub fn multiview_set_focused(
 }
 
 #[tauri::command]
-pub fn multiview_get_focused(caller: tauri::Webview, tracker: State<FocusTracker>) -> Option<String> {
+pub fn multiview_get_focused(
+    caller: tauri::Webview,
+    tracker: State<FocusTracker>,
+) -> Option<String> {
     // Return the focused webview for THIS WINDOW only — not whatever
     // happens to be globally focused across the app.
     let window_label = caller.window().label().to_string();
@@ -1439,14 +1470,13 @@ struct HealthChangedEvent {
 }
 
 #[tauri::command]
-pub fn multiview_set_health(
-    app: AppHandle,
-    label: String,
-    state: String,
-) -> Result<(), String> {
+pub fn multiview_set_health(app: AppHandle, label: String, state: String) -> Result<(), String> {
     let valid = matches!(state.as_str(), "green" | "yellow" | "red" | "unknown");
     if !valid {
-        return Err(format!("invalid health state '{}'; expected green/yellow/red/unknown", state));
+        return Err(format!(
+            "invalid health state '{}'; expected green/yellow/red/unknown",
+            state
+        ));
     }
     let tracker: State<HealthTracker> = app.state();
     let mut changed = false;
@@ -1466,7 +1496,10 @@ pub fn multiview_set_health(
             &app,
             &label,
             "health-changed",
-            HealthChangedEvent { label: label.clone(), state: state.clone() },
+            HealthChangedEvent {
+                label: label.clone(),
+                state: state.clone(),
+            },
         );
     }
     Ok(())
@@ -1542,10 +1575,7 @@ pub struct GhostSpec {
 }
 
 #[tauri::command]
-pub fn drag_ghost_ensure(
-    app: AppHandle,
-    spec: GhostSpec,
-) -> Result<(), String> {
+pub fn drag_ghost_ensure(app: AppHandle, spec: GhostSpec) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
     if app.get_webview_window(GHOST_LABEL).is_some() {
         return Ok(());
@@ -1579,15 +1609,18 @@ pub struct GhostMove {
 #[tauri::command]
 pub fn drag_ghost_move(app: AppHandle, m: GhostMove) -> Result<(), String> {
     use tauri::LogicalPosition;
-    let win = app.get_webview_window(GHOST_LABEL)
+    let win = app
+        .get_webview_window(GHOST_LABEL)
         .ok_or("ghost window not created — call drag_ghost_ensure first")?;
     win.set_position(LogicalPosition::new(m.x, m.y))
         .map_err(|e| format!("ghost set_position failed: {}", e))?;
     if let Some(visible) = m.visible {
         if visible {
-            win.show().map_err(|e| format!("ghost show failed: {}", e))?;
+            win.show()
+                .map_err(|e| format!("ghost show failed: {}", e))?;
         } else {
-            win.hide().map_err(|e| format!("ghost hide failed: {}", e))?;
+            win.hide()
+                .map_err(|e| format!("ghost hide failed: {}", e))?;
         }
     }
     Ok(())
@@ -1596,16 +1629,14 @@ pub fn drag_ghost_move(app: AppHandle, m: GhostMove) -> Result<(), String> {
 #[tauri::command]
 pub fn drag_ghost_hide(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window(GHOST_LABEL) {
-        win.hide().map_err(|e| format!("ghost hide failed: {}", e))?;
+        win.hide()
+            .map_err(|e| format!("ghost hide failed: {}", e))?;
     }
     Ok(())
 }
 
 #[tauri::command]
-pub fn drag_ghost_set_content(
-    app: AppHandle,
-    html: String,
-) -> Result<(), String> {
+pub fn drag_ghost_set_content(app: AppHandle, html: String) -> Result<(), String> {
     use tauri::Emitter;
     let _ = app.emit_to(GHOST_LABEL, "ghost-content", html);
     Ok(())
@@ -1621,10 +1652,7 @@ pub fn hit_test(registry: &WebviewRegistry, x: f64, y: f64) -> Option<String> {
         .read()
         .values()
         .find(|meta| {
-            x >= meta.x
-                && x <= meta.x + meta.width
-                && y >= meta.y
-                && y <= meta.y + meta.height
+            x >= meta.x && x <= meta.x + meta.width && y >= meta.y && y <= meta.y + meta.height
         })
         .map(|meta| meta.label.clone())
 }
@@ -1642,7 +1670,14 @@ mod tests {
     use super::*;
 
     fn meta(label: &str, x: f64, y: f64, w: f64, h: f64) -> WebviewMeta {
-        WebviewMeta { label: label.into(), x, y, width: w, height: h, url: String::new() }
+        WebviewMeta {
+            label: label.into(),
+            x,
+            y,
+            width: w,
+            height: h,
+            url: String::new(),
+        }
     }
 
     fn registry_with(metas: Vec<WebviewMeta>) -> WebviewRegistry {
@@ -1741,11 +1776,19 @@ mod tests {
     fn ghost_sibling_finds_exact_slot_match_with_different_label() {
         // The user-visible scenario: old bootId is mosg0xej, new is
         // mosg22hy. Different labels, identical placeholder slot.
-        let r = registry_with(vec![
-            meta("panel-tab-mosg0xej-3rb6c-tab-x-a", 1.0, 57.0, 221.0, 455.0),
-        ]);
+        let r = registry_with(vec![meta(
+            "panel-tab-mosg0xej-3rb6c-tab-x-a",
+            1.0,
+            57.0,
+            221.0,
+            455.0,
+        )]);
         let ghosts = ghost_sibling_labels_at_slot(
-            &r, "panel-tab-mosg22hy-g9mfr-tab-x-a", (1.0, 57.0), (221.0, 455.0));
+            &r,
+            "panel-tab-mosg22hy-g9mfr-tab-x-a",
+            (1.0, 57.0),
+            (221.0, 455.0),
+        );
         assert_eq!(ghosts, vec!["panel-tab-mosg0xej-3rb6c-tab-x-a".to_string()]);
     }
 
@@ -1754,9 +1797,7 @@ mod tests {
         // Same label is Tauri's add_child collision case — handled
         // separately. The detector must NOT close a same-label peer
         // (would mask a real bug).
-        let r = registry_with(vec![
-            meta("dup", 0.0, 0.0, 100.0, 100.0),
-        ]);
+        let r = registry_with(vec![meta("dup", 0.0, 0.0, 100.0, 100.0)]);
         let ghosts = ghost_sibling_labels_at_slot(&r, "dup", (0.0, 0.0), (100.0, 100.0));
         assert!(ghosts.is_empty());
     }
@@ -1769,8 +1810,8 @@ mod tests {
             meta("panel-left", 1.0, 57.0, 221.0, 455.0),
             meta("panel-right", 1001.0, 57.0, 198.0, 720.0),
         ]);
-        let ghosts = ghost_sibling_labels_at_slot(
-            &r, "panel-bottom", (1.0, 689.0), (1198.0, 110.0));
+        let ghosts =
+            ghost_sibling_labels_at_slot(&r, "panel-bottom", (1.0, 689.0), (1198.0, 110.0));
         assert!(ghosts.is_empty());
     }
 
@@ -1778,11 +1819,8 @@ mod tests {
     fn ghost_sibling_tolerates_subpixel_rounding_noise() {
         // Slot coordinates round-trip through f64 layout math + native
         // LogicalPosition conversion. Within 0.5 px must still match.
-        let r = registry_with(vec![
-            meta("ghost", 1.0, 57.0, 221.0, 455.0),
-        ]);
-        let ghosts = ghost_sibling_labels_at_slot(
-            &r, "fresh", (1.4, 56.6), (221.3, 455.4));
+        let r = registry_with(vec![meta("ghost", 1.0, 57.0, 221.0, 455.0)]);
+        let ghosts = ghost_sibling_labels_at_slot(&r, "fresh", (1.4, 56.6), (221.3, 455.4));
         assert_eq!(ghosts, vec!["ghost".to_string()]);
     }
 
@@ -1790,9 +1828,7 @@ mod tests {
     fn ghost_sibling_rejects_more_than_half_pixel_drift() {
         // 0.5 px is the threshold; >0.5 px must NOT match (otherwise
         // adjacent slots would falsely flag each other).
-        let r = registry_with(vec![
-            meta("a", 0.0, 0.0, 100.0, 100.0),
-        ]);
+        let r = registry_with(vec![meta("a", 0.0, 0.0, 100.0, 100.0)]);
         let ghosts = ghost_sibling_labels_at_slot(&r, "b", (0.6, 0.0), (100.0, 100.0));
         assert!(ghosts.is_empty(), "0.6 px drift should not match");
     }
@@ -1806,8 +1842,7 @@ mod tests {
             meta("ghost-2", 1.0, 57.0, 221.0, 455.0),
             meta("not-ghost", 999.0, 999.0, 100.0, 100.0),
         ]);
-        let mut ghosts = ghost_sibling_labels_at_slot(
-            &r, "fresh", (1.0, 57.0), (221.0, 455.0));
+        let mut ghosts = ghost_sibling_labels_at_slot(&r, "fresh", (1.0, 57.0), (221.0, 455.0));
         ghosts.sort();
         assert_eq!(ghosts, vec!["ghost-1".to_string(), "ghost-2".to_string()]);
     }

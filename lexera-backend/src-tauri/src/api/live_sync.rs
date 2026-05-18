@@ -226,10 +226,7 @@ pub fn open_session(
                         target: "lexera.live_sync",
                         "Snapshot diverged from board markdown during session open; rebuilding session CRDT"
                     );
-                    (
-                        CrdtStore::from_board(&normalized)?,
-                        normalized.clone(),
-                    )
+                    (CrdtStore::from_board(&normalized)?, normalized.clone())
                 }
             }
             Err(error) => {
@@ -238,17 +235,11 @@ pub fn open_session(
                     "Snapshot CRDT could not be materialized during session open; rebuilding from markdown board: {}",
                     error
                 );
-                (
-                    CrdtStore::from_board(&normalized)?,
-                    normalized.clone(),
-                )
+                (CrdtStore::from_board(&normalized)?, normalized.clone())
             }
         }
     } else {
-        (
-            CrdtStore::from_board(&normalized)?,
-            normalized.clone(),
-        )
+        (CrdtStore::from_board(&normalized)?, normalized.clone())
     };
     crdt.set_peer_id(session_peer_id(&session_uuid))?;
     crdt.set_metadata(
@@ -313,12 +304,13 @@ pub fn apply_board(
     board: KanbanBoard,
 ) -> Result<LiveSessionResult, LiveSyncError> {
     let mut registry = lock_registry();
-    let session = registry
-        .sessions
-        .get_mut(session_id)
-        .ok_or_else(|| LiveSyncError::SessionNotFound {
-            session_id: session_id.to_string(),
-        })?;
+    let session =
+        registry
+            .sessions
+            .get_mut(session_id)
+            .ok_or_else(|| LiveSyncError::SessionNotFound {
+                session_id: session_id.to_string(),
+            })?;
 
     let current_board = session.current_board.clone();
     let before_vv = match session.crdt.oplog_vv_result() {
@@ -476,17 +468,15 @@ pub fn apply_board(
     })
 }
 
-pub fn import_updates(
-    session_id: &str,
-    bytes: &[u8],
-) -> Result<LiveSessionResult, LiveSyncError> {
+pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResult, LiveSyncError> {
     let mut registry = lock_registry();
-    let session = registry
-        .sessions
-        .get_mut(session_id)
-        .ok_or_else(|| LiveSyncError::SessionNotFound {
-            session_id: session_id.to_string(),
-        })?;
+    let session =
+        registry
+            .sessions
+            .get_mut(session_id)
+            .ok_or_else(|| LiveSyncError::SessionNotFound {
+                session_id: session_id.to_string(),
+            })?;
 
     let current_board = session.current_board.clone();
     let current_ids = card_id_map(&current_board);

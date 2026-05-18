@@ -504,8 +504,7 @@ mod tests {
         );
 
         // Content must be intact valid JSON — no partial-write residue.
-        let parsed: SyncConfig =
-            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let parsed: SyncConfig = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(parsed.port, 8080);
     }
 
@@ -531,8 +530,7 @@ mod tests {
         save_config(&path.to_path_buf(), &v2).unwrap();
 
         assert!(!dir.path().join("sync.json.tmp").exists());
-        let parsed: SyncConfig =
-            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let parsed: SyncConfig = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(parsed.port, 2002, "second save must replace first");
     }
 
@@ -557,8 +555,7 @@ mod tests {
             !tmp_path.exists(),
             "stale tmp must be replaced and renamed away, not left behind"
         );
-        let parsed: SyncConfig =
-            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let parsed: SyncConfig = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(parsed.port, 7777);
     }
 

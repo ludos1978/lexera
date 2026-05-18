@@ -15,7 +15,7 @@ use axum::Router;
 use lexera_local_ipc::frame::{read_frame, write_frame, ApiRequest, ClientFrame, ServerFrame};
 use lexera_local_ipc::{Descriptor, Server};
 use std::sync::Arc;
-use tokio::sync::{watch, mpsc};
+use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
 
 /// Accumulates an in-flight upload's metadata and body chunks. Phase 7.5
@@ -110,7 +110,7 @@ async fn handle_connection(
     let heartbeat_duration = std::time::Duration::from_secs(30);
     let mut heartbeat_interval = tokio::time::interval_at(
         tokio::time::Instant::now() + heartbeat_duration,
-        heartbeat_duration
+        heartbeat_duration,
     );
     heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 

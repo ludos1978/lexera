@@ -8,9 +8,7 @@
 //! - Happy path: descriptor + bind + connect + handshake + frame exchange.
 
 use lexera_local_ipc::frame::{read_frame, write_frame, ClientFrame, ServerFrame};
-use lexera_local_ipc::{
-    Client, Descriptor, IpcError, Server, PROTOCOL_VERSION,
-};
+use lexera_local_ipc::{Client, Descriptor, IpcError, Server, PROTOCOL_VERSION};
 use tempfile::tempdir;
 
 #[cfg(unix)]
@@ -26,11 +24,7 @@ fn temp_endpoint(_dir: &tempfile::TempDir) -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
         .unwrap_or(0);
-    format!(
-        r"\\.\pipe\lexera-ipc-test-{}-{}",
-        std::process::id(),
-        nanos
-    )
+    format!(r"\\.\pipe\lexera-ipc-test-{}-{}", std::process::id(), nanos)
 }
 
 #[tokio::test]
@@ -51,7 +45,9 @@ async fn happy_path_ping_roundtrip() {
     });
 
     let mut client = Client::connect_with_descriptor(&desc).await.unwrap();
-    write_frame(client.stream(), &ClientFrame::Ping).await.unwrap();
+    write_frame(client.stream(), &ClientFrame::Ping)
+        .await
+        .unwrap();
     let reply: Option<ServerFrame> = read_frame(client.stream()).await.unwrap();
     assert_eq!(reply, Some(ServerFrame::Pong));
 
@@ -214,7 +210,11 @@ async fn client_ping_times_out_when_server_silent() {
         .ping(Duration::from_millis(150))
         .await
         .expect_err("expected timeout");
-    assert!(matches!(err, IpcError::Timeout), "unexpected error: {:?}", err);
+    assert!(
+        matches!(err, IpcError::Timeout),
+        "unexpected error: {:?}",
+        err
+    );
     server_task.await.unwrap();
 }
 

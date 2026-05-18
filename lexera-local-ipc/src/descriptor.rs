@@ -318,7 +318,11 @@ mod tests {
 
         Descriptor::new("/tmp/a").write_to(&path).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "descriptor must be 0600 after rewrite, got {:o}", mode);
+        assert_eq!(
+            mode, 0o600,
+            "descriptor must be 0600 after rewrite, got {:o}",
+            mode
+        );
     }
 
     #[test]
@@ -334,7 +338,11 @@ mod tests {
         unsafe { libc::umask(prev) };
         result.unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "descriptor must be 0600 under wide umask, got {:o}", mode);
+        assert_eq!(
+            mode, 0o600,
+            "descriptor must be 0600 under wide umask, got {:o}",
+            mode
+        );
     }
 
     #[test]

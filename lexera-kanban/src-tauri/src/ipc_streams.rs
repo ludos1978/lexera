@@ -8,9 +8,7 @@
 //! multiplex. A registry keyed by `correlation_id` holds the task handles
 //! so `backend_ipc_stream_close` can abort them deterministically.
 
-use lexera_local_ipc::frame::{
-    read_frame, write_frame, ClientFrame, ServerFrame, StreamTopic,
-};
+use lexera_local_ipc::frame::{read_frame, write_frame, ClientFrame, ServerFrame, StreamTopic};
 use lexera_local_ipc::{Client, IpcError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -159,7 +157,14 @@ pub async fn open(
     });
 
     registry
-        .insert(correlation_id, StreamEntry { handle: task, send_tx, owner_window })
+        .insert(
+            correlation_id,
+            StreamEntry {
+                handle: task,
+                send_tx,
+                owner_window,
+            },
+        )
         .await;
     Ok(correlation_id)
 }

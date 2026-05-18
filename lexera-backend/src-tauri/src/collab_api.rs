@@ -166,7 +166,11 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
 /// Validates the `Authorization: Bearer <token>` header against the AuthService.
 fn require_authenticated_user(headers: &HeaderMap, state: &AppState) -> Result<String> {
     // Phase 7.5: trust IPC transport as proof of identity for the local user.
-    if headers.get("x-lexera-transport").and_then(|v| v.to_str().ok()) == Some("ipc") {
+    if headers
+        .get("x-lexera-transport")
+        .and_then(|v| v.to_str().ok())
+        == Some("ipc")
+    {
         return Ok(state.local_user_id.clone());
     }
 
@@ -895,9 +899,15 @@ async fn get_user(
 }
 
 /// GET /collab/me - Get the local user identity (includes auth token for frontend)
-async fn get_me(headers: HeaderMap, State(state): State<AppState>) -> Result<Json<serde_json::Value>> {
+async fn get_me(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>> {
     // Phase 7.5: /collab/me now supports IPC transport identification.
-    let is_ipc = headers.get("x-lexera-transport").and_then(|v| v.to_str().ok()) == Some("ipc");
+    let is_ipc = headers
+        .get("x-lexera-transport")
+        .and_then(|v| v.to_str().ok())
+        == Some("ipc");
 
     let auth = read_arc(&state.auth_service, "auth")?;
     let user = auth.get_user(&state.local_user_id).ok_or_else(|| {
@@ -1464,9 +1474,8 @@ mod tests {
         // The two surrounding log::error! call sites format the error
         // via `{}`. Display must produce the same byte sequence as the
         // prior `format!()` strings so log output is unchanged.
-        let lock_err = PersistRemoteConnectionError::ConfigLockPoisoned(
-            "PoisonError { .. }".into(),
-        );
+        let lock_err =
+            PersistRemoteConnectionError::ConfigLockPoisoned("PoisonError { .. }".into());
         assert_eq!(
             lock_err.to_string(),
             "config lock poisoned: PoisonError { .. }"

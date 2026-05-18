@@ -190,7 +190,11 @@ fn locate_card_by_kid(board: &KanbanBoard, kid: &str) -> Option<(usize, usize)> 
 /// Pick a destination column index: prefer matching `id`, then `title`,
 /// then fall back to the first column. Returns `None` only for a board
 /// with no columns at all.
-fn resolve_target_column(board: &KanbanBoard, column_id: &str, column_title: &str) -> Option<usize> {
+fn resolve_target_column(
+    board: &KanbanBoard,
+    column_id: &str,
+    column_title: &str,
+) -> Option<usize> {
     let cols = board.all_columns();
     if cols.is_empty() {
         return None;

@@ -89,22 +89,38 @@ fn open_new_window(
         query_started = true;
     }
     if let Some(ref window_profile) = profile {
-        url_str.push_str(if query_started { "&profile=" } else { "?profile=" });
+        url_str.push_str(if query_started {
+            "&profile="
+        } else {
+            "?profile="
+        });
         url_str.push_str(window_profile);
         query_started = true;
     }
     if let Some(ref panel) = panel_kind {
-        url_str.push_str(if query_started { "&panelKind=" } else { "?panelKind=" });
+        url_str.push_str(if query_started {
+            "&panelKind="
+        } else {
+            "?panelKind="
+        });
         url_str.push_str(panel);
         query_started = true;
     }
     if let Some(ref panel) = initial_panel {
-        url_str.push_str(if query_started { "&initialPanel=" } else { "?initialPanel=" });
+        url_str.push_str(if query_started {
+            "&initialPanel="
+        } else {
+            "?initialPanel="
+        });
         url_str.push_str(panel);
         query_started = true;
     }
     if let Some(ref role) = window_role {
-        url_str.push_str(if query_started { "&windowRole=" } else { "?windowRole=" });
+        url_str.push_str(if query_started {
+            "&windowRole="
+        } else {
+            "?windowRole="
+        });
         url_str.push_str(role);
         query_started = true;
     }
@@ -115,7 +131,11 @@ fn open_new_window(
     // "Open" on a workspace dropdown, we open a fresh window for it,
     // and the existing window stays on its current workspace.
     if let Some(ref ws) = workspace_id {
-        url_str.push_str(if query_started { "&workspace=" } else { "?workspace=" });
+        url_str.push_str(if query_started {
+            "&workspace="
+        } else {
+            "?workspace="
+        });
         url_str.push_str(ws);
         query_started = true;
     }
@@ -125,11 +145,19 @@ fn open_new_window(
     // of broadcasting `menu-action: reveal-panel:<kind>` to every
     // open workspace window.
     if let Some(ref origin) = origin_window {
-        url_str.push_str(if query_started { "&originWindow=" } else { "?originWindow=" });
+        url_str.push_str(if query_started {
+            "&originWindow="
+        } else {
+            "?originWindow="
+        });
         url_str.push_str(origin);
         query_started = true;
     }
-    url_str.push_str(if query_started { "&windowLabel=" } else { "?windowLabel=" });
+    url_str.push_str(if query_started {
+        "&windowLabel="
+    } else {
+        "?windowLabel="
+    });
     url_str.push_str(&label);
     let url = WebviewUrl::App(url_str.into());
 
@@ -147,7 +175,8 @@ fn open_new_window(
         builder = builder.min_inner_size(320.0, 220.0);
     }
 
-    builder.build()
+    builder
+        .build()
         .map_err(|e| format!("Failed to create window: {}", e))?;
 
     Ok(label)
@@ -231,9 +260,15 @@ fn snap_window_to_edges(window: &tauri::Window) {
 
     const SNAP_THRESHOLD: i32 = 20; // pixels
 
-    let Ok(win_pos) = window.outer_position() else { return };
-    let Ok(win_size) = window.outer_size() else { return };
-    let Some(monitor) = window.current_monitor().ok().flatten() else { return };
+    let Ok(win_pos) = window.outer_position() else {
+        return;
+    };
+    let Ok(win_size) = window.outer_size() else {
+        return;
+    };
+    let Some(monitor) = window.current_monitor().ok().flatten() else {
+        return;
+    };
 
     let mon_pos = monitor.position();
     let mon_size = monitor.size();
@@ -475,7 +510,19 @@ fn main() {
             if let Some(action) = app_menu::menu_id_to_action(id) {
                 // Handle Rust-side actions that don't go to the frontend
                 if action == "new-window" {
-                    let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None, None, None, None, None);
+                    let _ = open_new_window(
+                        app.clone(),
+                        None,
+                        None,
+                        Some("workspace".to_string()),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
                     return;
                 }
                 // open-workspace:<id> → spawn a new window pinned to
@@ -539,7 +586,12 @@ fn main() {
                     .into_iter()
                     .find(|(_, w)| w.is_focused().unwrap_or(false))
                     .map(|(label, _)| label)
-                    .or_else(|| LAST_FOCUSED_WINDOW.lock().ok().and_then(|guard| guard.clone()));
+                    .or_else(|| {
+                        LAST_FOCUSED_WINDOW
+                            .lock()
+                            .ok()
+                            .and_then(|guard| guard.clone())
+                    });
                 if let Some(label) = focused_label {
                     // Emit a structured payload so JavaScript can filter out
                     // events intended for other windows. Tauri 2's
@@ -550,15 +602,26 @@ fn main() {
                         "action": action
                     });
                     let _ = app.emit_to(label.as_str(), "menu-action", payload);
-                    log::debug!("[main] menu-action sent to focused window '{}': {}", label, action);
+                    log::debug!(
+                        "[main] menu-action sent to focused window '{}': {}",
+                        label,
+                        action
+                    );
                 } else {
-                    log::warn!("[main] menu-action dropped because no focused window was found: {}", action);
+                    log::warn!(
+                        "[main] menu-action dropped because no focused window was found: {}",
+                        action
+                    );
                 }
             }
         })
         .manage(export_commands::MarpWatchState::new())
-        .manage::<ipc_client::SharedIpcClient>(std::sync::Arc::new(ipc_client::IpcClientState::new()))
-        .manage::<ipc_streams::SharedStreamRegistry>(std::sync::Arc::new(ipc_streams::StreamRegistry::new()))
+        .manage::<ipc_client::SharedIpcClient>(std::sync::Arc::new(
+            ipc_client::IpcClientState::new(),
+        ))
+        .manage::<ipc_streams::SharedStreamRegistry>(std::sync::Arc::new(
+            ipc_streams::StreamRegistry::new(),
+        ))
         // Active multiview runtime state for child-webview hosting in the
         // normal desktop shell. Embedded mode and frontend auto-run tests
         // still keep explicit iframe fallbacks.

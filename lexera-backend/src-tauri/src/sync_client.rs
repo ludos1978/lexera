@@ -145,8 +145,7 @@ impl SyncClientManager {
             register_remote_user(&client, &server_url, &user_id, &user_name).await?;
 
         // 2. Accept invite token — use register token for bearer auth.
-        let mut accept_req =
-            client.post(format!("{}/collab/invites/{}/accept", server_url, token));
+        let mut accept_req = client.post(format!("{}/collab/invites/{}/accept", server_url, token));
         if let Some(ref t) = register_token {
             accept_req = accept_req.header("authorization", format!("Bearer {}", t));
         }
@@ -181,18 +180,20 @@ impl SyncClientManager {
             });
         }
 
-        let join: serde_json::Value = accept_resp.json().await.map_err(|e| {
-            SyncConnectionError::JsonParse {
-                context: "Parse join response".into(),
-                source: e,
-            }
-        })?;
+        let join: serde_json::Value =
+            accept_resp
+                .json()
+                .await
+                .map_err(|e| SyncConnectionError::JsonParse {
+                    context: "Parse join response".into(),
+                    source: e,
+                })?;
 
         let remote_board_id = join["room_id"]
             .as_str()
-            .ok_or_else(|| SyncConnectionError::Validation(
-                "Missing room_id in join response".into(),
-            ))?
+            .ok_or_else(|| {
+                SyncConnectionError::Validation("Missing room_id in join response".into())
+            })?
             .to_string();
         let room_title = join["room_title"]
             .as_str()
@@ -386,9 +387,7 @@ mod tests {
 
     #[test]
     fn sync_connection_error_request_preserves_string_format() {
-        let err = SyncConnectionError::Request(
-            "Accept invite: Could not connect to server".into(),
-        );
+        let err = SyncConnectionError::Request("Accept invite: Could not connect to server".into());
         let s: String = err.into();
         assert_eq!(s, "Accept invite: Could not connect to server");
     }

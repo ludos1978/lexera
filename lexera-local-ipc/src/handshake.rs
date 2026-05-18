@@ -7,9 +7,7 @@
 //! Both sides must complete the handshake before any other frame is exchanged.
 
 use crate::error::IpcError;
-use crate::frame::{
-    read_frame, write_frame, ClientFrame, HandshakeRejection, ServerFrame,
-};
+use crate::frame::{read_frame, write_frame, ClientFrame, HandshakeRejection, ServerFrame};
 use crate::PROTOCOL_VERSION;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 

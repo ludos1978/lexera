@@ -289,9 +289,7 @@ impl From<CaptureError> for String {
 fn monitor_rect(
     window: &tauri::WebviewWindow,
 ) -> Result<(tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>), CaptureError> {
-    let monitor = window
-        .current_monitor()?
-        .ok_or(CaptureError::NoMonitor)?;
+    let monitor = window.current_monitor()?.ok_or(CaptureError::NoMonitor)?;
     Ok((*monitor.position(), *monitor.size()))
 }
 
@@ -398,8 +396,7 @@ fn snap_capture_strip(app: &AppHandle, side: &str) -> Result<(), CaptureError> {
     let x = side_x(side, monitor_pos.x, monitor_size.width, phys_w);
     let y = monitor_pos.y + (monitor_size.height as i32 - phys_h) / 2;
 
-    window
-        .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))?;
+    window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))?;
 
     Ok(())
 }
