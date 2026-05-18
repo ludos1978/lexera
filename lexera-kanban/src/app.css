@@ -182,8 +182,8 @@
      row/stack gaps 5/3 px. Everything UI-scales. */
   --layout-row-rail-width: calc(34px * var(--ui-scale));
   --layout-stack-min-width: calc(200px * var(--ui-scale));
-  --layout-row-header-pad-y: calc(6px * var(--ui-scale));
-  --layout-row-header-pad-x: calc(6px * var(--ui-scale));  /* matches pad-y for symmetric rail padding */
+  --layout-row-header-pad-y: calc(9px * var(--ui-scale));
+  --layout-row-header-pad-x: calc(9px * var(--ui-scale));  /* matches pad-y for symmetric rail padding (bumped 6→9 for more left breathing room) */
   --layout-stack-header-pad-y: calc(3px * var(--ui-scale));
   --layout-stack-header-pad-x: calc(7px * var(--ui-scale));
   --layout-column-header-pad-y: calc(3px * var(--ui-scale));
@@ -2582,6 +2582,15 @@ body.show-special-characters .card-content .ws-nl {
   cursor: text;
   font-size: var(--font-size-base);
   color: var(--title-row-color);
+  /* Align the title TEXT with the icon glyphs. The icons are
+     `--icon-button-size` squares with their glyph flex-centered, so an
+     icon glyph sits at `pad + S/2` on the cross axis. The title is
+     thin text, so at `align-items: flex-start` its centre would sit at
+     `pad + lineHeight/2` (≈13px font ≠ 14px icon) and read as
+     mis-aligned. Pinning the title's line box to the icon size centres
+     its text on the SAME axis (`pad + S/2`) in both the rotated rail
+     and the folded bar — writing-mode-robust, no per-state tuning. */
+  line-height: var(--icon-button-size);
 }
 .board-row-count {
   order: 10;

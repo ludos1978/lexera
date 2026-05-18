@@ -44,6 +44,20 @@ describe('row fold button stays pinned to the row corner across fold state', () 
     expect(anchored, '.board-row-header .row-fold-btn must declare align-self: flex-start').toBe(true);
   });
 
+  it('aligns the title TEXT onto the icon-glyph axis via line-height = icon size', () => {
+    // User contract 2026-05-18 (follow-up): "the text is not aligned
+    // with the rest of the icons!". Icons are `--icon-button-size`
+    // squares with flex-centred glyphs (glyph at pad + S/2). The thin
+    // title text at flex-start would otherwise centre at
+    // pad + lineHeight/2. Pinning the title's line box to the icon size
+    // puts its text centre on the same axis in both writing modes.
+    const bodies = ruleBodies('.board-row-title');
+    expect(bodies.length, 'base .board-row-title rule must exist').toBeGreaterThan(0);
+    const aligned = bodies.some((b) =>
+      /line-height\s*:\s*var\(\s*--icon-button-size\s*\)\s*;/.test(b));
+    expect(aligned, '.board-row-title must set line-height: var(--icon-button-size)').toBe(true);
+  });
+
   it('anchors the whole .board-row-header column to the same cross-start edge', () => {
     // User contract 2026-05-18 (follow-up): "make sure that the rest of
     // the header is also aligned with the fold icon". The grip/title/
