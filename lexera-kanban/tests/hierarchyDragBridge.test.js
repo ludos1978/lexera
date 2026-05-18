@@ -1302,7 +1302,10 @@ describe('LexeraHierarchyDragBridge.install', () => {
       sourceClientX: 300,
       sourceClientY: 50
     });
-    await new Promise((r) => setTimeout(r, 0));
+    // Hover forwarding is coalesced to one animation frame. The test
+    // window has no requestAnimationFrame, so the bridge falls back to
+    // setTimeout(16); wait past that for the single frame to flush.
+    await new Promise((r) => setTimeout(r, 30));
 
     const emits = invoke.mock.calls.filter((c) => c[0] === 'multiview_emit_to');
     expect(emits.length).toBe(1);
@@ -1346,6 +1349,106 @@ describe('LexeraHierarchyDragBridge.install', () => {
     expect(emits.length).toBe(1);
     expect(emits[0][1].event).toBe('external-dnd-drop');
     expect(emits[0][1].payload.payload.type).toBe('tree-row');
+  });
+
+  it('coalesces rapid drag-move hover forwards to one IPC per animation frame (latest payload wins)', async () => {
+    let rafCb = null;
+    const win = {
+      requestAnimationFrame: (cb) => { rafCb = cb; return 7; },
+      cancelAnimationFrame: () => { rafCb = null; }
+    };
+    const localBridge = loadBridge(win);
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    localBridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(makeBoard()),
+      saveBoard: () => Promise.resolve(),
+      getWebviewRect: function (label) {
+        if (label === 'sub-app-1') return { left: 50, top: 100, right: 250, bottom: 400 };
+        if (label === 'kanban-board-1') return { left: 300, top: 100, right: 500, bottom: 400 };
+        return null;
+      },
+      getWebviewLabelAtTopPoint: function (topX, topY) {
+        return (topX >= 300 && topX <= 500 && topY >= 100 && topY <= 400) ? 'kanban-board-1' : null;
+      }
+    });
+
+    // Three rapid moves within a single frame.
+    for (let i = 0; i < 3; i++) {
+      wv._fire('hierarchy-entity-drag-move', {
+        source: { boardId: 'b1', kind: 'card', entityId: 'card-' + i },
+        sourceWebviewLabel: 'sub-app-1',
+        sourceClientX: 300, sourceClientY: 50
+      });
+    }
+    // Nothing emitted yet — all three coalesced behind one queued frame.
+    expect(invoke.mock.calls.filter((c) => c[0] === 'multiview_emit_to').length).toBe(0);
+
+    // Flush the single queued frame.
+    expect(typeof rafCb).toBe('function');
+    rafCb();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const emits = invoke.mock.calls.filter((c) => c[0] === 'multiview_emit_to');
+    expect(emits.length).toBe(1);
+    expect(emits[0][1].event).toBe('external-dnd-hover');
+    // The LATEST move payload (card-2) is the one forwarded.
+    expect(emits[0][1].payload.payload.source.entityId).toBe('card-2');
+  });
+
+  it('drop forwards immediately and cancels any queued hover frame', async () => {
+    let rafCb = null;
+    let cancelled = false;
+    const win = {
+      requestAnimationFrame: (cb) => { rafCb = cb; return 9; },
+      cancelAnimationFrame: () => { cancelled = true; rafCb = null; }
+    };
+    const localBridge = loadBridge(win);
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    localBridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(makeBoard()),
+      saveBoard: () => Promise.resolve(),
+      getWebviewRect: function (label) {
+        return label === 'sub-app-1' ? { left: 0, top: 0, right: 100, bottom: 100 }
+          : label === 'kanban-board-1' ? { left: 100, top: 0, right: 200, bottom: 100 }
+          : null;
+      },
+      getWebviewLabelAtTopPoint: function (topX) { return topX >= 100 ? 'kanban-board-1' : 'sub-app-1'; }
+    });
+
+    // A hover queues a frame…
+    wv._fire('hierarchy-entity-drag-move', {
+      source: { boardId: 'b1', kind: 'row', entityId: 'r1' },
+      sourceWebviewLabel: 'sub-app-1',
+      sourceClientX: 150, sourceClientY: 50
+    });
+    expect(typeof rafCb).toBe('function');
+
+    // …then a drop arrives before the frame fires.
+    wv._fire('hierarchy-entity-drag-end-external', {
+      source: { boardId: 'b1', kind: 'row', entityId: 'r1' },
+      sourceWebviewLabel: 'sub-app-1',
+      sourceClientX: 150, sourceClientY: 50
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    // The queued hover frame was cancelled; the drop emitted immediately.
+    expect(cancelled).toBe(true);
+    const emits = invoke.mock.calls.filter((c) => c[0] === 'multiview_emit_to');
+    expect(emits.length).toBe(1);
+    expect(emits[0][1].event).toBe('external-dnd-drop');
+
+    // Even if a stale frame callback somehow still runs, the cleared
+    // pending payload guarantees no late hover emit after the drop.
+    if (typeof rafCb === 'function') { rafCb(); await new Promise((r) => setTimeout(r, 0)); }
+    const hoverEmits = invoke.mock.calls.filter(
+      (c) => c[0] === 'multiview_emit_to' && c[1].event === 'external-dnd-hover');
+    expect(hoverEmits.length).toBe(0);
   });
 
   it('does not forward when the cursor stays inside the source webview', async () => {

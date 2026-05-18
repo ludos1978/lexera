@@ -1027,10 +1027,43 @@
           });
         }
       });
+      // Perf: `hierarchy-entity-drag-move` fires on every drag mouse-
+      // move (dozens/sec during a cross-window drag). Each unthrottled
+      // forward did a webview hit-test plus 1–2 Tauri IPC round-trips
+      // (`multiview_webview_at_screen_point` + `multiview_emit_to`),
+      // so hover latency scaled with mouse speed. Coalesce hover
+      // forwarding to at most one per animation frame, always carrying
+      // the LATEST move payload — the receiver positions its drop
+      // indicator from whatever the most recent hover reports, so
+      // dropping intermediate frames is lossless. Drop stays immediate
+      // and cancels any queued hover (a stale hover must never fire
+      // against the post-drop state; the drop payload is self-contained
+      // with its own final coordinates).
+      var _raf = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+        ? function (cb) { return window.requestAnimationFrame(cb); }
+        : function (cb) { return setTimeout(cb, 16); };
+      var _caf = (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function')
+        ? function (id) { window.cancelAnimationFrame(id); }
+        : function (id) { clearTimeout(id); };
+      var _pendingHoverPayload = null;
+      var _hoverRafId = 0;
+      function flushPendingHover() {
+        _hoverRafId = 0;
+        var p = _pendingHoverPayload;
+        _pendingHoverPayload = null;
+        if (p) forwardCrossViewDrag('external-dnd-hover', p);
+      }
+      function cancelPendingHover() {
+        if (_hoverRafId) { _caf(_hoverRafId); _hoverRafId = 0; }
+        _pendingHoverPayload = null;
+      }
       wv.listen('hierarchy-entity-drag-move', function (event) {
-        forwardCrossViewDrag('external-dnd-hover', (event && event.payload) || null);
+        _pendingHoverPayload = (event && event.payload) || null;
+        if (_hoverRafId) return;
+        _hoverRafId = _raf(flushPendingHover);
       });
       wv.listen('hierarchy-entity-drag-end-external', function (event) {
+        cancelPendingHover();
         forwardCrossViewDrag('external-dnd-drop', (event && event.payload) || null);
       });
       xviewLog('install.cross-view-enabled', { label: wv.label });
