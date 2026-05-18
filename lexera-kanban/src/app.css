@@ -183,7 +183,7 @@
   --layout-row-rail-width: calc(34px * var(--ui-scale));
   --layout-stack-min-width: calc(200px * var(--ui-scale));
   --layout-row-header-pad-y: calc(6px * var(--ui-scale));
-  --layout-row-header-pad-x: 0px;  /* matches design's rail: padding '6px 0' */
+  --layout-row-header-pad-x: calc(6px * var(--ui-scale));  /* matches pad-y for symmetric rail padding */
   --layout-stack-header-pad-y: calc(3px * var(--ui-scale));
   --layout-stack-header-pad-x: calc(7px * var(--ui-scale));
   --layout-column-header-pad-y: calc(3px * var(--ui-scale));
