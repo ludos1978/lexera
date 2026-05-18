@@ -3426,18 +3426,27 @@ interface LexeraLegacyPanelDocks {
 
 interface LexeraTreeRegistryFoundLeaf {
   treeId: LexeraTreeRegistryTreeId;
-  leaf: LexeraDockTreeNode;
+  /** Always a tabs-leaf — sourced from `findLeafById`, which only
+   *  ever returns `LexeraDockTreeLeaf` (never a split). */
+  leaf: LexeraDockTreeLeaf;
 }
 interface LexeraTreeRegistryFoundTab {
   treeId: LexeraTreeRegistryTreeId;
-  tab: LexeraDockTreeNode;
-  leaf: LexeraDockTreeNode;
+  /** Discriminated `board | panel` tab — narrow on `tab.kind`
+   *  (or via `LexeraLayoutTreeApi.isBoardTab`/`isPanelTab`) before
+   *  reading variant-only fields. */
+  tab: LexeraDockTreeTab;
+  /** The tabs-leaf that holds `tab` (never a split). */
+  leaf: LexeraDockTreeLeaf;
   index: number;
 }
 interface LexeraTreeRegistryFoundPanel {
   treeId: LexeraTreeRegistryTreeId;
-  tab: LexeraDockTreeNode;
-  leaf: LexeraDockTreeNode;
+  /** Panel-kind tab only — `findPanelInAllTrees` resolves through
+   *  `findLeafContainingPanel`, which matches panel tabs exclusively. */
+  tab: LexeraDockTreePanelTab;
+  /** The tabs-leaf that holds `tab` (never a split). */
+  leaf: LexeraDockTreeLeaf;
 }
 
 interface LexeraTreeRegistryApi {

@@ -74,24 +74,33 @@
 
   /**
    * @typedef {Object} LeafFindHit
+   *   Mirror of the global `LexeraTreeRegistryFoundLeaf` (see
+   *   lexera-globals.d.ts, which carries the precise discriminated
+   *   shape). `leaf` is always a tabs-leaf — `findLeafById` never
+   *   returns a split. Kept `*` here because the dock-tree typedefs
+   *   are module-scoped to the .d.ts and unnameable from this IIFE.
    * @property {TreeId} treeId
    * @property {*} leaf - The matched `DockTreeLeaf`.
    */
 
   /**
    * @typedef {Object} TabFindHit
+   *   Mirror of the global `LexeraTreeRegistryFoundTab`. `tab` is the
+   *   discriminated board|panel union; `leaf` is always a tabs-leaf.
    * @property {TreeId} treeId
-   * @property {*} tab - The matched `DockTreeTab`.
-   * @property {*} leaf - The leaf containing it.
+   * @property {*} tab - The matched `DockTreeTab` (board|panel).
+   * @property {*} leaf - The tabs-leaf containing it.
    * @property {number} index - The tab's index inside `leaf.tabs` at
    *   the moment of the search.
    */
 
   /**
    * @typedef {Object} PanelFindHit
+   *   Mirror of the global `LexeraTreeRegistryFoundPanel`. `tab` is a
+   *   panel-kind tab; `leaf` is always a tabs-leaf.
    * @property {TreeId} treeId
    * @property {*} tab - The matched `DockTreePanelTab`.
-   * @property {*} leaf - The leaf containing it.
+   * @property {*} leaf - The tabs-leaf containing it.
    */
 
   /** @type {Array<TreeId>} */

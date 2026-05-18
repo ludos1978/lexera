@@ -109,6 +109,11 @@
 
   /**
    * @typedef {Object} TabFindResult
+   *   Mirror of the global `LexeraTreeRegistryFoundTab` (see
+   *   lexera-globals.d.ts). `tab` is the discriminated board|panel
+   *   union and `leaf` is always a tabs-leaf; kept structurally loose
+   *   here because the dock-tree typedefs are module-scoped to the
+   *   .d.ts and cannot be named from this IIFE file.
    * @property {{id: string}} tab
    * @property {{id: string}} leaf
    * @property {number} index
@@ -116,6 +121,8 @@
 
   /**
    * @typedef {Object} PanelFindResult
+   *   Mirror of the global `LexeraTreeRegistryFoundPanel`. `tab` is a
+   *   panel-kind tab; `leaf` is always a tabs-leaf.
    * @property {{id: string}} tab
    * @property {{id: string}} leaf
    */
