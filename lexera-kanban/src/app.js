@@ -2008,6 +2008,16 @@ var LexeraDashboard = (function () {
         if (boardsSection && pos) {
           boardsSection.classList.toggle('mgmt-drop-active', isPositionInsideElement(pos, boardsSection));
         }
+        // Workspace drop zone: the shell window highlights its
+        // `.workspace-shell` chrome; an embedded board webview is
+        // entirely a workspace target, so it highlights its own body
+        // (drag-over only fires while the pointer is over this webview).
+        var wsShellEl = document.querySelector('.workspace-shell');
+        if (wsShellEl && pos) {
+          wsShellEl.classList.toggle('ws-file-drop-active', isPositionInsideElement(pos, wsShellEl));
+        } else if (embeddedWorkspaceShellParent) {
+          document.body.classList.add('ws-file-drop-active');
+        }
         // Sidebar drop zone
         if (isHierarchyLocked()) return;
         if (getElSidebar() && pos) {
@@ -2022,11 +2032,17 @@ var LexeraDashboard = (function () {
         if (getElSidebar()) getElSidebar().classList.remove('drop-zone-active');
         var boardsSection = document.querySelector('[data-mgmt-section="boards"]');
         if (boardsSection) boardsSection.classList.remove('mgmt-drop-active');
+        var wsShellEl = document.querySelector('.workspace-shell');
+        if (wsShellEl) wsShellEl.classList.remove('ws-file-drop-active');
+        document.body.classList.remove('ws-file-drop-active');
       });
       tauriListen('tauri://drag-drop', function (event) {
         if (getElSidebar()) getElSidebar().classList.remove('drop-zone-active');
         var boardsSection = document.querySelector('[data-mgmt-section="boards"]');
         if (boardsSection) boardsSection.classList.remove('mgmt-drop-active');
+        var wsShellEl = document.querySelector('.workspace-shell');
+        if (wsShellEl) wsShellEl.classList.remove('ws-file-drop-active');
+        document.body.classList.remove('ws-file-drop-active');
         // Replace-document dialog handles its own drops
         if (window.__lexeraReplaceDocDropActive) return;
         var paths = event.payload.paths || [];
@@ -2034,6 +2050,21 @@ var LexeraDashboard = (function () {
         // Check boards section first
         if (boardsSection && pos && isPositionInsideElement(pos, boardsSection)) {
           addBoardsByPath(paths);
+          return;
+        }
+        // Workspace drop: register the board file AND open it as a
+        // tab. `{ select: true }` routes through selectBoard, which
+        // resolves the correct host (shell → WorkspaceShell.openBoard;
+        // embedded board webview → requestWorkspaceShellBoardOpen).
+        // The embedded branch also covers drops landing directly on a
+        // board's content, since the OS routes those to the child
+        // webview rather than the shell window.
+        if (embeddedWorkspaceShellParent) {
+          addBoardsByPath(paths, { select: true });
+          return;
+        }
+        if (wsShellEl && pos && isPositionInsideElement(pos, wsShellEl)) {
+          addBoardsByPath(paths, { select: true });
           return;
         }
         // Sidebar drop
@@ -3082,6 +3113,7 @@ var LexeraDashboard = (function () {
     poll: function() { poll(); },
     applyVisualTheme: function(themeId) { applyVisualTheme(themeId); },
     showSidebarHierarchyMenu: function(anchor) { showSidebarHierarchyMenu(anchor); },
+    createNewBoard: function() { OrderHelpers.createNewBoardFile(); },
     buildHierarchyFocusTargetFromTreeNode: function(node, boardId) { return buildHierarchyFocusTargetFromTreeNode(node, boardId); },
     navigateToHierarchyTarget: function(target) { return navigateToHierarchyTarget(target); },
     targetClosest: function(target, selector) { return targetClosest(target, selector); },
@@ -6847,6 +6879,12 @@ var LexeraDashboard = (function () {
       applyThemeMode: function (mode) {
         if (LexeraAppearance && typeof LexeraAppearance.applyThemeMode === 'function') {
           LexeraAppearance.applyThemeMode(mode);
+        }
+        // appearance.js only flips the shell's own :root. Already-open
+        // sub-app webviews don't load appearance.js and won't see the
+        // change unless we re-snapshot + re-broadcast the resolved mode.
+        if (window.LexeraMultiview && typeof window.LexeraMultiview.broadcastTheme === 'function') {
+          window.LexeraMultiview.broadcastTheme();
         }
       },
       // UI scale

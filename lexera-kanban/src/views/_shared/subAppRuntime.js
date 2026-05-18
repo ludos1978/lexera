@@ -68,6 +68,38 @@
     if (!snap || !snap.palette) return;
     var root = document.documentElement;
     Object.keys(snap.palette).forEach(function (k) { root.style.setProperty(k, snap.palette[k]); });
+    // Sub-app webviews don't load appearance.js, so they never set
+    // data-theme-mode themselves. app.css gates every dark-mode token on
+    // `:root[data-theme-mode="dark"]` — without mirroring the shell's
+    // resolved mode here, the ~28 inline palette vars flip but the rest
+    // of the token set (--ink/--line/--shadow-ink/etc.) stays light.
+    if (snap.theme_mode) root.setAttribute('data-theme-mode', snap.theme_mode);
+    if (snap.theme_mode_requested) {
+      root.setAttribute('data-theme-mode-requested', snap.theme_mode_requested);
+    }
+    function setThemeAttr(attr, value) {
+      if (typeof value === 'undefined') return;
+      if (value) root.setAttribute(attr, value);
+      else root.removeAttribute(attr);
+    }
+    setThemeAttr('data-visual-theme', snap.visual_theme);
+    setThemeAttr('data-visual-theme-variant', snap.visual_theme_variant);
+    setThemeAttr('data-visual-theme-lineage', snap.visual_theme_lineage);
+    if (Object.prototype.hasOwnProperty.call(snap, 'visual_theme_user_css')) {
+      var css = String(snap.visual_theme_user_css || '');
+      var styleEl = document.getElementById('lexera-visual-theme-user-style');
+      if (!css) {
+        if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+      } else if (document.head) {
+        if (!styleEl) {
+          styleEl = document.createElement('style');
+          styleEl.id = 'lexera-visual-theme-user-style';
+          styleEl.setAttribute('data-lexera-visual-theme-source', 'user');
+          document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = css;
+      }
+    }
     if (snap.color_scheme) root.style.colorScheme = snap.color_scheme;
   }
 

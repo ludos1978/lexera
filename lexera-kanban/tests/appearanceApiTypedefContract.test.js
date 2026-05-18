@@ -61,4 +61,10 @@ describe('lexera-globals.d.ts — LexeraAppearanceApi', () => {
       /window\.LexeraAppearance\.applyThemeMode\(\s*payload\.value\s*,\s*\{\s*persist:\s*false\s*\}\s*\)/
     );
   });
+
+  it('workspaceShell applies visual theme setting broadcasts before rebroadcasting theme snapshots', () => {
+    expect(shellJs).toMatch(/payload\.setting\s*===\s*['"]visualTheme['"]/);
+    expect(shellJs).toMatch(/window\.LexeraAppearance\.applyVisualTheme\(\s*payload\.value\s*\)/);
+    expect(shellJs).toMatch(/window\.LexeraMultiview\.broadcastTheme\(\)/);
+  });
 });

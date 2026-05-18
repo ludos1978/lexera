@@ -72,6 +72,21 @@
     return getLs('lexera-visual-theme', 'warm-paper');
   }
 
+  function resolveEffectiveThemeMode(mode) {
+    var normalized = String(mode || 'auto');
+    if (normalized !== 'auto') return normalized === 'dark' ? 'dark' : 'light';
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
+  }
+
+  function applyThemeModeLocally(requested) {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    document.documentElement.setAttribute('data-theme-mode', resolveEffectiveThemeMode(requested));
+    document.documentElement.setAttribute('data-theme-mode-requested', requested);
+  }
+
   function applyVisualTheme(id) {
     var nextId = String(id || 'warm-paper');
     if (typeof window !== 'undefined' &&
@@ -123,6 +138,7 @@
         if (normalized !== 'auto' && normalized !== 'light' && normalized !== 'dark') {
           normalized = 'auto';
         }
+        applyThemeModeLocally(normalized);
         setLs('lexera-theme-mode', normalized);
         broadcast('frontend-setting-changed', { setting: 'themeMode', value: normalized });
       },

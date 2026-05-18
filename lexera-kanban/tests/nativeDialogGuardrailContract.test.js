@@ -42,7 +42,7 @@ const ALLOW_LINES = new Map([
   // both showNotification(confirm:true) AND LexeraDialogs.confirm have
   // been tried and thrown. Removing this would break management-UI
   // confirms when both upper layers are missing (eg detached webview).
-  ['views/_shared/settingsRuntime.js', new Set([257])]
+  ['views/_shared/settingsRuntime.js', new Set([273])]
 ]);
 
 function walkJs(dir, out, srcRootArg) {

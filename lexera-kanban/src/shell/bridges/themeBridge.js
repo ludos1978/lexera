@@ -58,6 +58,12 @@
     '--font-size-base', '--font-size-s', '--font-size-l'
   ];
 
+  function readUserVisualThemeCss() {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return '';
+    var styleEl = document.getElementById('lexera-visual-theme-user-style');
+    return styleEl ? String(styleEl.textContent || '') : '';
+  }
+
   /**
    * Read every theme CSS var off :root plus the resolved color scheme,
    * returning a { palette, color_scheme } snapshot ready to broadcast.
@@ -65,18 +71,37 @@
    */
   function snapshotTheme() {
     if (typeof document === 'undefined' || !document.documentElement) return null;
-    var cs = getComputedStyle(document.documentElement);
+    var rootEl = document.documentElement;
+    var cs = getComputedStyle(rootEl);
     /** @type {{ [varName: string]: string }} */
     var palette = {};
     for (var i = 0; i < THEME_VAR_NAMES.length; i++) {
       var v = cs.getPropertyValue(THEME_VAR_NAMES[i]);
       if (v) palette[THEME_VAR_NAMES[i]] = v.trim();
     }
-    var isDark = (document.documentElement.style.colorScheme === 'dark') ||
-      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    // The resolved theme mode (`'dark'` / `'light'`) lives on the shell's
+    // :root via appearance.js. It — not the palette vars alone — is what
+    // app.css gates every dark-mode token on (`:root[data-theme-mode]`).
+    // Sub-app webviews don't load appearance.js, so the snapshot MUST
+    // carry the mode for them to flip the full token set.
+    var themeMode = rootEl.getAttribute('data-theme-mode') || '';
+    var themeModeRequested = rootEl.getAttribute('data-theme-mode-requested') || '';
+    var isDark = themeMode
+      ? (themeMode === 'dark')
+      : ((rootEl.style.colorScheme === 'dark') ||
+         (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches));
     /** @type {'dark' | 'light'} */
     var color_scheme = isDark ? 'dark' : 'light';
-    return { palette: palette, color_scheme: color_scheme };
+    return {
+      palette: palette,
+      color_scheme: color_scheme,
+      theme_mode: themeMode || color_scheme,
+      theme_mode_requested: themeModeRequested || themeMode || color_scheme,
+      visual_theme: rootEl.getAttribute('data-visual-theme') || '',
+      visual_theme_variant: rootEl.getAttribute('data-visual-theme-variant') || '',
+      visual_theme_lineage: rootEl.getAttribute('data-visual-theme-lineage') || '',
+      visual_theme_user_css: readUserVisualThemeCss()
+    };
   }
 
   /**
@@ -93,6 +118,39 @@
     }).catch(function () { /* offline / no Tauri */ });
   }
 
+  function broadcastThemeAfterThemeChange() {
+    broadcastTheme();
+    setTimeout(broadcastTheme, 50);
+    setTimeout(broadcastTheme, 250);
+  }
+
+  function setThemeSnapshotAttr(root, attr, value) {
+    if (typeof value === 'undefined') return;
+    if (value) root.setAttribute(attr, value);
+    else root.removeAttribute(attr);
+  }
+
+  function applyUserVisualThemeCss(cssText) {
+    if (typeof document === 'undefined') return;
+    var doc = document;
+    var styleEl = typeof doc.getElementById === 'function'
+      ? doc.getElementById('lexera-visual-theme-user-style')
+      : null;
+    var css = String(cssText || '');
+    if (!css) {
+      if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+      return;
+    }
+    if (!doc.head || typeof doc.createElement !== 'function') return;
+    if (!styleEl) {
+      styleEl = doc.createElement('style');
+      styleEl.id = 'lexera-visual-theme-user-style';
+      styleEl.setAttribute('data-lexera-visual-theme-source', 'user');
+      doc.head.appendChild(styleEl);
+    }
+    styleEl.textContent = css;
+  }
+
   /**
    * Apply a received palette snapshot to :root of the current document.
    * Used by sub-apps in their own webview context — included here for
@@ -105,6 +163,16 @@
     var keys = Object.keys(snapshot.palette);
     for (var i = 0; i < keys.length; i++) {
       root.style.setProperty(keys[i], snapshot.palette[keys[i]]);
+    }
+    if (snapshot.theme_mode) root.setAttribute('data-theme-mode', snapshot.theme_mode);
+    if (snapshot.theme_mode_requested) {
+      root.setAttribute('data-theme-mode-requested', snapshot.theme_mode_requested);
+    }
+    setThemeSnapshotAttr(root, 'data-visual-theme', snapshot.visual_theme);
+    setThemeSnapshotAttr(root, 'data-visual-theme-variant', snapshot.visual_theme_variant);
+    setThemeSnapshotAttr(root, 'data-visual-theme-lineage', snapshot.visual_theme_lineage);
+    if (Object.prototype.hasOwnProperty.call(snapshot, 'visual_theme_user_css')) {
+      applyUserVisualThemeCss(snapshot.visual_theme_user_css);
     }
     if (snapshot.color_scheme) root.style.colorScheme = snapshot.color_scheme;
   }
@@ -124,9 +192,12 @@
     setTimeout(broadcastTheme, 200);
     if (typeof window !== 'undefined' && window.matchMedia) {
       var mq = window.matchMedia('(prefers-color-scheme: dark)');
-      var handler = function () { setTimeout(broadcastTheme, 50); };
+      var handler = function () { setTimeout(broadcastThemeAfterThemeChange, 50); };
       if (mq.addEventListener) mq.addEventListener('change', handler);
       else if (mq.addListener) mq.addListener(handler);
+    }
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('lexera-visual-theme-applied', broadcastThemeAfterThemeChange);
     }
     var wv = getCurrentWebview();
     if (wv && typeof wv.listen === 'function') {
@@ -140,6 +211,7 @@
       THEME_VAR_NAMES: THEME_VAR_NAMES,
       snapshotTheme: snapshotTheme,
       broadcastTheme: broadcastTheme,
+      broadcastThemeAfterThemeChange: broadcastThemeAfterThemeChange,
       applyThemeSnapshot: applyThemeSnapshot,
       initListeners: initListeners
     };

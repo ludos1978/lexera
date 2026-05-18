@@ -113,6 +113,17 @@ interface LexeraThemeSnapshot {
    *  documentElement when set, otherwise the `prefers-color-scheme`
    *  media-query result. */
   color_scheme: 'light' | 'dark';
+  /** Resolved auto/dark/light mode attributes mirrored from shell :root. */
+  theme_mode?: 'light' | 'dark';
+  theme_mode_requested?: 'auto' | 'light' | 'dark';
+  /** Visual theme attributes mirrored from shell :root. Empty string
+   *  means remove the attribute in subscribers (e.g. no-style). */
+  visual_theme?: string;
+  visual_theme_variant?: string;
+  visual_theme_lineage?: string;
+  /** User theme CSS loaded from the active visual theme chain. Empty
+   *  string means remove the subscriber's user-style node. */
+  visual_theme_user_css?: string;
 }
 
 interface LexeraThemeBridgeApi {
@@ -127,6 +138,9 @@ interface LexeraThemeBridgeApi {
    *  via `multiview_broadcast` IPC. Resolves silently when the IPC
    *  is unavailable (offline / no Tauri). */
   broadcastTheme(): Promise<unknown>;
+  /** Broadcast immediately, then repeat shortly after visual-theme CSS
+   *  has had time to settle. Used after theme setting changes. */
+  broadcastThemeAfterThemeChange(): void;
   /** Apply a received snapshot's palette to :root of the current
    *  document. No-op for snapshots without a palette. */
   applyThemeSnapshot(snapshot: LexeraThemeSnapshot | null | undefined): void;

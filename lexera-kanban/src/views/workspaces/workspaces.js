@@ -35,6 +35,7 @@
   var expandedBoardIds = {};
   var boardHierarchies = {};
   var latestBoardsRendered = [];
+  var outsideMenuMouseDownHandler = null;
 
   function findRenderedBoard(boardId) {
     for (var i = 0; i < latestBoardsRendered.length; i++) {
@@ -46,8 +47,31 @@
   }
 
   function closeBoardActionMenus() {
+    if (outsideMenuMouseDownHandler) {
+      document.removeEventListener('mousedown', outsideMenuMouseDownHandler, true);
+      outsideMenuMouseDownHandler = null;
+    }
     var menus = document.querySelectorAll('.tree-board-action-menu');
     for (var i = 0; i < menus.length; i++) menus[i].remove();
+  }
+
+  function armOutsideMenuClose(menu, anchorEl) {
+    if (outsideMenuMouseDownHandler) {
+      document.removeEventListener('mousedown', outsideMenuMouseDownHandler, true);
+      outsideMenuMouseDownHandler = null;
+    }
+    var handler = function (event) {
+      var target = event && event.target;
+      if (target && menu && menu.contains(target)) return;
+      if (target && anchorEl && anchorEl.contains && anchorEl.contains(target)) return;
+      closeBoardActionMenus();
+    };
+    outsideMenuMouseDownHandler = handler;
+    setTimeout(function () {
+      if (outsideMenuMouseDownHandler === handler) {
+        document.addEventListener('mousedown', handler, true);
+      }
+    }, 0);
   }
 
   function runBoardAction(boardId, action) {
@@ -305,9 +329,7 @@
     var rect = anchorEl.getBoundingClientRect();
     menu.style.top = Math.round(rect.bottom + 2) + 'px';
     menu.style.left = Math.round(Math.max(8, Math.min(rect.right, window.innerWidth - menu.offsetWidth - 8))) + 'px';
-    setTimeout(function () {
-      document.addEventListener('mousedown', closeBoardActionMenus, { once: true });
-    }, 0);
+    armOutsideMenuClose(menu, anchorEl);
   }
 
   function refreshActiveHighlight() {

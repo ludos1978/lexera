@@ -498,4 +498,77 @@ describe('LexeraSubApp runtime metadata', () => {
 
     expect(unsub).toHaveBeenCalledTimes(1);
   });
+
+  // Regression: sub-app webviews don't load appearance.js, so they never
+  // set data-theme-mode on their own :root. app.css gates every dark-mode
+  // token on `:root[data-theme-mode="dark"]`. Before this fix the theme
+  // snapshot only carried the ~28 enumerated palette vars (applied inline)
+  // and color_scheme — the rest of the dark token set never flipped, so
+  // individual views "didn't always switch" to dark/light.
+  it('applyThemeSnapshot mirrors the shell-resolved theme mode onto :root so dark-mode tokens flip', () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/views/log/index.html?panelKind=logs'
+    });
+    const { window } = dom;
+    const subApp = loadSubApp(window, { URLSearchParams });
+
+    subApp.applyThemeSnapshot({
+      palette: { '--bg-primary': '#10141b' },
+      color_scheme: 'dark',
+      theme_mode: 'dark',
+      theme_mode_requested: 'auto'
+    });
+
+    const root = window.document.documentElement;
+    expect(root.getAttribute('data-theme-mode')).toBe('dark');
+    expect(root.getAttribute('data-theme-mode-requested')).toBe('auto');
+    expect(root.style.colorScheme).toBe('dark');
+    expect(root.style.getPropertyValue('--bg-primary')).toBe('#10141b');
+
+    subApp.applyThemeSnapshot({
+      palette: { '--bg-primary': '#ffffff' },
+      color_scheme: 'light',
+      theme_mode: 'light',
+      theme_mode_requested: 'light'
+    });
+    expect(root.getAttribute('data-theme-mode')).toBe('light');
+    expect(root.getAttribute('data-theme-mode-requested')).toBe('light');
+  });
+
+  it('applyThemeSnapshot mirrors visual theme attributes and user theme CSS', () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/views/log/index.html?panelKind=logs'
+    });
+    const { window } = dom;
+    const subApp = loadSubApp(window, { URLSearchParams });
+
+    subApp.applyThemeSnapshot({
+      palette: {},
+      color_scheme: 'light',
+      visual_theme: 'sleek',
+      visual_theme_variant: 'midnight-grid',
+      visual_theme_lineage: 'sleek-uniform midnight-grid',
+      visual_theme_user_css: ':root { --custom-theme-token: 1; }'
+    });
+
+    const root = window.document.documentElement;
+    expect(root.getAttribute('data-visual-theme')).toBe('sleek');
+    expect(root.getAttribute('data-visual-theme-variant')).toBe('midnight-grid');
+    expect(root.getAttribute('data-visual-theme-lineage')).toBe('sleek-uniform midnight-grid');
+    expect(window.document.getElementById('lexera-visual-theme-user-style').textContent).toContain('--custom-theme-token');
+
+    subApp.applyThemeSnapshot({
+      palette: {},
+      color_scheme: 'light',
+      visual_theme: '',
+      visual_theme_variant: '',
+      visual_theme_lineage: '',
+      visual_theme_user_css: ''
+    });
+
+    expect(root.getAttribute('data-visual-theme')).toBe(null);
+    expect(root.getAttribute('data-visual-theme-variant')).toBe(null);
+    expect(root.getAttribute('data-visual-theme-lineage')).toBe(null);
+    expect(window.document.getElementById('lexera-visual-theme-user-style')).toBe(null);
+  });
 });

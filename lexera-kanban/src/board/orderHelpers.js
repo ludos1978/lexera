@@ -488,7 +488,14 @@ var LexeraOrderHelpers = (function () {
     return out;
   }
 
-  function addBoardsByPath(paths) {
+  // `options.select` opens every freshly-registered board in the
+  // workspace after the catalog refresh (poll). It delegates to the
+  // `selectBoard` dep, which already routes correctly in every host
+  // context: shell host → WorkspaceShell.openBoard; embedded board
+  // webview → requestWorkspaceShellBoardOpen → shell. Default (no
+  // options) keeps the library-add behavior unchanged.
+  function addBoardsByPath(paths, options) {
+    options = options || {};
     if (_dep('hierarchyLocked') || !paths || paths.length === 0) return;
     var seen = {};
     var mdFiles = [];
@@ -505,12 +512,20 @@ var LexeraOrderHelpers = (function () {
 
     var LexeraApi = _dep('LexeraApi');
     var addPromises = mdFiles.map(function (filePath) {
-      return LexeraApi.addBoard(filePath).catch(function (err) {
+      return LexeraApi.addBoard(filePath).then(function (res) {
+        return res && res.boardId ? res.boardId : null;
+      }).catch(function (err) {
         _callDep('lexeraLog', 'error', 'Failed to add board: ' + err.message);
+        return null;
       });
     });
-    Promise.all(addPromises).then(function () {
-      _callDep('poll');
+    return Promise.all(addPromises).then(function (boardIds) {
+      return Promise.resolve(_callDep('poll')).then(function () {
+        if (!options.select) return;
+        for (var k = 0; k < boardIds.length; k++) {
+          if (boardIds[k]) _callDep('selectBoard', boardIds[k]);
+        }
+      });
     });
   }
 
@@ -1094,6 +1109,9 @@ var LexeraOrderHelpers = (function () {
           }
         }
         scheduleDashboardRefresh(0);
+      },
+      createNewBoard: function () {
+        return createNewBoardFile();
       }
     });
     // Ensure hierarchy panel is visible after mount — guards against corrupted persisted state
@@ -1164,6 +1182,69 @@ var LexeraOrderHelpers = (function () {
     }).catch(function (err) {
       _callDep('lexeraLog', 'error', '[rename.file] Rename failed: ' + err);
       _callDep('showNotification', 'Failed to rename file');
+    });
+  }
+
+  // Create a brand-new board file: prompt for a name, pick a folder
+  // with the native dialog, write the bare board template, register
+  // it with the backend and open it in the workspace. Mirrors
+  // renameActiveBoardFile's normalize → addBoard → poll → selectBoard
+  // chain; the overwrite guard keeps a chosen name from silently
+  // clobbering an existing file.
+  async function createNewBoardFile() {
+    if (!_dep('hasTauri')) {
+      _callDep('showNotification', 'Creating boards is available in the desktop app only');
+      return;
+    }
+    var requested = await LexeraDialogs.prompt('New board file name', 'board.md');
+    if (requested == null) return;
+    var fileName = normalizeMarkdownFileName(requested);
+    if (!fileName) {
+      _callDep('showNotification', 'Invalid filename');
+      return;
+    }
+    var folder = await _callDep('tauriInvoke', 'browse_folder', {
+      title: 'Choose a folder for the new board'
+    });
+    if (!folder) return;
+
+    var sep = folder.indexOf('\\') !== -1 ? '\\' : '/';
+    var newPath = folder + sep + fileName;
+
+    var exists = false;
+    try {
+      await _callDep('tauriInvoke', 'read_text_file', { path: newPath });
+      exists = true;
+    } catch (_) {
+      exists = false;
+    }
+    if (exists) {
+      var overwrite = await LexeraDialogs.confirm(
+        'A file named "' + fileName + '" already exists in that folder. Overwrite it?'
+      );
+      if (!overwrite) return;
+    }
+
+    var title = fileName.replace(/\.md$/i, '');
+    var template = '---\nkanban-plugin: board\n---\n\n# ' + title + '\n';
+    try {
+      await _callDep('tauriInvoke', 'write_text_file', { path: newPath, content: template });
+    } catch (err) {
+      _callDep('lexeraLog', 'error', '[board.create] write failed: ' + err);
+      _callDep('showNotification', 'Failed to create board file');
+      return;
+    }
+
+    var LexeraApi = _dep('LexeraApi');
+    return LexeraApi.addBoard(newPath).then(function (addResult) {
+      var newBoardId = addResult && addResult.boardId ? addResult.boardId : null;
+      return Promise.resolve(_callDep('poll')).then(function () {
+        if (newBoardId) _callDep('selectBoard', newBoardId);
+        _callDep('showNotification', 'Created board ' + fileName);
+      });
+    }).catch(function (err) {
+      _callDep('lexeraLog', 'error', '[board.create] addBoard failed: ' + err);
+      _callDep('showNotification', 'Failed to register new board');
     });
   }
 
@@ -3591,6 +3672,7 @@ var LexeraOrderHelpers = (function () {
     setupWorkspaceShell: setupWorkspaceShell,
     normalizeMarkdownFileName: normalizeMarkdownFileName,
     renameActiveBoardFile: renameActiveBoardFile,
+    createNewBoardFile: createNewBoardFile,
     openActiveBoardFolder: openActiveBoardFolder,
     buildThemeOptionsMarkup: buildThemeOptionsMarkup,
     openSettingsDialogForBoard: openSettingsDialogForBoard,

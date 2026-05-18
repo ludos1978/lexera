@@ -159,6 +159,27 @@
     if (eventObject) window.dispatchEvent(eventObject);
   }
 
+  function dispatchVisualThemeApplied(theme, cssReady) {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    var eventObject = null;
+    try {
+      if (typeof window.CustomEvent === 'function') {
+        eventObject = new window.CustomEvent('lexera-visual-theme-applied', {
+          detail: {
+            themeId: theme && theme.id ? theme.id : '',
+            requestedThemeId: currentRequestedThemeId || '',
+            cssReady: !!cssReady
+          }
+        });
+      } else if (typeof Event === 'function') {
+        eventObject = new Event('lexera-visual-theme-applied');
+      }
+    } catch (err) {
+      eventObject = null;
+    }
+    if (eventObject) window.dispatchEvent(eventObject);
+  }
+
   function replaceVisualThemes(nextThemes) {
     var seen = {};
     var normalized = [];
@@ -346,21 +367,22 @@
 
     if (!userThemes.length) {
       for (var i = 0; i < docs.length; i++) removeUserThemeStyleFromDocument(docs[i]);
-      return;
+      return Promise.resolve(true);
     }
 
     var loads = [];
     for (var li = 0; li < userThemes.length; li++) loads.push(readUserThemeCss(userThemes[li]));
 
-    Promise.all(loads).then(function (parts) {
-      if (token !== pendingUserThemeStyleToken) return;
+    return Promise.all(loads).then(function (parts) {
+      if (token !== pendingUserThemeStyleToken) return false;
       var css = parts.filter(function (part) { return !!String(part || '').trim(); }).join('\n\n');
       var liveDocs = collectAccessibleDocuments();
       if (!css) {
         for (var ri = 0; ri < liveDocs.length; ri++) removeUserThemeStyleFromDocument(liveDocs[ri]);
-        return;
+        return true;
       }
       for (var si = 0; si < liveDocs.length; si++) setUserThemeStyleOnDocument(liveDocs[si], css);
+      return true;
     });
   }
 
@@ -378,9 +400,13 @@
       applyThemeAttributesToDocument(docs[i], theme);
     }
 
-    applyUserThemeStyles(theme);
+    var stylePromise = applyUserThemeStyles(theme);
 
     persistVisualThemeSelection(requestedId, theme, options || {});
+    dispatchVisualThemeApplied(theme, false);
+    Promise.resolve(stylePromise).then(function (applied) {
+      if (applied !== false) dispatchVisualThemeApplied(theme, true);
+    });
     return theme;
   }
 

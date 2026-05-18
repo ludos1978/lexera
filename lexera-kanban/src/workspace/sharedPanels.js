@@ -82,6 +82,7 @@
       '<div class="sidebar-header">' +
         '<div class="sidebar-header-title lexera-shared-workspace-title" title="All Workspaces">All Workspaces</div>' +
         '<div class="sidebar-header-actions">' +
+          '<button class="sidebar-btn lexera-shared-new-board" title="New board" aria-label="New board" type="button">+</button>' +
           '<button class="sidebar-btn lexera-shared-workspace-menu" title="Hierarchy options" type="button">&#9776;</button>' +
         '</div>' +
       '</div>' +

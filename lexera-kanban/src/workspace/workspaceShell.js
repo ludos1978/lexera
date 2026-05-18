@@ -5011,7 +5011,26 @@
 
     var panelTab = event.target.closest('.ws-view-tab[data-ws-panel-id]');
     var panelHandle = event.target.closest('[data-ws-panel-drag-handle]');
-    if (!panelTab && !panelHandle) return;
+    if (!panelTab && !panelHandle) {
+      // Empty workspace chrome (tab strip / empty pane / dock gutter):
+      // offer board-file creation. Right-clicks over a board's own
+      // content land on the child webview at the OS layer, not on this
+      // shell DOM listener, so this never shadows the board's own
+      // context menu.
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof showNativeMenu !== 'function') return;
+      showNativeMenu(
+        [{ id: 'new-board', label: 'New Board…' }],
+        event.clientX, event.clientY, 'menu.workspace'
+      ).then(function (action) {
+        if (action === 'new-board' &&
+            state.hooks && typeof state.hooks.createNewBoard === 'function') {
+          state.hooks.createNewBoard();
+        }
+      });
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     var panelId = resolvePanelTarget(panelTab
@@ -5139,6 +5158,33 @@
     if (_listenSh) {
       _listenSh('backend-connection-state-request', function () {
         messageBridge.broadcastBackendConnectionState(state.backendConnected);
+      });
+      // The frontend-settings sub-app changes themes in its own
+      // webview and broadcasts `frontend-setting-changed`. Without a
+      // listener here the shell never re-resolves its own attributes
+      // and never re-snapshots the palette, so every other open webview
+      // stays on the old theme. Re-apply on the shell first (so
+      // broadcastTheme reads the new resolved tokens), then push the
+      // snapshot to all webviews.
+      _listenSh('frontend-setting-changed', function (event) {
+        var payload = event && event.payload ? event.payload : {};
+        var changedTheme = false;
+        if (payload.setting === 'themeMode' &&
+            window.LexeraAppearance &&
+            typeof window.LexeraAppearance.applyThemeMode === 'function') {
+          window.LexeraAppearance.applyThemeMode(payload.value, { persist: false });
+          changedTheme = true;
+        } else if (payload.setting === 'visualTheme' &&
+            window.LexeraAppearance &&
+            typeof window.LexeraAppearance.applyVisualTheme === 'function') {
+          window.LexeraAppearance.applyVisualTheme(payload.value);
+          changedTheme = true;
+        }
+        if (changedTheme &&
+            window.LexeraMultiview &&
+            typeof window.LexeraMultiview.broadcastTheme === 'function') {
+          window.LexeraMultiview.broadcastTheme();
+        }
       });
     }
     // Order matters: persistence first so its `persist` reference can

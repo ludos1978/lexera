@@ -222,6 +222,34 @@ describe('LexeraFrontendSettings interactions', () => {
     expect(window.localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
   });
 
+  it('settings runtime applies theme mode locally before broadcasting', () => {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+    const { window } = dom;
+    window.matchMedia = vi.fn(() => ({ matches: false }));
+    const invoke = vi.fn(() => Promise.resolve(null));
+    window.__TAURI__ = {
+      core: { invoke }
+    };
+
+    const runtime = loadIIFE('views/_shared/settingsRuntime.js', 'window.LexeraSettingsRuntime', {
+      window,
+      document: window.document,
+      localStorage: window.localStorage,
+      JSON
+    });
+
+    const options = runtime.buildFrontendSettingsOptions();
+    options.applyThemeMode('dark');
+
+    expect(window.document.documentElement.getAttribute('data-theme-mode')).toBe('dark');
+    expect(window.document.documentElement.getAttribute('data-theme-mode-requested')).toBe('dark');
+    expect(window.localStorage.getItem('lexera-theme-mode')).toBe('dark');
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'frontend-setting-changed',
+      payload: { setting: 'themeMode', value: 'dark' }
+    });
+  });
+
   it('settings runtime does not expose removed hierarchy display options', async () => {
     const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
     const { window } = dom;

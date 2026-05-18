@@ -1382,6 +1382,13 @@ var LexeraBoardList = (function () {
     ensureGlobalWsMenuGuard();
 
     rootEl.addEventListener('click', function (e) {
+      var newBoardBtn = e.target.closest('.lexera-shared-new-board');
+      if (newBoardBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        _callDep('createNewBoard');
+        return;
+      }
       var menuBtn = e.target.closest('.lexera-shared-workspace-menu');
       if (menuBtn) {
         e.preventDefault();
@@ -1555,7 +1562,7 @@ var LexeraBoardList = (function () {
       var t = e.target;
       if (t && typeof t.closest === 'function' && t.closest('.board-item-ws-menu')) {
         e.stopPropagation();
-        e.preventDefault();
+        if (e.type === 'dragstart') e.preventDefault();
       }
     }
     document.addEventListener('mousedown', swallow, true);

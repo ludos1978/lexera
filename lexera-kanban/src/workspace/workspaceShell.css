@@ -15,6 +15,15 @@
   overflow: hidden;
 }
 
+/* Board-file drag-drop target feedback. Mirrors `.sidebar.drop-zone-active`
+   (app.css): the shell window outlines its `.workspace-shell` chrome; an
+   embedded board webview outlines its whole body. */
+.workspace-shell.ws-file-drop-active,
+body.ws-file-drop-active {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+
 .workspace-shell {
   --font-color-unified: var(--font-color-mode, #1a1816);
   --workspace-row-min-height: var(--hierarchy-row-min-height, calc(18px * var(--ui-scale, 1)));

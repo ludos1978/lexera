@@ -57,7 +57,7 @@ function createDom() {
 }
 
 describe('hierarchy view sub-app', () => {
-  it('renders grouped workspace boards, supports collapse, and does not render a workspace list', () => {
+  it('renders grouped workspace boards, supports collapse, and does not render a workspace list', async () => {
     const dom = createDom();
     const { window } = dom;
     let capturedOpts = null;
@@ -115,6 +115,9 @@ describe('hierarchy view sub-app', () => {
     menuBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
     const openAction = window.document.querySelector('.tree-board-action-menu [data-action="open-tab"]');
     expect(openAction).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    openAction.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(window.document.querySelector('.tree-board-action-menu [data-action="open-tab"]')).toBe(openAction);
     openAction.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
     expect(window.LexeraSubApp.navigate).toHaveBeenCalledWith({
       type: 'open-board',
