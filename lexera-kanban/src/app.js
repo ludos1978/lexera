@@ -8414,7 +8414,7 @@ var LexeraDashboard = (function () {
       if (isFinite(whitespacePx) && whitespacePx > 0) {
         var roundedWhitespaceScale = Math.round((whitespacePx / 16) * 1000) / 1000;
         container.style.setProperty('--board-row-gap', 'calc(12px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
-        container.style.setProperty('--board-stack-gap', 'calc(10px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
+        container.style.setProperty('--board-stack-gap', 'calc(30px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
         container.style.setProperty('--board-column-gap', 'calc(6px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
         container.style.setProperty('--board-inner-padding', 'calc(8px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
       }
