@@ -1937,11 +1937,33 @@ impl LocalStorage {
         let normalized_base =
             base_board.map(|base| Self::normalize_board_for_write(base, &board_dir));
 
-        // Read current disk content to check for conflicts
+        // Read current disk content to check for conflicts. A registered
+        // board whose markdown file was deleted out from under us (moved
+        // or removed externally, or a freshly-added board whose template
+        // write was lost) must NOT make every subsequent save fail with
+        // ENOENT. That failure mode strands the user's edits in crashsaves
+        // only: the in-memory kanban keeps rendering its state, but the
+        // save returns an error so `hierarchy-board-changed` never
+        // broadcasts and the workspace tree (and any sibling kanban) stays
+        // stale forever. Treat a missing file as empty + non-divergent so
+        // the merge path below writes the incoming board fresh and
+        // persist_board_files recreates the file in its (still-present)
+        // parent directory — the save self-heals instead of looping.
         let stored_hash = self.get_board_content_hash(board_id).unwrap_or_default();
-        let disk_content = fs::read_to_string(&file_path)?;
+        let (disk_content, file_missing) = match fs::read_to_string(&file_path) {
+            Ok(content) => (content, false),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                log::warn!(
+                    "[lexera.storage.write] Board {} file missing at {:?}; recreating it from the incoming save",
+                    board_id,
+                    file_path
+                );
+                (String::new(), true)
+            }
+            Err(err) => return Err(err.into()),
+        };
         let disk_hash = Self::content_hash(&disk_content);
-        let disk_diverged = disk_hash != stored_hash && !stored_hash.is_empty();
+        let disk_diverged = !file_missing && disk_hash != stored_hash && !stored_hash.is_empty();
 
         // CRDT preload only matters when the CRDT decision path runs. With
         // the `crdt` feature compiled out the save path is markdown-only,
@@ -5536,6 +5558,45 @@ kanban-plugin: board
         assert!(
             !storage.check_self_write(written_path),
             "self-write fingerprint must be consumed after one matching check"
+        );
+    }
+
+    #[test]
+    fn test_write_board_recreates_file_deleted_out_from_under_us() {
+        // Regression: a registered board whose markdown file is deleted
+        // externally (or a freshly-added board whose template write was
+        // lost) used to make every subsequent save fail with ENOENT,
+        // stranding edits in crashsaves only and leaving the workspace
+        // tree permanently stale. The save must self-heal: recreate the
+        // file from the incoming board instead of erroring.
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+        let mut board = storage.read_board(&id).unwrap();
+        board.all_columns_mut()[0].cards[0].content = "Survives file deletion".to_string();
+
+        // Simulate the file (and its CRDT artifact) being removed out
+        // from under the running app; the parent directory still exists.
+        fs::remove_file(&board_path).unwrap();
+        let _ = fs::remove_file(board_path.with_extension("md.crdt"));
+        assert!(!board_path.exists());
+
+        let result = storage
+            .write_board(&id, &board)
+            .expect("save must self-heal a missing board file");
+        let written_path = result.redirected_path.unwrap_or(board_path);
+        assert!(
+            written_path.exists(),
+            "save must recreate the deleted board markdown file"
+        );
+        let recreated = fs::read_to_string(&written_path).unwrap();
+        assert!(
+            recreated.contains("Survives file deletion"),
+            "recreated file must carry the incoming edit, got:\n{}",
+            recreated
         );
     }
 
