@@ -14,9 +14,13 @@ use std::time::SystemTime;
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use sha2::{Digest, Sha256};
 
-use super::merge_engine::{CrdtMergeEngine, MergeEngine, MergeRequest};
+#[cfg(feature = "crdt")]
+use super::merge_engine::CrdtMergeEngine;
+use super::merge_engine::{MergeEngine, MergeRequest};
 use super::{BoardStorage, StorageError};
-use crate::crdt::bridge::{decode_version_vector, empty_version_vector, CrdtStore};
+#[cfg(feature = "crdt")]
+use crate::crdt::bridge::{decode_version_vector, empty_version_vector};
+use crate::crdt::bridge::CrdtStore;
 use crate::include::resolver::IncludeMap;
 use crate::include::slide_parser;
 use crate::include::syntax;
@@ -212,6 +216,7 @@ pub struct LocalStorage {
 /// A board with no rows but flat columns (legacy format) is considered structurally
 /// equivalent to a board with a single "Default" row / "Default" stack containing
 /// the same columns (new format produced by the parser).
+#[cfg(feature = "crdt")]
 fn has_structural_mismatch(a: &KanbanBoard, b: &KanbanBoard) -> bool {
     /// Return the effective flat column IDs for a board, normalizing implicit
     /// Default row/stack to the legacy flat representation.
@@ -856,15 +861,6 @@ impl LocalStorage {
         Ok(())
     }
 
-    #[cfg(not(feature = "crdt"))]
-    fn ensure_board_state_crdt_loaded(
-        &self,
-        _board_id: &str,
-        _state: &mut BoardState,
-    ) -> Result<(), StorageError> {
-        Ok(())
-    }
-
     fn search_result_from_cached_doc(
         board_id: &str,
         board_title: &str,
@@ -1074,6 +1070,7 @@ impl LocalStorage {
         }
     }
 
+    #[cfg(feature = "crdt")]
     fn board_has_missing_kids(board: &KanbanBoard) -> bool {
         board.all_columns().iter().any(|column| {
             column.cards.iter().any(|card| {
@@ -1132,6 +1129,7 @@ impl LocalStorage {
         normalized
     }
 
+    #[cfg(feature = "crdt")]
     fn restore_include_sources(target: &mut KanbanBoard, source: &KanbanBoard) {
         let mut include_by_column_id: HashMap<String, IncludeSource> = HashMap::new();
         let mut include_by_raw_path: HashMap<String, IncludeSource> = HashMap::new();
@@ -1586,6 +1584,7 @@ impl LocalStorage {
         conflicts
     }
 
+    #[cfg(feature = "crdt")]
     fn merge_boards_with_crdt(
         board_id: &str,
         base: &KanbanBoard,
@@ -1831,6 +1830,7 @@ impl LocalStorage {
         self.write_crashsave_for_file(&file_path, board, reason)
     }
 
+    #[cfg(feature = "crdt")]
     fn write_remote_board_internal(
         &self,
         board_id: &str,
@@ -1914,6 +1914,20 @@ impl LocalStorage {
             board_card_summary(&board_to_write)
         );
         self.commit_remote_board_state(board_id, board_to_write, Some(crdt_to_write))?;
+        Ok(None)
+    }
+
+    #[cfg(not(feature = "crdt"))]
+    fn write_remote_board_internal(
+        &self,
+        board_id: &str,
+        board: &KanbanBoard,
+    ) -> Result<Option<card_merge::MergeResult>, StorageError> {
+        let lock = self.get_write_lock(board_id)?;
+        let _guard =
+            Self::acquire_board_write_guard(board_id, lock.as_ref(), "write_remote_board_internal");
+        let incoming_board = Self::ensure_board_card_kids(board);
+        self.commit_remote_board_state(board_id, incoming_board, None)?;
         Ok(None)
     }
 
@@ -2345,6 +2359,7 @@ impl LocalStorage {
         base_board: &KanbanBoard,
         board: &KanbanBoard,
     ) -> Result<(KanbanBoard, KanbanBoard, Option<card_merge::MergeResult>), StorageError> {
+        #[cfg(feature = "crdt")]
         if self.is_remote_board(board_id) {
             let _ = base_board;
             let lock = self.get_write_lock(board_id)?;
@@ -2373,6 +2388,27 @@ impl LocalStorage {
             }
             return Ok((current, merged, None));
         }
+        #[cfg(not(feature = "crdt"))]
+        if self.is_remote_board(board_id) {
+            let _ = base_board;
+            let lock = self.get_write_lock(board_id)?;
+            let _guard = Self::acquire_board_write_guard(
+                board_id,
+                lock.as_ref(),
+                "rebase_board_from_base(remote)",
+            );
+            let current = self
+                .boards
+                .read()
+                .map_err(|e| StorageError::LockPoisoned(format!("boards read: {}", e)))?
+                .get(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?
+                .board
+                .clone();
+            let current = Self::ensure_board_card_kids(&current);
+            let incoming = Self::ensure_board_card_kids(board);
+            return Ok((current, incoming, None));
+        }
         let lock = self.get_write_lock(board_id)?;
         let _guard =
             Self::acquire_board_write_guard(board_id, lock.as_ref(), "rebase_board_from_base");
@@ -2387,6 +2423,7 @@ impl LocalStorage {
         let disk_content = fs::read_to_string(&file_path)?;
         let disk_hash = Self::content_hash(&disk_content);
         let disk_diverged = disk_hash != stored_hash && !stored_hash.is_empty();
+        #[cfg(feature = "crdt")]
         if !disk_diverged {
             let mut boards = self
                 .boards
@@ -2397,6 +2434,7 @@ impl LocalStorage {
                 .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
             self.ensure_board_state_crdt_loaded(board_id, state)?;
         }
+        #[cfg(feature = "crdt")]
         let current = {
             let boards = self
                 .boards
@@ -2430,6 +2468,25 @@ impl LocalStorage {
                 }
             }
         };
+        #[cfg(not(feature = "crdt"))]
+        let current = if disk_diverged {
+            Self::normalize_board_for_write(
+                &self.parse_with_includes(&disk_content, board_id, &board_dir, &file_path)?,
+                &board_dir,
+            )
+        } else {
+            let boards = self
+                .boards
+                .read()
+                .map_err(|e| StorageError::LockPoisoned(format!("boards read: {}", e)))?;
+            Self::normalize_board_for_write(
+                &boards
+                    .get(board_id)
+                    .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?
+                    .board,
+                &board_dir,
+            )
+        };
 
         let conflicts = Self::detect_card_conflicts(&normalized_base, &current, &normalized_board);
         if !conflicts.is_empty() {
@@ -2445,6 +2502,7 @@ impl LocalStorage {
             ));
         }
 
+        #[cfg(feature = "crdt")]
         let (merged_board, _) = Self::merge_boards_with_crdt(
             board_id,
             &normalized_base,
@@ -2452,6 +2510,17 @@ impl LocalStorage {
             &normalized_board,
             &board_dir,
         )?;
+        #[cfg(not(feature = "crdt"))]
+        let merged_board = {
+            use crate::storage::merge_engine::CardIdentityMergeEngine;
+            let outcome = CardIdentityMergeEngine.merge_from_base(MergeRequest {
+                board_id,
+                base: &normalized_base,
+                current: &current,
+                incoming: &normalized_board,
+            })?;
+            Self::normalize_board_for_write(&outcome.board, &board_dir)
+        };
         Ok((current, merged_board, None))
     }
 
@@ -3347,6 +3416,7 @@ impl LocalStorage {
     /// back into the LoroDoc's internal kv store and frees the parsed-op
     /// memory. Returns the number of boards compacted. Safe to call alongside
     /// reads — `compact_change_store` is internally synchronized.
+    #[cfg(feature = "crdt")]
     pub fn compact_loaded_crdts(&self) -> usize {
         let boards = match self.boards.read() {
             Ok(b) => b,
@@ -3360,6 +3430,11 @@ impl LocalStorage {
             }
         }
         count
+    }
+
+    #[cfg(not(feature = "crdt"))]
+    pub fn compact_loaded_crdts(&self) -> usize {
+        0
     }
 
     /// Get the version number for a board (for ETag support).
@@ -3828,6 +3903,7 @@ impl LocalStorage {
 
     /// Get the encoded version vector for a board's CRDT (for sync handshake).
     /// Acquires the per-board write lock to avoid reading while CRDT is taken out.
+    #[cfg(feature = "crdt")]
     pub fn get_crdt_vv(&self, board_id: &str) -> Option<Vec<u8>> {
         let lock = self.get_write_lock(board_id).ok()?;
         let _guard = Self::acquire_board_write_guard(board_id, lock.as_ref(), "get_crdt_vv");
@@ -3892,6 +3968,7 @@ impl LocalStorage {
     /// `vv_bytes` is the encoded VersionVector from the remote peer.
     /// An empty `vv_bytes` slice is treated as an empty VersionVector (export all).
     /// Acquires the per-board write lock to avoid reading while CRDT is taken out.
+    #[cfg(feature = "crdt")]
     pub fn export_crdt_updates_since(&self, board_id: &str, vv_bytes: &[u8]) -> Option<Vec<u8>> {
         let lock = self.get_write_lock(board_id).ok()?;
         let _guard =
@@ -3908,6 +3985,7 @@ impl LocalStorage {
         crdt.export_updates_since(&vv).ok()
     }
 
+    #[cfg(feature = "crdt")]
     pub fn export_crdt_snapshot(&self, board_id: &str) -> Option<Vec<u8>> {
         let lock = self.get_write_lock(board_id).ok()?;
         let _guard =
@@ -3920,6 +3998,7 @@ impl LocalStorage {
     }
 
     /// Import remote CRDT updates, rebuild the board from CRDT, and persist.
+    #[cfg(feature = "crdt")]
     pub fn import_crdt_updates(&self, board_id: &str, bytes: &[u8]) -> Result<(), StorageError> {
         let lock = self.get_write_lock(board_id)?;
         let _guard =
@@ -4457,7 +4536,7 @@ impl BoardStorage for LocalStorage {
             .get_board_path(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
 
-        // Take CRDT from state for mutation
+        #[cfg(feature = "crdt")]
         let mut crdt = {
             let mut boards = self.boards.write().map_err(|e| {
                 StorageError::LockPoisoned(format!("boards write in add_card (take crdt): {}", e))
@@ -4468,6 +4547,8 @@ impl BoardStorage for LocalStorage {
             self.ensure_board_state_crdt_loaded(board_id, state)?;
             state.crdt.take()
         };
+        #[cfg(not(feature = "crdt"))]
+        let crdt: Option<CrdtStore> = None;
 
         // Read fresh from disk
         let file_content = fs::read_to_string(&file_path)?;
@@ -4478,11 +4559,13 @@ impl BoardStorage for LocalStorage {
         );
 
         if !board.valid {
-            // Put CRDT back before returning error
-            if let Some(c) = crdt {
-                if let Ok(mut boards) = self.boards.write() {
-                    if let Some(state) = boards.get_mut(board_id) {
-                        state.crdt = Some(c);
+            #[cfg(feature = "crdt")]
+            {
+                if let Some(c) = crdt {
+                    if let Ok(mut boards) = self.boards.write() {
+                        if let Some(state) = boards.get_mut(board_id) {
+                            state.crdt = Some(c);
+                        }
                     }
                 }
             }
@@ -4493,11 +4576,13 @@ impl BoardStorage for LocalStorage {
 
         let mut all_cols = board.all_columns_mut();
         if col_index >= all_cols.len() {
-            // Put CRDT back before returning error
-            if let Some(c) = crdt {
-                if let Ok(mut boards) = self.boards.write() {
-                    if let Some(state) = boards.get_mut(board_id) {
-                        state.crdt = Some(c);
+            #[cfg(feature = "crdt")]
+            {
+                if let Some(c) = crdt {
+                    if let Ok(mut boards) = self.boards.write() {
+                        if let Some(state) = boards.get_mut(board_id) {
+                            state.crdt = Some(c);
+                        }
                     }
                 }
             }
@@ -4522,17 +4607,19 @@ impl BoardStorage for LocalStorage {
 
         all_cols[col_index].cards.push(new_card);
 
-        // Update CRDT with the new card (catch Loro panics)
-        if let Some(ref mut c) = crdt {
-            let result = c
-                .to_board_result()
-                .and_then(|old_board| c.apply_board(&board, &old_board));
-            if let Err(e) = result {
-                log::error!(
-                    "[lexera.crdt] Failed to apply card addition to CRDT for board {}: {}",
-                    board_id,
-                    e
-                );
+        #[cfg(feature = "crdt")]
+        {
+            if let Some(ref mut c) = crdt {
+                let result = c
+                    .to_board_result()
+                    .and_then(|old_board| c.apply_board(&board, &old_board));
+                if let Err(e) = result {
+                    log::error!(
+                        "[lexera.crdt] Failed to apply card addition to CRDT for board {}: {}",
+                        board_id,
+                        e
+                    );
+                }
             }
         }
 
@@ -4553,6 +4640,7 @@ impl BoardStorage for LocalStorage {
             .get_board_path(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
 
+        #[cfg(feature = "crdt")]
         let mut crdt = {
             let mut boards = self.boards.write().map_err(|e| {
                 StorageError::LockPoisoned(format!(
@@ -4566,6 +4654,8 @@ impl BoardStorage for LocalStorage {
             self.ensure_board_state_crdt_loaded(board_id, state)?;
             state.crdt.take()
         };
+        #[cfg(not(feature = "crdt"))]
+        let crdt: Option<CrdtStore> = None;
 
         let file_content = fs::read_to_string(&file_path)?;
         let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
@@ -4575,10 +4665,13 @@ impl BoardStorage for LocalStorage {
         );
 
         if !board.valid {
-            if let Some(c) = crdt {
-                if let Ok(mut boards) = self.boards.write() {
-                    if let Some(state) = boards.get_mut(board_id) {
-                        state.crdt = Some(c);
+            #[cfg(feature = "crdt")]
+            {
+                if let Some(c) = crdt {
+                    if let Ok(mut boards) = self.boards.write() {
+                        if let Some(state) = boards.get_mut(board_id) {
+                            state.crdt = Some(c);
+                        }
                     }
                 }
             }
@@ -4603,27 +4696,32 @@ impl BoardStorage for LocalStorage {
         }
 
         if !found {
-            if let Some(c) = crdt {
-                if let Ok(mut boards) = self.boards.write() {
-                    if let Some(state) = boards.get_mut(board_id) {
-                        state.crdt = Some(c);
+            #[cfg(feature = "crdt")]
+            {
+                if let Some(c) = crdt {
+                    if let Ok(mut boards) = self.boards.write() {
+                        if let Some(state) = boards.get_mut(board_id) {
+                            state.crdt = Some(c);
+                        }
                     }
                 }
             }
             return Err(StorageError::CardNotFound(card_id.to_string()));
         }
 
-        // Update CRDT (catch Loro panics)
-        if let Some(ref mut c) = crdt {
-            let result = c
-                .to_board_result()
-                .and_then(|old_board| c.apply_board(&board, &old_board));
-            if let Err(e) = result {
-                log::error!(
-                    "[lexera.crdt] Failed to apply card append to CRDT for board {}: {}",
-                    board_id,
-                    e
-                );
+        #[cfg(feature = "crdt")]
+        {
+            if let Some(ref mut c) = crdt {
+                let result = c
+                    .to_board_result()
+                    .and_then(|old_board| c.apply_board(&board, &old_board));
+                if let Err(e) = result {
+                    log::error!(
+                        "[lexera.crdt] Failed to apply card append to CRDT for board {}: {}",
+                        board_id,
+                        e
+                    );
+                }
             }
         }
 
@@ -4734,6 +4832,7 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn compact_loaded_crdts_counts_each_loaded_board_and_preserves_content() {
         let storage = LocalStorage::new();
 
@@ -4878,6 +4977,30 @@ kanban-plugin: board
         assert!(storage.read_board(&id).is_some());
         let boards = storage.boards.read().unwrap();
         assert!(boards.get(&id).unwrap().crdt.is_none());
+    }
+
+    #[test]
+    #[cfg(not(feature = "crdt"))]
+    fn test_markdown_only_add_and_mutate_do_not_create_crdt_artifact() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let crdt_path = board_path.with_extension("md.crdt");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+        assert!(!crdt_path.exists());
+
+        storage.add_card(&id, 0, "Markdown-only task").unwrap();
+        assert!(!crdt_path.exists());
+
+        let boards = storage.boards.read().unwrap();
+        assert!(boards.get(&id).unwrap().crdt.is_none());
+        drop(boards);
+
+        let on_disk = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk.contains("Markdown-only task"));
+        assert!(on_disk.contains("<!-- kid:"));
     }
 
     #[test]
@@ -6453,6 +6576,7 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn test_crdt_recovery_from_corrupt_file() {
         let dir = tempdir().unwrap();
         let board_path = dir.path().join("board.md");
@@ -6520,6 +6644,7 @@ kanban-plugin: board
     }
 
     #[test]
+    #[cfg(feature = "crdt")]
     fn test_crdt_recovery_preserves_board_content() {
         let dir = tempdir().unwrap();
         let board_path = dir.path().join("board.md");

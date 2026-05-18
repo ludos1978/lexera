@@ -9,6 +9,7 @@ use lexera_core::storage::{
 use serde::Deserialize;
 use std::path::PathBuf;
 
+#[cfg(feature = "crdt")]
 use super::live_sync;
 use super::{
     err_bad_request, err_internal, err_not_found, insert_header_safe, log_api_issue,
@@ -598,6 +599,22 @@ pub async fn rebase_board_with_base(
     )))
 }
 
+#[cfg(not(feature = "crdt"))]
+pub async fn open_live_sync_session(
+    State(_state): State<AppState>,
+    Path(board_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
+    log::warn!(
+        target: "lexera.api.live_sync.open",
+        "{}; rejecting live sync session for board {}",
+        CRDT_SYNC_DISABLED_MESSAGE,
+        board_id
+    );
+    Err(err_crdt_sync_disabled())
+}
+
+#[cfg(feature = "crdt")]
 pub async fn open_live_sync_session(
     State(state): State<AppState>,
     Path(board_id): Path<String>,
@@ -646,6 +663,22 @@ pub async fn open_live_sync_session(
     })))
 }
 
+#[cfg(not(feature = "crdt"))]
+pub async fn apply_live_sync_board(
+    Path(session_id): Path<String>,
+    Json(body): Json<LiveSyncApplyBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let _ = body.board;
+    log::warn!(
+        target: "lexera.api.live_sync.apply",
+        "{}; rejecting live sync apply for session {}",
+        CRDT_SYNC_DISABLED_MESSAGE,
+        session_id
+    );
+    Err(err_crdt_sync_disabled())
+}
+
+#[cfg(feature = "crdt")]
 pub async fn apply_live_sync_board(
     Path(session_id): Path<String>,
     Json(body): Json<LiveSyncApplyBody>,
@@ -670,6 +703,22 @@ pub async fn apply_live_sync_board(
     })))
 }
 
+#[cfg(not(feature = "crdt"))]
+pub async fn import_live_sync_updates(
+    Path(session_id): Path<String>,
+    Json(body): Json<LiveSyncImportBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let _ = body.updates;
+    log::warn!(
+        target: "lexera.api.live_sync.import",
+        "{}; rejecting live sync import for session {}",
+        CRDT_SYNC_DISABLED_MESSAGE,
+        session_id
+    );
+    Err(err_crdt_sync_disabled())
+}
+
+#[cfg(feature = "crdt")]
 pub async fn import_live_sync_updates(
     Path(session_id): Path<String>,
     Json(body): Json<LiveSyncImportBody>,
@@ -712,6 +761,20 @@ pub async fn import_live_sync_updates(
     })))
 }
 
+#[cfg(not(feature = "crdt"))]
+pub async fn close_live_sync_session(
+    Path(session_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    log::warn!(
+        target: "lexera.api.live_sync.close",
+        "{}; rejecting live sync close for session {}",
+        CRDT_SYNC_DISABLED_MESSAGE,
+        session_id
+    );
+    Err(err_crdt_sync_disabled())
+}
+
+#[cfg(feature = "crdt")]
 pub async fn close_live_sync_session(
     Path(session_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {

@@ -16,6 +16,7 @@ mod diagnostics;
 mod events;
 mod external_embed;
 mod file_ops;
+#[cfg(feature = "crdt")]
 mod live_sync;
 mod media;
 pub(crate) mod rate_limit;

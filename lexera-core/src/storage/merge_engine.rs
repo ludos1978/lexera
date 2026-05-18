@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+#[cfg(feature = "crdt")]
 use crate::crdt::bridge::CrdtStore;
 use crate::merge::diff::{apply_change, diff_boards, snapshot_board, CardChange};
 use crate::merge::merge::{CardConflict, ConflictField, MergeResult};
@@ -29,8 +30,10 @@ pub trait MergeEngine {
     ) -> Result<MergeOutcome<Self::Artifact>, StorageError>;
 }
 
+#[cfg(feature = "crdt")]
 pub struct CrdtMergeEngine;
 
+#[cfg(feature = "crdt")]
 impl MergeEngine for CrdtMergeEngine {
     type Artifact = CrdtStore;
 
