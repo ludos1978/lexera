@@ -2936,7 +2936,28 @@ impl LocalStorage {
                 }
             }
             let next_cards = slide_parser::parse_slides(&include_content);
-            if column.cards != next_cards {
+            // `parse_slides` stamps a fresh ephemeral `id` on every card,
+            // and `KanbanCard` derives `PartialEq` (which compares `id`),
+            // so a structural `column.cards != next_cards` was ALWAYS true
+            // for a non-empty column regardless of whether the user-visible
+            // content actually changed — that fired a spurious
+            // `{stem}-conflict-<ts>.md` backup on essentially every watcher
+            // reload (37 stray backups observed in one session). The
+            // destructive-overwrite + backup decision must hinge ONLY on
+            // user-visible content (the "never delete user data" contract):
+            // ignore the volatile `id` AND the internal `kid` (in non-CRDT
+            // builds `generate_slides` re-embeds the kid marker, so a
+            // serialized-string compare would still false-positive when an
+            // in-memory card has an assigned kid the disk file lacks).
+            // `parse_slides` already stores kid-stripped, trimmed text in
+            // `.content` in both build configs, so compare that directly.
+            let visible = |cards: &[KanbanCard]| -> Vec<(String, bool)> {
+                cards
+                    .iter()
+                    .map(|c| (c.content.trim().to_string(), c.checked))
+                    .collect()
+            };
+            if visible(&column.cards) != visible(&next_cards) {
                 // ────── Data-safety contract ──────
                 // The watcher fired because the include changed on disk.
                 // If the in-memory `column.cards` ALSO has content (i.e.
@@ -2954,11 +2975,14 @@ impl LocalStorage {
                 // load of a previously-missing include, or a column that
                 // had no cards yet) — skip the backup write in that case.
                 if !column.cards.is_empty() {
-                    let pre_overwrite_content =
+                    // Full-fidelity payload — `generate_slides` keeps kid
+                    // markers in non-CRDT builds so the backup is exactly
+                    // the persisted form the user can recover from.
+                    let in_memory_serialized =
                         slide_parser::generate_slides(&column.cards);
                     match super::backup::BackupManager::create_conflict_backup(
                         &state.file_path,
-                        &pre_overwrite_content,
+                        &in_memory_serialized,
                     ) {
                         Ok(entry) => log::warn!(
                             "[lexera.storage.include] External change to {:?} diverged from in-memory cards on board {}; wrote conflict backup {:?}",
@@ -5956,6 +5980,58 @@ kanban-plugin: board
             !has_backup,
             "empty-in-memory case must NOT write a conflict backup; entries: {:?}",
             entries
+        );
+    }
+
+    #[test]
+    fn test_reload_with_identical_content_writes_no_conflict_backup() {
+        // Regression: `parse_slides` stamps a fresh ephemeral `id` on
+        // every card, so the old structural `column.cards != next_cards`
+        // check reported divergence on EVERY watcher reload even when the
+        // include content was byte-identical — producing a stray
+        // `{stem}-conflict-<ts>.md` backup each time (37 observed in one
+        // session). A reload that does not change user-visible content
+        // must be a no-op: no backup, changed == false.
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let include_path = dir.path().join("slides.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./slides.md)!!!\n",
+        )
+        .unwrap();
+        fs::write(&include_path, "# Slide A\n\nStable content\n").unwrap();
+
+        let storage = LocalStorage::new();
+        let board_id = storage.add_board(&board_path).unwrap();
+        let cols = storage.read_board(&board_id).unwrap().all_columns().len();
+        assert_eq!(cols, 1);
+
+        // Rewrite the include with the SAME content the parser would
+        // produce — simulates a watcher fire with no real change (e.g.
+        // touch, editor save with no edit, our own write-back).
+        fs::write(&include_path, "# Slide A\n\nStable content\n").unwrap();
+
+        let changed = storage
+            .reload_board_include_path(&board_id, &include_path)
+            .expect("reload must not error");
+        assert!(
+            !changed,
+            "identical-content reload must report changed=false (no-op)"
+        );
+
+        let has_backup = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("board-conflict-")
+            });
+        assert!(
+            !has_backup,
+            "identical-content reload must NOT write a conflict backup"
         );
     }
 
