@@ -3798,12 +3798,12 @@ u {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   padding: 0;
   border: none;
   background: transparent;
-  font-size: var(--font-size-md);
+  font-size: var(--icon-glyph-size);
   color: var(--text-primary);
   opacity: 0.7;
   cursor: pointer;
