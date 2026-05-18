@@ -93,7 +93,7 @@ This snapshot consolidates the currently open work. The detailed task history re
 - [ ] Restore docked dashboard parity: search, all/active scope, pinned queries, and grouped result sections.
 - [ ] Restore docked log parity: source filter, level dropdown, text search, reload/copy actions, connection status, and mirrored log state.
 - [ ] Port the frontend test runner implementation out of the shell-owned harness.
-- [ ] Stabilize the frontend auto-run harness so `./run-lexera-tests.sh` readiness and `pre-test-paint` stalls are actionable.
+- [ ] (in progress) Stabilize the frontend auto-run harness so `./run-lexera-tests.sh` readiness and `pre-test-paint` stalls are actionable.
 - [ ] Extract a dedicated `src/views/board/` entry and retire the current `index.html?embedded=1...` board boot path.
 - [ ] Continue rich hierarchy view parity: stacks, columns, cards, drag/drop, inline rename, hierarchy-focus parity, and context menus.
 
