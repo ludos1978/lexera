@@ -4598,6 +4598,16 @@
     return tab;
   }
 
+  // Run the create-new-board flow (OrderHelpers.createNewBoardFile,
+  // injected as the `createNewBoard` mount hook). Single entry point
+  // shared by the workspace-chrome right-click menu and the hierarchy
+  // panel's "New board" header button (routed here via navigationBridge).
+  function createNewBoard() {
+    if (state.hooks && typeof state.hooks.createNewBoard === 'function') {
+      state.hooks.createNewBoard();
+    }
+  }
+
   function ensureInitialTab(boardId) {
     var leaf = getFirstLeaf(state.dockTree);
     if (leaf && leaf.tabs && leaf.tabs.length > 0) return false;
@@ -5024,10 +5034,7 @@
         [{ id: 'new-board', label: 'New Board…' }],
         event.clientX, event.clientY, 'menu.workspace'
       ).then(function (action) {
-        if (action === 'new-board' &&
-            state.hooks && typeof state.hooks.createNewBoard === 'function') {
-          state.hooks.createNewBoard();
-        }
+        if (action === 'new-board') createNewBoard();
       });
       return;
     }
@@ -5445,6 +5452,7 @@
     onBoardsUpdated: onBoardsUpdated,
     onCatalogUpdated: onCatalogUpdated,
     openBoard: openBoard,
+    createNewBoard: createNewBoard,
     openWorkspaceWindow: openWorkspaceWindow,
     ensureInitialTab: ensureInitialTab,
     focusHierarchyTarget: focusHierarchyTarget,

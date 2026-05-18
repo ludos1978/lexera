@@ -1269,6 +1269,20 @@
     localBoardsEl.__hierarchyDblClickBound = true;
   }
 
+  // "New board" header button — asks the shell to run the
+  // create-new-board flow (prompt filename → pick folder → write the
+  // bare template → register → open). The shell owns that flow
+  // (OrderHelpers.createNewBoardFile via WorkspaceShell); this slim
+  // webview only routes the request, same as 'open-board'.
+  var newBoardBtn = document.getElementById('new-board-btn');
+  if (newBoardBtn && !newBoardBtn.__hierarchyNewBoardBound) {
+    newBoardBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      LexeraSubApp.navigate({ type: 'create-new-board' });
+    });
+    newBoardBtn.__hierarchyNewBoardBound = true;
+  }
+
   // Single delegated click listener — keeps wiring simple even though
   // the tree is rebuilt on every state change.
   if (localBoardsEl && !localBoardsEl.__hierarchyClickBound) {

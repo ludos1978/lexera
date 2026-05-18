@@ -42,7 +42,6 @@ function buildDeps(overrides = {}) {
     setConnectedState: vi.fn(function (value) { deps.connected = value; }),
     setWorkspaces: vi.fn(),
     resolveActiveWorkspaceId: vi.fn(),
-    refreshWorkspaceMirrors: vi.fn(),
     setBoards: vi.fn(function (value) { deps.boards = value; }),
     setRemoteBoards: vi.fn(function (value) { deps.remoteBoards = value; }),
     renderBoardList: vi.fn(),
@@ -138,7 +137,6 @@ describe('LexeraPollingService', () => {
 
     expect(deps.setWorkspaces).toHaveBeenCalledWith([{ id: 'ws-1', name: 'Workspace 1', isDefault: true }]);
     expect(deps.resolveActiveWorkspaceId).toHaveBeenCalledWith('ws-1');
-    expect(deps.refreshWorkspaceMirrors).toHaveBeenCalled();
   });
 
   it('does not treat board generation-only changes as workspace catalog changes', async () => {

@@ -39,6 +39,14 @@ describe('LexeraNavigationBridge.handleNavigate', () => {
     expect(openBoard).toHaveBeenCalledWith('b1', { focus: true });
   });
 
+  it('routes create-new-board to LexeraWorkspaceShell.createNewBoard', () => {
+    const { bridge, win } = freshBridge();
+    const createNewBoard = vi.fn();
+    win.LexeraWorkspaceShell = { createNewBoard };
+    bridge.handleNavigate({ payload: { type: 'create-new-board' } });
+    expect(createNewBoard).toHaveBeenCalledTimes(1);
+  });
+
   it('routes reveal-panel to LexeraWorkspaceShell.revealPanel', () => {
     const { bridge, win } = freshBridge();
     const revealPanel = vi.fn();

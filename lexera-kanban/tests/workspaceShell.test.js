@@ -384,6 +384,14 @@ describe('workspace shell tab actions (Phase 1 keyboard shortcuts)', () => {
     vi.useRealTimers();
   });
 
+  it('createNewBoard() delegates to the createNewBoard mount hook', () => {
+    const { shell, mainContent } = createShellHarness();
+    const createNewBoard = vi.fn();
+    shell.mount({ getMainContent: () => mainContent, createNewBoard });
+    shell.createNewBoard();
+    expect(createNewBoard).toHaveBeenCalledTimes(1);
+  });
+
   it('close-active-tab removes the currently active tab', () => {
     vi.useFakeTimers();
     const { shell, mainContent } = createShellHarness();

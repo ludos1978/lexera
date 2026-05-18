@@ -76,19 +76,6 @@
     return root;
   }
 
-  function createHierarchyPanelElement(instanceId) {
-    var root = createPanelRoot('sidebar lexera-shared-panel lexera-shared-panel-hierarchy', 'hierarchy', instanceId);
-    root.innerHTML =
-      '<div class="sidebar-header">' +
-        '<div class="sidebar-header-title lexera-shared-workspace-title" title="All Workspaces">All Workspaces</div>' +
-        '<div class="sidebar-header-actions">' +
-          '<button class="sidebar-btn lexera-shared-new-board" title="New board" aria-label="New board" type="button">+</button>' +
-          '<button class="sidebar-btn lexera-shared-workspace-menu" title="Hierarchy options" type="button">&#9776;</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="board-list lexera-shared-board-list view-loading"></div>';
-    return root;
-  }
 
   function _dashboardGroupHtml(key, title, listClass) {
     return '<div class="dashboard-group tree-entry" data-dashboard-group-key="' + key + '">' +
@@ -541,7 +528,6 @@
 
   /** @type {PanelFactoryMap} */
   var PANEL_FACTORIES = {
-    hierarchy: createHierarchyPanelElement,
     dashboard: createDashboardPanelElement,
     weekCalendar: createWeekCalendarPanelElement,
     monthCalendar: createMonthCalendarPanelElement,

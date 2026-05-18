@@ -4465,6 +4465,15 @@ img[data-lazy-src] {
   position: relative;
   display: inline-block;
   max-width: 100%;
+  /* Guarantee enough room for the embed menu button even when the embedded
+     media is tiny (e.g. a 1x1px image). The button is absolutely positioned
+     at top/right: 4px and is var(--icon-button-size) square, so the container
+     must be at least that big plus the 4px offset and a little breathing room.
+     For normal-sized media this min has no effect (content is larger); for a
+     tiny image the container grows so the burger menu sits just outside the
+     image bounds instead of being clipped away by overflow: hidden. */
+  min-width: calc(var(--icon-button-size) + 12px);
+  min-height: calc(var(--icon-button-size) + 12px);
   overflow: hidden;
   vertical-align: top;
 }

@@ -930,7 +930,6 @@ var LexeraDashboard = (function () {
   window.addEventListener('lexera-shared-panel-created', function (event) {
     try {
       var detail = event && event.detail ? event.detail : {};
-      if (detail.kind === 'hierarchy') syncMirroredWorkspaceViews();
       if (detail.kind === 'dashboard') syncMirroredDashboardViews();
       if (detail.kind === 'weekCalendar' || detail.kind === 'monthCalendar') {
         var calTasks = OrderHelpers.getCalendarTasks();
@@ -1307,7 +1306,6 @@ var LexeraDashboard = (function () {
     getElDashboardBrokenList: function () { return getElDashboardBrokenList(); },
     getElDashboardIncludedList: function () { return getElDashboardIncludedList(); },
     getSharedPanelRoots: function (kind) { return getSharedPanelRoots(kind); },
-    syncMirroredWorkspaceViews: function () { return syncMirroredWorkspaceViews(); },
     getDashboardTreeApi: function () { return getDashboardTreeApi(); },
     getHierarchyControllerApi: function () { return getHierarchyControllerApi(); },
     TreeView: TreeView,
@@ -3005,7 +3003,6 @@ var LexeraDashboard = (function () {
     getElConnectionStatusBtn: function () { return getElConnectionStatusBtn(); },
     getElConnectionDot: function () { return getElConnectionDot(); },
     resolveActiveWorkspaceId: function (id) { resolveActiveWorkspaceId(id); },
-    refreshWorkspaceMirrors: function () { refreshWorkspaceMirrors(); },
     refreshBoardHierarchyCache: function (bl) { return refreshBoardHierarchyCache(bl); },
     renderBoardList: function () { renderBoardList(); },
     setShellActiveBoard: function (id) { setShellActiveBoard(id); },
@@ -3080,7 +3077,6 @@ var LexeraDashboard = (function () {
     commitHierarchyTreeEdit: function(boardId, boardData, opts) { return commitHierarchyTreeEdit(boardId, boardData, opts); },
     getDisplayNameFromPath: function(filePath) { return getDisplayNameFromPath(filePath); },
     getCreationEntityDragIconSvg: function(type) { return getCreationEntityDragIconSvg(type); },
-    getSharedPanelRoots: function(kind) { return getSharedPanelRoots(kind); },
     isRemoteBoardId: function(boardId) { return isRemoteBoardId(boardId); },
     hasTag: function(text, tag) { return hasTag(text, tag); },
     stripStackTag: function(title) { return stripStackTag(title); },
@@ -3113,7 +3109,6 @@ var LexeraDashboard = (function () {
     poll: function() { poll(); },
     applyVisualTheme: function(themeId) { applyVisualTheme(themeId); },
     showSidebarHierarchyMenu: function(anchor) { showSidebarHierarchyMenu(anchor); },
-    createNewBoard: function() { OrderHelpers.createNewBoardFile(); },
     buildHierarchyFocusTargetFromTreeNode: function(node, boardId) { return buildHierarchyFocusTargetFromTreeNode(node, boardId); },
     navigateToHierarchyTarget: function(target) { return navigateToHierarchyTarget(target); },
     targetClosest: function(target, selector) { return targetClosest(target, selector); },
@@ -3176,12 +3171,6 @@ var LexeraDashboard = (function () {
   function setActiveWorkspaceId(workspaceId) { _bl('setActiveWorkspaceId', workspaceId); }
   function resolveActiveWorkspaceId(defaultWorkspaceId) { _bl('resolveActiveWorkspaceId', defaultWorkspaceId); }
   function syncWorkspaceContextForBoard(boardId, options) { return _bl('syncWorkspaceContextForBoard', boardId, options); }
-  function dispatchMirrorMouseEvent(targetEl, eventType, sourceEvent) { return _bl('dispatchMirrorMouseEvent', targetEl, eventType, sourceEvent); }
-  function findCanonicalHierarchyTarget(sourceTarget) { return _bl('findCanonicalHierarchyTarget', sourceTarget); }
-  function bindMirroredWorkspaceView(rootEl) { _bl('bindMirroredWorkspaceView', rootEl); }
-  function syncMirroredWorkspaceViews() { _bl('syncMirroredWorkspaceViews'); }
-
-  function refreshWorkspaceMirrors() { _bl('refreshWorkspaceMirrors'); }
   function getBoardWorkspaceIds(board) { return _bl('getBoardWorkspaceIds', board); }
   async function removeBoardFromSidebar(boardId, boardName) { return _bl('removeBoardFromSidebar', boardId, boardName); }
 

@@ -44,6 +44,9 @@ function createDom() {
               <span class="sidebar-header-title hierarchy-title" id="title">All Workspaces</span>
               <span class="hierarchy-mode" id="view-mode">follow active board</span>
             </div>
+            <div class="sidebar-header-actions">
+              <button class="sidebar-btn" id="new-board-btn" type="button" title="New board" aria-label="New board">+</button>
+            </div>
           </header>
           <main class="hierarchy-body">
             <section class="hierarchy-section">
@@ -57,6 +60,24 @@ function createDom() {
 }
 
 describe('hierarchy view sub-app', () => {
+  // User feedback 2026-05-18: the "New board" affordance must live in
+  // the real workspace hierarchy header (this webview), not the removed
+  // legacy sharedPanels mirror. The slim webview only routes the
+  // request; the shell owns the create flow.
+  it('routes the header New Board button to a create-new-board navigate', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = { init: vi.fn(), navigate: vi.fn() };
+
+    loadHierarchyView(window);
+
+    const btn = window.document.getElementById('new-board-btn');
+    expect(btn).toBeTruthy();
+    btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    expect(window.LexeraSubApp.navigate).toHaveBeenCalledWith({ type: 'create-new-board' });
+  });
+
   it('renders grouped workspace boards, supports collapse, and does not render a workspace list', async () => {
     const dom = createDom();
     const { window } = dom;

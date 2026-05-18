@@ -109,6 +109,8 @@
     try {
       if (payload.type === 'open-board' && payload.boardId && typeof shell.openBoard === 'function') {
         shell.openBoard(payload.boardId, payload.options || {});
+      } else if (payload.type === 'create-new-board' && typeof shell.createNewBoard === 'function') {
+        shell.createNewBoard();
       } else if (payload.type === 'open-workspace-window' && payload.workspaceId && typeof shell.openWorkspaceWindow === 'function') {
         shell.openWorkspaceWindow(payload.workspaceId);
       } else if (payload.type === 'reveal-panel' && payload.panelId && typeof shell.revealPanel === 'function') {

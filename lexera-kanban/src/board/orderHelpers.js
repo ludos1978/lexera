@@ -1048,7 +1048,6 @@ var LexeraOrderHelpers = (function () {
 
   function flushStaleMirrors() {
     var hasStaleDashboard = false;
-    var hasStaleHierarchy = false;
     var dashboardRoots = _callDep('getSharedPanelRoots', 'dashboard');
     if (dashboardRoots) {
       for (var d = 0; d < dashboardRoots.length; d++) {
@@ -1058,17 +1057,7 @@ var LexeraOrderHelpers = (function () {
         }
       }
     }
-    var hierarchyRoots = _callDep('getSharedPanelRoots', 'hierarchy');
-    if (hierarchyRoots) {
-      for (var h = 0; h < hierarchyRoots.length; h++) {
-        if (hierarchyRoots[h] && hierarchyRoots[h].getAttribute('data-mirror-stale') === 'true' && isMirrorRootVisible(hierarchyRoots[h])) {
-          hasStaleHierarchy = true;
-          break;
-        }
-      }
-    }
     if (hasStaleDashboard) syncMirroredDashboardViews();
-    if (hasStaleHierarchy) _callDep('syncMirroredWorkspaceViews');
   }
 
   function setupWorkspaceShell() {
