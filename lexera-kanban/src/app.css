@@ -3175,7 +3175,14 @@ body.is-dragging-layout .columns-container {
   border-bottom: none;
   border-radius: 0;
   width: 100%;
-  padding: var(--layout-stack-header-pad-y) var(--space-1);
+  /* MUST reuse the SAME horizontal padding token as the unfolded
+     .board-stack-header (was --space-1 = 2px vs the bar's 7px). The
+     cross-start anchor only stops the jump if the anchored corner is
+     the SAME physical coordinate in both states — a different left
+     padding moves that corner by (pad-x - space-1) and the fold icon
+     still jumps. This mirrors the row header, which works precisely
+     because its folded variant reuses --layout-row-header-pad-x. */
+  padding: var(--layout-stack-header-pad-y) var(--layout-stack-header-pad-x);
   /* Keep the cross-start anchor in the folded (vertical column) state
      too — center would re-introduce the fold-icon jump vs the
      unfolded horizontal bar. */

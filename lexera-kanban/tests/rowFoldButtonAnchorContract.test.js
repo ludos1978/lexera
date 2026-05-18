@@ -113,6 +113,22 @@ describe('stack + column fold icons reuse the same anchor structure', () => {
     expect(m[1]).not.toMatch(/align-items\s*:\s*center\s*;/);
   });
 
+  it('the folded .board-stack-header reuses the SAME horizontal padding as the bar', () => {
+    // The cross-start anchor only stops the fold-icon jump if the
+    // anchored corner is the SAME physical coordinate in both states.
+    // The folded header used --space-1 (2px) vs the unfolded bar's
+    // --layout-stack-header-pad-x (7px) → a 5px jump. Pin that the
+    // folded padding uses the pad-x token and NOT the old --space-1.
+    const m = appCss.match(
+      /\.board-stack\.folded\s+\.board-stack-header\s*\{([^}]*)\}/
+    );
+    expect(m, 'folded .board-stack-header rule must exist').not.toBeNull();
+    expect(m[1], 'folded stack header must use the pad-x token')
+      .toMatch(/padding\s*:\s*var\(\s*--layout-stack-header-pad-y\s*\)\s+var\(\s*--layout-stack-header-pad-x\s*\)\s*;/);
+    expect(m[1], 'folded stack header must NOT revert to the narrower --space-1 inset')
+      .not.toMatch(/padding\s*:[^;]*--space-1/);
+  });
+
   it('.column-header anchors content to the cross-start edge (not center)', () => {
     const bodies = ruleBodies('.column-header');
     expect(bodies.length, 'base .column-header rule must exist').toBeGreaterThan(0);
