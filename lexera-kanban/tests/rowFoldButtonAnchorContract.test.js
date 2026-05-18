@@ -129,6 +129,23 @@ describe('stack + column fold icons reuse the same anchor structure', () => {
       .not.toMatch(/padding\s*:[^;]*--space-1/);
   });
 
+  it('folded stack title + count pin their cross box to the icon size (not content-driven)', () => {
+    // In the folded vertical strip the rotated (vertical-rl) title's
+    // horizontal extent is content-driven; rendered title HTML can
+    // make it wider than the icon button so its centre drifts off the
+    // fold-icon axis. Both must be pinned to --icon-button-size width
+    // so they centre on the SAME axis as the left-anchored icons.
+    for (const sel of [
+      '\\.board-stack\\.folded\\s+\\.board-stack-title',
+      '\\.board-stack\\.folded\\s+\\.board-stack-count'
+    ]) {
+      const m = appCss.match(new RegExp(sel + '\\s*\\{([^}]*)\\}'));
+      expect(m, `${sel} rule must exist`).not.toBeNull();
+      expect(m[1], `${sel} must pin width to var(--icon-button-size)`)
+        .toMatch(/width\s*:\s*var\(\s*--icon-button-size\s*\)\s*;/);
+    }
+  });
+
   it('.column-header anchors content to the cross-start edge (not center)', () => {
     const bodies = ruleBodies('.column-header');
     expect(bodies.length, 'base .column-header rule must exist').toBeGreaterThan(0);

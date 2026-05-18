@@ -3198,11 +3198,26 @@ body.is-dragging-layout .columns-container {
   transform: rotate(180deg);
   flex: 0 0 auto;
   min-width: 0;
+  /* In the folded vertical strip the cross (horizontal) extent of a
+     vertical-rl element is CONTENT-driven — rendered title HTML
+     (tags/badges/styled spans) can make it wider than the icon
+     button, and since it's left-anchored at pad-x its centre then
+     drifts right of the icon-glyph axis (pad-x + S/2). Pin the cross
+     box to exactly the icon size so the rotated title centres on the
+     SAME axis as the fold icon / grip. overflow:hidden (from the base
+     rule) clips any wider inline content to S. */
+  width: var(--icon-button-size);
+  text-align: center;
 }
 .board-stack.folded .board-stack-count {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   margin-left: 0;
+  /* Same icon-axis pin as the folded title (the count has no base
+     line-height: icon-size rule, so set both here). */
+  width: var(--icon-button-size);
+  line-height: var(--icon-button-size);
+  text-align: center;
 }
 .board-stack.folded .stack-header-actions {
   flex-direction: column;
