@@ -5582,55 +5582,76 @@ var LexeraDashboard = (function () {
       var data = event && event.data;
       if (!data || data.type !== 'lexera-hierarchy-entity-menu-action') return;
       if (!data.kind || !data.entityId || !data.action) return;
-      if (data.boardId && data.boardId !== activeBoardId) return;
-      if (!ActionRegistry) return;
-      // Resolve entity → kanban-local indices via the canonical DOM
-      // lookup. The workspace's `runEntityAction` fires
-      // focus-hierarchy-target BEFORE this message, so the entity's
-      // DOM is in view and findBoardEntityElement returns a hit.
-      var el = (typeof findBoardEntityElement === 'function')
-        ? findBoardEntityElement({
-            cardId:   data.kind === 'card'   ? data.entityId : null,
-            columnId: data.kind === 'column' ? data.entityId : null,
-            stackId:  data.kind === 'stack'  ? data.entityId : null,
-            rowId:    data.kind === 'row'    ? data.entityId : null
-          })
-        : null;
-      if (!el) {
-        logFrontendIssue('warn', 'hierarchy-entity-menu-action.lookup',
-          'Could not resolve entity element', { kind: data.kind, entityId: data.entityId });
-        return;
-      }
-      function intAttr(name) {
-        var v = el.getAttribute(name);
-        var n = v == null ? NaN : parseInt(v, 10);
-        return isNaN(n) ? undefined : n;
-      }
-      var ctx = {};
-      var rowIdx = intAttr('data-row-index');
-      var stackIdx = intAttr('data-stack-index');
-      var colLocalIdx = intAttr('data-col-local-index');
-      var colIdx = intAttr('data-col-index');
-      var cardIdx = intAttr('data-card-index');
-      if (typeof rowIdx === 'number') ctx.rowIdx = rowIdx;
-      if (typeof stackIdx === 'number') ctx.stackIdx = stackIdx;
-      if (typeof colLocalIdx === 'number') ctx.colLocalIdx = colLocalIdx;
-      if (typeof colIdx === 'number') ctx.colIndex = colIdx;
-      if (typeof cardIdx === 'number') ctx.cardIndex = cardIdx;
-      var rowId = el.getAttribute('data-row-id');
-      var stackId = el.getAttribute('data-stack-id');
-      var columnId = el.getAttribute('data-column-id');
-      var cardId = el.getAttribute('data-card-kid') || el.getAttribute('data-card-id');
-      if (rowId) ctx.rowId = rowId;
-      if (stackId) ctx.stackId = stackId;
-      if (columnId) ctx.columnId = columnId;
-      if (cardId) ctx.cardId = cardId;
-      try {
-        ActionRegistry.dispatch(data.kind, data.action, ctx);
-      } catch (err) {
-        logFrontendIssue('warn', 'hierarchy-entity-menu-action.dispatch',
-          'ActionRegistry.dispatch failed', err);
-      }
+      // The workspace's `runEntityAction` fires `focus-hierarchy-target`
+      // (an ASYNC board switch + render) and then SYNCHRONOUSLY
+      // broadcasts this menu action. So when the message arrives the
+      // target board may not be active yet AND the entity's DOM may not
+      // be rendered yet — the old code bailed permanently in both cases,
+      // which is why "the burger menu functions in the workspace dont
+      // work properly" (e.g. add-stack-before silently did nothing).
+      // Mirror the proven `focusHierarchyTargetLocally` retry budget
+      // (~30 × 100ms ≈ 3s): re-check the active board AND re-resolve the
+      // entity element each tick; only warn-log once retries exhaust.
+      var attemptHierarchyEntityMenuAction = function (attemptsLeft) {
+        if (!ActionRegistry ||
+            (data.boardId && data.boardId !== activeBoardId)) {
+          if (attemptsLeft > 0) {
+            setTimeout(function () { attemptHierarchyEntityMenuAction(attemptsLeft - 1); }, 100);
+            return;
+          }
+          logFrontendIssue('warn', 'hierarchy-entity-menu-action.board',
+            'Target board never became active', { kind: data.kind, action: data.action, boardId: data.boardId });
+          return;
+        }
+        var el = (typeof findBoardEntityElement === 'function')
+          ? findBoardEntityElement({
+              cardId:   data.kind === 'card'   ? data.entityId : null,
+              columnId: data.kind === 'column' ? data.entityId : null,
+              stackId:  data.kind === 'stack'  ? data.entityId : null,
+              rowId:    data.kind === 'row'    ? data.entityId : null
+            })
+          : null;
+        if (!el) {
+          if (attemptsLeft > 0) {
+            setTimeout(function () { attemptHierarchyEntityMenuAction(attemptsLeft - 1); }, 100);
+            return;
+          }
+          logFrontendIssue('warn', 'hierarchy-entity-menu-action.lookup',
+            'Could not resolve entity element', { kind: data.kind, entityId: data.entityId });
+          return;
+        }
+        function intAttr(name) {
+          var v = el.getAttribute(name);
+          var n = v == null ? NaN : parseInt(v, 10);
+          return isNaN(n) ? undefined : n;
+        }
+        var ctx = {};
+        var rowIdx = intAttr('data-row-index');
+        var stackIdx = intAttr('data-stack-index');
+        var colLocalIdx = intAttr('data-col-local-index');
+        var colIdx = intAttr('data-col-index');
+        var cardIdx = intAttr('data-card-index');
+        if (typeof rowIdx === 'number') ctx.rowIdx = rowIdx;
+        if (typeof stackIdx === 'number') ctx.stackIdx = stackIdx;
+        if (typeof colLocalIdx === 'number') ctx.colLocalIdx = colLocalIdx;
+        if (typeof colIdx === 'number') ctx.colIndex = colIdx;
+        if (typeof cardIdx === 'number') ctx.cardIndex = cardIdx;
+        var rowId = el.getAttribute('data-row-id');
+        var stackId = el.getAttribute('data-stack-id');
+        var columnId = el.getAttribute('data-column-id');
+        var cardId = el.getAttribute('data-card-kid') || el.getAttribute('data-card-id');
+        if (rowId) ctx.rowId = rowId;
+        if (stackId) ctx.stackId = stackId;
+        if (columnId) ctx.columnId = columnId;
+        if (cardId) ctx.cardId = cardId;
+        try {
+          ActionRegistry.dispatch(data.kind, data.action, ctx);
+        } catch (err) {
+          logFrontendIssue('warn', 'hierarchy-entity-menu-action.dispatch',
+            'ActionRegistry.dispatch failed', err);
+        }
+      };
+      attemptHierarchyEntityMenuAction(30);
     });
   }
 
