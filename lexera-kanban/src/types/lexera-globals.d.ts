@@ -679,6 +679,72 @@ interface LexeraLayoutTreeApi {
 }
 
 /**
+ * Source: src/appearance/appearance.js (IIFE;
+ * window.LexeraAppearance = api). Owns theme application (visual
+ * theme + auto/dark/light mode), UI scale (zoom), and the editor /
+ * special-characters / sidebar-tree display toggles. Reads + writes
+ * through LexeraSettings, falling back to localStorage when the
+ * settings store is unavailable. The shell listens for
+ * `frontend-setting-changed` and calls `applyThemeMode` so every
+ * open webview re-resolves its palette together.
+ */
+interface LexeraAppearanceApi {
+  /** Wire injected deps (renderFrontendSettingsPanel,
+   *  showNotification, CardEditorModule, closeCardEditorOverlay).
+   *  Called once at boot. */
+  init(deps: Record<string, unknown>): void;
+  // ── Themes ──
+  THEMES: ReadonlyArray<LexeraBaseTheme>;
+  VISUAL_THEMES: ReadonlyArray<LexeraVisualTheme>;
+  VISUAL_THEME_LABELS: { [themeId: string]: string };
+  applyVisualTheme(themeId: string | null | undefined): void;
+  applyTheme(themeId: string | null | undefined): void;
+  // ── Theme mode (auto/dark/light) ──
+  VALID_THEME_MODES: ReadonlyArray<'auto' | 'dark' | 'light'>;
+  /** Coerce arbitrary input to a known mode; 'bright' is accepted
+   *  as a user-facing alias for 'light'; unknown → 'auto'. */
+  normalizeThemeMode(value: unknown): 'auto' | 'dark' | 'light';
+  /** Resolve a (possibly 'auto') mode against the OS
+   *  prefers-color-scheme into a concrete 'dark' | 'light'. */
+  resolveEffectiveThemeMode(mode: unknown): 'dark' | 'light';
+  /** Apply a mode to <html> data-theme-mode (+ -requested) and
+   *  persist it unless `options.persist === false`. Returns the
+   *  stored `requested` mode plus its resolved `effective` mode. */
+  applyThemeMode(
+    modeArg?: string | null,
+    options?: { persist?: boolean }
+  ): { requested: 'auto' | 'dark' | 'light'; effective: 'dark' | 'light' };
+  /** The persisted user-requested mode (may be 'auto'). */
+  getThemeMode(): 'auto' | 'dark' | 'light';
+  /** The persisted mode resolved to a concrete palette. */
+  getEffectiveThemeMode(): 'dark' | 'light';
+  // ── Sidebar tree display ──
+  getSidebarTreeDisplayOptions(): { counts: boolean; presence: boolean };
+  applySidebarTreeDisplayOptions(): { counts: boolean; presence: boolean };
+  toggleSidebarTreeDisplayOption(): { counts: boolean; presence: boolean };
+  buildSidebarHierarchyDisplayMenuItems(): Array<unknown>;
+  // ── UI scale (zoom) ──
+  /** Clamp/round an arbitrary value into the [0.75, 1.5] scale
+   *  range; non-finite input → 1. */
+  normalizeUiScale(value: unknown): number;
+  applyUiScale(scale: number): void;
+  getUiScale(): number;
+  getUiScalePercentLabel(): string;
+  /** Bump the scale by `delta`; returns false (and no-ops) when the
+   *  clamped result equals the current scale. */
+  nudgeUiScale(delta: number): boolean;
+  // ── Editor / special-character toggles ──
+  isOverlayEditorEnabled(): boolean;
+  setOverlayEditorEnabled(enabled: boolean): void;
+  isSpecialCharactersVisible(): boolean;
+  applySpecialCharactersVisibilitySetting(): void;
+  setSpecialCharactersVisible(enabled: boolean): void;
+  // ── Menu sync + boot ──
+  syncMenuCheckStates(): void;
+  applyInitialSettings(): void;
+}
+
+/**
  * Source: src/workspace/tabDragController.js (IIFE;
  * window.LexeraTabDragController = api). Pointer-based tab/panel
  * drag controller — owns the pointermove/pointerup listeners,
@@ -4724,6 +4790,7 @@ declare global {
     LexeraMultiview: LexeraMultiviewApi;
     LexeraMessageBridge: LexeraMessageBridgeApi;
     LexeraLayoutPersistence: LexeraLayoutPersistenceApi;
+    LexeraAppearance: LexeraAppearanceApi;
     LexeraTabDragController: LexeraTabDragControllerApi;
     LexeraGeometryObserver: LexeraGeometryObserverApi;
     LexeraPanelDefinitions: LexeraPanelDefinitionsApi;
