@@ -289,6 +289,59 @@ impl BackupManager {
         Ok(entries)
     }
 
+    /// List all conflict-backup files for the given board, sorted newest
+    /// first. These are the `{stem}-conflict-{ts}.md` files written by
+    /// [`create_conflict_backup`](Self::create_conflict_backup) when an
+    /// external include change diverges from the in-memory board. Unlike
+    /// crashsaves they live beside the board file (not in
+    /// `.lexera-backups/`) and are never auto-rotated — they are a
+    /// user-recoverable trail. Pair with [`restore_backup`](Self::restore_backup)
+    /// to roll the board back to a preserved side.
+    pub fn list_conflict_backups(
+        board_path: &Path,
+    ) -> Result<Vec<ConflictBackupEntry>, std::io::Error> {
+        let parent = board_path.parent().unwrap_or(Path::new("."));
+        if !parent.exists() {
+            return Ok(Vec::new());
+        }
+
+        let file_stem = board_path
+            .file_stem()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "board".to_string());
+        let prefix = format!("{}-conflict-", file_stem);
+
+        let mut entries: Vec<ConflictBackupEntry> = Vec::new();
+
+        for dir_entry in fs::read_dir(parent)? {
+            let dir_entry = dir_entry?;
+            let name = dir_entry.file_name().to_string_lossy().to_string();
+
+            if !name.starts_with(&prefix) || !name.ends_with(".md") {
+                continue;
+            }
+
+            let metadata = dir_entry.metadata()?;
+            if !metadata.is_file() {
+                continue;
+            }
+
+            // Extract timestamp between prefix and ".md" suffix.
+            let ts = name[prefix.len()..name.len() - 3].to_string();
+
+            entries.push(ConflictBackupEntry {
+                path: dir_entry.path(),
+                filename: name,
+                timestamp: ts,
+            });
+        }
+
+        // Sort by timestamp descending (newest first).
+        entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+        Ok(entries)
+    }
+
     /// Rotate crashsaves for a board, keeping at most `keep` newest files.
     fn rotate_crashsaves(board_path: &Path, keep: usize) -> Result<(), std::io::Error> {
         let mut entries = Self::list_crashsaves(board_path)?;
@@ -777,5 +830,52 @@ mod tests {
         let mgr = BackupManager::new();
         assert_eq!(mgr.keep, DEFAULT_KEEP_COUNT);
         assert_eq!(DEFAULT_KEEP_COUNT, 5);
+    }
+
+    #[test]
+    fn test_list_conflict_backups_newest_first_and_round_trips() {
+        let dir = tempdir().unwrap();
+        let board = write_board(dir.path(), "board.md", "current disk state");
+
+        // No conflict backups yet.
+        assert!(BackupManager::list_conflict_backups(&board)
+            .unwrap()
+            .is_empty());
+
+        // Two conflict backups + unrelated files that must NOT be listed.
+        fs::write(
+            dir.path().join("board-conflict-20260517-210317.md"),
+            "older in-memory side",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("board-conflict-20260518-093000.md"),
+            "newer in-memory side",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("board-crashsave-20260518-093000.md"),
+            "not a conflict backup",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("other-conflict-20260518-093000.md"),
+            "different board",
+        )
+        .unwrap();
+
+        let entries = BackupManager::list_conflict_backups(&board).unwrap();
+        assert_eq!(entries.len(), 2, "only this board's conflict backups");
+        assert_eq!(entries[0].timestamp, "20260518-093000", "newest first");
+        assert_eq!(entries[1].timestamp, "20260517-210317");
+
+        // restore_backup rolls the board back to a preserved side.
+        let mgr = BackupManager::new();
+        mgr.restore_backup(&entries[1].path, &board).unwrap();
+        assert_eq!(
+            fs::read_to_string(&board).unwrap(),
+            "older in-memory side",
+            "restore_backup copies the chosen conflict backup over the board"
+        );
     }
 }
