@@ -170,6 +170,25 @@ function loadMutationHarness() {
     extractFunctionAny('function findFullColumnIndexInStack('),
     extractFunctionAny('function findInsertStackIndexInRow('),
     extractFunctionAny('function findInsertColumnIndexInStack('),
+    extractFunctionAny('function getDndMutationsUndoRedoSystem('),
+    extractFunctionAny('function isDndMutationUndoOperationRecordingSuppressed('),
+    extractFunctionAny('async function runWithoutDndMutationUndoOperationRecording('),
+    extractFunctionAny('function finalizePendingDndMutationUndo('),
+    extractFunctionAny('function pushDndMutationUndoOperation('),
+    extractFunctionAny('function afterDndMutationPersist('),
+    extractFunctionAny('function normalizeDndMutationEntityId('),
+    extractFunctionAny('function cloneDndMutationValue('),
+    extractFunctionAny('function cloneDndMutationContainerShell('),
+    extractFunctionAny('function findDndMutationItemIndexById('),
+    extractFunctionAny('function captureDndMutationSiblingAnchor('),
+    extractFunctionAny('function resolveDndMutationInsertIndexFromAnchor('),
+    extractFunctionAny('function findDndMutationRowLocationById('),
+    extractFunctionAny('function findDndMutationStackLocationById('),
+    extractFunctionAny('function ensureDndMutationRowForUndo('),
+    extractFunctionAny('async function moveDndMutationRowByOperation('),
+    extractFunctionAny('async function moveDndMutationStackByOperation('),
+    extractFunctionAny('function recordDndMutationRowMoveUndo('),
+    extractFunctionAny('function recordDndMutationStackMoveUndo('),
     extractFunction(findLine('function nextMutationEntityId(')),
     extractFunction(findLine('function isUnnamedStructuralTitle(')),
     extractFunction(findLine('function createUnnamedColumnForMutation(')),
@@ -192,6 +211,11 @@ function loadMutationHarness() {
     extractFunctionAny('function isDndUndoOperationRecordingSuppressed('),
     extractFunctionAny('async function runWithoutDndUndoOperationRecording('),
     extractFunctionAny('function captureUndoBeforeDndMutation('),
+    extractFunctionAny('function cloneDndUndoValue('),
+    extractFunctionAny('function cloneDndUndoStackParams('),
+    extractFunctionAny('function restoreDndUndoStackParams('),
+    extractFunctionAny('function cloneDndUndoContainerShell('),
+    extractFunctionAny('function buildDndUndoSourceAncestors('),
     extractFunctionAny('function cloneDndUndoMutationDescriptor('),
     extractFunctionAny('function stripDndUndoHiddenTags('),
     extractFunctionAny('function restoreDndUndoColumnContent('),
@@ -202,9 +226,13 @@ function loadMutationHarness() {
     extractFunctionAny('function findDndUndoEntityLocation('),
     extractFunctionAny('function removeDndUndoEntityAtLocation('),
     extractFunctionAny('function replaceDndUndoEntityAtLocation('),
+    extractFunctionAny('function ensureDndUndoSourceRow('),
+    extractFunctionAny('function ensureDndUndoSourceStack('),
     extractFunctionAny('function insertDndUndoEntityAtSource('),
     extractFunctionAny('async function undoCrossBoardStructuralMove('),
     extractFunctionAny('function getDndCrossBoardMoveFunction('),
+    extractFunctionAny('async function undoDndStackCanvasPlacement('),
+    extractFunctionAny('function recordDndStackCanvasPlacementUndo('),
     extractFunctionAny('function recordCrossBoardStructuralMoveUndo('),
     extractFunctionAny('function trashRowContent('),
     extractFunction(findLine('function normalizeStableCardMutationId(')),
@@ -402,6 +430,8 @@ function loadMutationHarness() {
         activeBoardData: function () { return activeBoardData; },
         activeBoardId: function () { return activeBoardId; },
         pushUndo: function () { pushUndo(); },
+        pushUndoOperation: function (operation) { pushUndoOperation(operation); },
+        finalizePendingUndo: function () { finalizePendingUndo(); },
         persistBoardMutation: function (opts) { return persistBoardMutation(opts); },
         traceFrontendAction: function () {},
         getDisplayOrderedColumnEntries: typeof getDisplayOrderedColumnEntries === 'function' ? getDisplayOrderedColumnEntries : function (c) { return c; },
@@ -1313,6 +1343,67 @@ describe('Drag/drop structural parity', () => {
     expect(remainingTargetIds).toEqual(['col-concurrent', 'col-target']);
   });
 
+  it('moveColumnAcrossBoards same-board undo reverses the move without a board snapshot', async () => {
+    var full = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-source', 'Source Stack', [
+          makeColumn('col-source', 'Source Column', [makeCard('card-a', 'Task A')]),
+          makeColumn('col-stay', 'Stay Column', []),
+        ]),
+      ]),
+      makeRow('row-target', 'Target Row', [
+        makeStack('stack-target', 'Target Stack', [
+          makeColumn('col-target', 'Target Column', []),
+        ]),
+      ]),
+    ]);
+    M.setState(full, buildActiveBoard(M, full), 'test-board');
+
+    await M.moveColumnAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 0,
+        rowId: 'row-source',
+        stackId: 'stack-source',
+        columnId: 'col-source',
+        indexMode: 'display',
+      },
+      {
+        kind: 'stack',
+        boardId: 'test-board',
+        rowIndex: 1,
+        stackIndex: 0,
+        rowId: 'row-target',
+        stackId: 'stack-target',
+        indexMode: 'display',
+      }
+    );
+
+    expect(M.getUndoCalls()).toBe(0);
+    expect(M.getFinalizedUndoCalls()).toBe(1);
+    expect(M.getUndoOperationCount()).toBe(1);
+    expect(M.getState().fullBoardData.rows[0].stacks[0].columns.map(function (column) { return column.id; })).toEqual(['col-stay']);
+
+    var board = M.getBoardState('test-board');
+    var targetStack = board.rows[1].stacks[0];
+    targetStack.columns.unshift(makeColumn('col-concurrent', 'Concurrent Column', []));
+    var movedIdx = targetStack.columns.findIndex(function (column) { return column.id === 'col-source'; });
+    var movedColumn = targetStack.columns.splice(movedIdx, 1)[0];
+    movedColumn.title = 'Source Column edited later';
+    board.rows.push(makeRow('row-later', 'Later Row', [
+      makeStack('stack-later', 'Later Stack', [movedColumn])
+    ]));
+
+    await M.runLastUndoOperation();
+
+    var sourceColumns = M.getState().fullBoardData.rows[0].stacks[0].columns;
+    expect(sourceColumns.map(function (column) { return column.id; })).toEqual(['col-source', 'col-stay']);
+    expect(sourceColumns[0].title).toBe('Source Column edited later');
+    expect(M.getState().fullBoardData.rows[1].stacks[0].columns.map(function (column) { return column.id; })).toEqual(['col-concurrent', 'col-target']);
+  });
+
   it('moveColumnAcrossBoards creates an unnamed stack inside an existing row drop target', async () => {
     var source = makeBoard([
       makeRow('row-source', 'Source', [
@@ -1449,20 +1540,32 @@ describe('Drag/drop structural parity', () => {
         boardId: 'test-board',
         rowIndex: 0,
         stackIndex: 0,
+        rowId: 'row-main',
+        stackId: 'stack-a',
         indexMode: 'display',
       },
       {
         kind: 'row',
         boardId: 'test-board',
         rowIndex: 0,
+        rowId: 'row-main',
         indexMode: 'display',
         canvasPosition: { x: 321, y: 654 },
       }
     );
 
+    expect(M.getUndoCalls()).toBe(0);
+    expect(M.getFinalizedUndoCalls()).toBe(1);
+    expect(M.getUndoOperationCount()).toBe(1);
     var row = M.getState().fullBoardData.rows[0];
     expect(row.stacks.map(function (stack) { return stack.id; })).toEqual(['stack-a', 'stack-b']);
     expect(row.stacks[0].params).toEqual({ x: '321', y: '654' });
+
+    await M.runLastUndoOperation();
+
+    row = M.getState().fullBoardData.rows[0];
+    expect(row.stacks.map(function (stack) { return stack.id; })).toEqual(['stack-a', 'stack-b']);
+    expect(row.stacks[0].params).toBeUndefined();
   });
 
   it('moveStackAcrossBoards applies canvas placement when moving a stack into another row', async () => {
@@ -1502,6 +1605,52 @@ describe('Drag/drop structural parity', () => {
     expect(rows[0].id).toBe('row-target');
     expect(rows[0].stacks.map(function (stack) { return stack.id; })).toEqual(['stack-b', 'stack-a']);
     expect(rows[0].stacks[1].params).toEqual({ x: '777', y: '222' });
+  });
+
+  it('moveStackAcrossBoards same-board undo recreates an emptied source row without a board snapshot', async () => {
+    var full = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-source', 'Source Stack', [
+          makeColumn('col-source', 'Source Column', []),
+        ]),
+      ]),
+      makeRow('row-target', 'Target', [
+        makeStack('stack-target', 'Target Stack', [
+          makeColumn('col-target', 'Target Column', []),
+        ]),
+      ]),
+    ]);
+    M.setState(full, buildActiveBoard(M, full), 'test-board');
+
+    await M.moveStackAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        rowId: 'row-source',
+        stackId: 'stack-source',
+        indexMode: 'display',
+      },
+      {
+        kind: 'row',
+        boardId: 'test-board',
+        rowIndex: 1,
+        rowId: 'row-target',
+        indexMode: 'display',
+      }
+    );
+
+    expect(M.getUndoCalls()).toBe(0);
+    expect(M.getFinalizedUndoCalls()).toBe(1);
+    expect(M.getUndoOperationCount()).toBe(1);
+    expect(M.getState().fullBoardData.rows.map(function (row) { return row.id; })).toEqual(['row-target']);
+
+    await M.runLastUndoOperation();
+
+    var rows = M.getState().fullBoardData.rows;
+    expect(rows.map(function (row) { return row.id; })).toEqual(['row-source', 'row-target']);
+    expect(rows[0].stacks.map(function (stack) { return stack.id; })).toEqual(['stack-source']);
+    expect(rows[1].stacks.map(function (stack) { return stack.id; })).toEqual(['stack-target']);
   });
 
   it('moveRowAcrossBoards resolves source and target rows by stable ids when indices drift', async () => {
@@ -1735,6 +1884,9 @@ describe('Stack mutations', () => {
   it('moveStack to different row arrives correctly', async () => {
     // Move stack-other (display row 1, stack 0) to row 0, stack 0 (insertBefore)
     await M.moveStack(1, 0, 0, 0, true);
+    expect(M.getUndoCalls()).toBe(0);
+    expect(M.getFinalizedUndoCalls()).toBe(1);
+    expect(M.getUndoOperationCount()).toBe(1);
     var rows = M.getState().fullBoardData.rows;
     var dstRow = rows[0];
     expect(dstRow.stacks[0].id).toBe('stack-other');
@@ -1743,6 +1895,17 @@ describe('Stack mutations', () => {
     expect(rows.length).toBe(2); // row-main + row-deleted remain
     expect(rows[0].id).toBe('row-main');
     expect(rows[1].id).toBe('row-deleted');
+
+    rows[0].stacks.unshift(makeStack('stack-concurrent', 'Concurrent Stack', [
+      makeColumn('col-concurrent', 'Concurrent Column', [])
+    ]));
+
+    await M.runLastUndoOperation();
+
+    rows = M.getState().fullBoardData.rows;
+    expect(rows.map(function (row) { return row.id; })).toEqual(['row-main', 'row-deleted', 'row-secondary']);
+    expect(rows[0].stacks.map(function (stack) { return stack.id; })).toEqual(['stack-concurrent', 'stack-active', 'stack-inactive']);
+    expect(rows[2].stacks.map(function (stack) { return stack.id; })).toEqual(['stack-other']);
   });
 
   it('moveStack with hidden stacks positions correctly', async () => {
@@ -1830,10 +1993,28 @@ describe('Row mutations', () => {
     // full: row 0 (Main), row 1 (Deleted-hidden), row 2 (Secondary)
     // Move display row 1 before display row 0 → Secondary before Main
     await M.reorderRows(1, 0, true);
+    expect(M.getUndoCalls()).toBe(0);
+    expect(M.getFinalizedUndoCalls()).toBe(1);
+    expect(M.getUndoOperationCount()).toBe(1);
     var rows = M.getState().fullBoardData.rows;
     expect(rows[0].id).toBe('row-secondary');
     expect(rows[1].id).toBe('row-main');
     expect(rows[2].id).toBe('row-deleted'); // hidden row stays
+
+    rows.push(makeRow('row-concurrent', 'Concurrent Row', [
+      makeStack('stack-concurrent', 'Concurrent Stack', [
+        makeColumn('col-concurrent', 'Concurrent Column', [])
+      ])
+    ]));
+
+    await M.runLastUndoOperation();
+
+    expect(M.getState().fullBoardData.rows.map(function (row) { return row.id; })).toEqual([
+      'row-main',
+      'row-deleted',
+      'row-secondary',
+      'row-concurrent'
+    ]);
   });
 
   it('removeEmptyStacksAndRows removes empty rows but preserves non-empty', () => {

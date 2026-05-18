@@ -6,7 +6,9 @@
  *   - getFullBoardData()            — returns fullBoardData reference
  *   - getActiveBoardData()          — returns activeBoardData reference
  *   - getActiveBoardId()            — returns activeBoardId string
- *   - pushUndo()                    — snapshot undo before mutation
+ *   - pushUndo()                    — snapshot undo before non-reversible mutation fallback
+ *   - pushUndoOperation(operation)  — optional explicit operation undo
+ *   - finalizePendingUndo()         — optional pending snapshot finalization
  *   - persistBoardMutation(opts)    — persist after local-board mutation
  *   - addColumnToStack(r, s, idx)   — add column at index in stack
  *   - applyDefaultCanvasPlacementToStack(row, stack)
@@ -23,6 +25,7 @@ var LexeraDndMutations = (function () {
 
   var _deps = {};
   var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+  var _undoOperationSuppressDepth = 0;
 
   function init(deps) {
     if (typeof window !== 'undefined' && window.LexeraRuntime) {
@@ -38,6 +41,56 @@ var LexeraDndMutations = (function () {
   function fullBoardData() { return _deps.getFullBoardData ? _deps.getFullBoardData() : null; }
   function activeBoardData() { return _deps.getActiveBoardData ? _deps.getActiveBoardData() : null; }
   function activeBoardId() { return _deps.getActiveBoardId ? _deps.getActiveBoardId() : null; }
+
+  function getDndMutationsUndoRedoSystem() {
+    var root = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : null);
+    return root && root.LexeraUndoRedo ? root.LexeraUndoRedo : null;
+  }
+
+  function isDndMutationUndoOperationRecordingSuppressed() {
+    return _undoOperationSuppressDepth > 0;
+  }
+
+  async function runWithoutDndMutationUndoOperationRecording(fn) {
+    _undoOperationSuppressDepth++;
+    try {
+      return await fn();
+    } finally {
+      _undoOperationSuppressDepth--;
+    }
+  }
+
+  function finalizePendingDndMutationUndo() {
+    if (isDndMutationUndoOperationRecordingSuppressed()) return;
+    if (typeof _deps.finalizePendingUndo === 'function') {
+      _deps.finalizePendingUndo();
+      return;
+    }
+    var undoRedo = getDndMutationsUndoRedoSystem();
+    if (undoRedo && typeof undoRedo.finalizePendingUndo === 'function') undoRedo.finalizePendingUndo();
+  }
+
+  function pushDndMutationUndoOperation(operation) {
+    if (isDndMutationUndoOperationRecordingSuppressed()) return false;
+    if (!operation || typeof operation.undo !== 'function') return false;
+    if (typeof _deps.pushUndoOperation === 'function') {
+      _deps.pushUndoOperation(operation);
+      return true;
+    }
+    var undoRedo = getDndMutationsUndoRedoSystem();
+    if (undoRedo && typeof undoRedo.pushUndoOperation === 'function') {
+      undoRedo.pushUndoOperation(operation);
+      return true;
+    }
+    return false;
+  }
+
+  function afterDndMutationPersist(persistResult, recordOperation) {
+    return Promise.resolve(persistResult).then(function (result) {
+      if (typeof recordOperation === 'function') recordOperation();
+      return result;
+    });
+  }
 
   // ── Display-to-full index resolution helpers ──────────────────────
 
@@ -189,6 +242,172 @@ var LexeraDndMutations = (function () {
     return insertBefore ? visible[displayColIdx] : (visible[displayColIdx] + 1);
   }
 
+  function normalizeDndMutationEntityId(value) {
+    var normalized = String(value == null ? '' : value).trim();
+    return normalized || null;
+  }
+
+  function cloneDndMutationValue(value) {
+    if (typeof structuredClone === 'function') return structuredClone(value);
+    var json = JSON.stringify(value);
+    return typeof json === 'undefined' ? undefined : JSON.parse(json);
+  }
+
+  function cloneDndMutationContainerShell(entity, childKey) {
+    if (!entity || typeof entity !== 'object') return null;
+    var shell = {};
+    var keys = Object.keys(entity);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      if (key === childKey) continue;
+      shell[key] = cloneDndMutationValue(entity[key]);
+    }
+    shell[childKey] = [];
+    return shell;
+  }
+
+  function findDndMutationItemIndexById(items, id) {
+    id = normalizeDndMutationEntityId(id);
+    if (!id || !Array.isArray(items)) return -1;
+    for (var i = 0; i < items.length; i++) {
+      if (normalizeDndMutationEntityId(items[i] && items[i].id) === id) return i;
+    }
+    return -1;
+  }
+
+  function captureDndMutationSiblingAnchor(items, index) {
+    var list = Array.isArray(items) ? items : [];
+    return {
+      index: typeof index === 'number' ? index : list.length,
+      prevId: index > 0 ? normalizeDndMutationEntityId(list[index - 1] && list[index - 1].id) : null,
+      nextId: index >= 0 && index + 1 < list.length ? normalizeDndMutationEntityId(list[index + 1] && list[index + 1].id) : null
+    };
+  }
+
+  function resolveDndMutationInsertIndexFromAnchor(items, anchor) {
+    var list = Array.isArray(items) ? items : [];
+    var nextIdx = findDndMutationItemIndexById(list, anchor && anchor.nextId);
+    if (nextIdx !== -1) return nextIdx;
+    var prevIdx = findDndMutationItemIndexById(list, anchor && anchor.prevId);
+    if (prevIdx !== -1) return prevIdx + 1;
+    var fallback = anchor && typeof anchor.index === 'number' ? anchor.index : list.length;
+    if (fallback < 0) fallback = 0;
+    if (fallback > list.length) fallback = list.length;
+    return fallback;
+  }
+
+  function findDndMutationRowLocationById(boardData, rowId) {
+    var rows = Array.isArray(boardData && boardData.rows) ? boardData.rows : [];
+    var rowIndex = findDndMutationItemIndexById(rows, rowId);
+    if (rowIndex === -1) return null;
+    return { row: rows[rowIndex], rowIndex: rowIndex };
+  }
+
+  function findDndMutationStackLocationById(boardData, stackId) {
+    stackId = normalizeDndMutationEntityId(stackId);
+    var rows = Array.isArray(boardData && boardData.rows) ? boardData.rows : [];
+    if (!stackId) return null;
+    for (var r = 0; r < rows.length; r++) {
+      var stacks = Array.isArray(rows[r] && rows[r].stacks) ? rows[r].stacks : [];
+      var stackIndex = findDndMutationItemIndexById(stacks, stackId);
+      if (stackIndex !== -1) {
+        return {
+          row: rows[r],
+          rowIndex: r,
+          stack: stacks[stackIndex],
+          stackIndex: stackIndex
+        };
+      }
+    }
+    return null;
+  }
+
+  function ensureDndMutationRowForUndo(boardData, rowId, rowShell, rowAnchor) {
+    var rowLoc = findDndMutationRowLocationById(boardData, rowId);
+    if (rowLoc) return rowLoc;
+    if (!rowShell) return null;
+    if (!Array.isArray(boardData.rows)) boardData.rows = [];
+    var restoredRow = cloneDndMutationValue(rowShell);
+    if (!Array.isArray(restoredRow.stacks)) restoredRow.stacks = [];
+    var insertAt = resolveDndMutationInsertIndexFromAnchor(boardData.rows, rowAnchor);
+    boardData.rows.splice(insertAt, 0, restoredRow);
+    return { row: restoredRow, rowIndex: insertAt };
+  }
+
+  async function moveDndMutationRowByOperation(operation, anchorName) {
+    var boardData = fullBoardData();
+    if (!operation || !boardData || activeBoardId() !== operation.boardId) return;
+    var rows = Array.isArray(boardData.rows) ? boardData.rows : null;
+    if (!rows) return;
+    var currentIdx = findDndMutationItemIndexById(rows, operation.rowId);
+    if (currentIdx === -1) return;
+    var row = rows.splice(currentIdx, 1)[0];
+    var insertAt = resolveDndMutationInsertIndexFromAnchor(rows, operation[anchorName]);
+    rows.splice(insertAt, 0, row);
+    await _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+  }
+
+  async function moveDndMutationStackByOperation(operation, rowName, stackAnchorName, rowAnchorName, rowShellName) {
+    var boardData = fullBoardData();
+    if (!operation || !boardData || activeBoardId() !== operation.boardId) return;
+    var stackLoc = findDndMutationStackLocationById(boardData, operation.stackId);
+    if (!stackLoc || !stackLoc.row || !Array.isArray(stackLoc.row.stacks)) return;
+    var stack = stackLoc.row.stacks.splice(stackLoc.stackIndex, 1)[0];
+    removeEmptyStacksAndRows();
+    var targetRow = ensureDndMutationRowForUndo(
+      boardData,
+      operation[rowName],
+      operation[rowShellName],
+      operation[rowAnchorName]
+    );
+    if (!targetRow || !targetRow.row) return;
+    if (!Array.isArray(targetRow.row.stacks)) targetRow.row.stacks = [];
+    var insertAt = resolveDndMutationInsertIndexFromAnchor(targetRow.row.stacks, operation[stackAnchorName]);
+    targetRow.row.stacks.splice(insertAt, 0, stack);
+    removeEmptyStacksAndRows();
+    await _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+  }
+
+  function recordDndMutationRowMoveUndo(operation) {
+    pushDndMutationUndoOperation({
+      meta: {
+        type: 'same-board-row-reorder',
+        boardId: operation.boardId,
+        entityId: operation.rowId
+      },
+      undo: function () {
+        return runWithoutDndMutationUndoOperationRecording(function () {
+          return moveDndMutationRowByOperation(operation, 'sourceAnchor');
+        });
+      },
+      redo: function () {
+        return runWithoutDndMutationUndoOperationRecording(function () {
+          return moveDndMutationRowByOperation(operation, 'targetAnchor');
+        });
+      }
+    });
+  }
+
+  function recordDndMutationStackMoveUndo(operation) {
+    pushDndMutationUndoOperation({
+      meta: {
+        type: 'same-board-stack-move',
+        boardId: operation.boardId,
+        entityId: operation.stackId
+      },
+      undo: function () {
+        return runWithoutDndMutationUndoOperationRecording(function () {
+          return moveDndMutationStackByOperation(operation, 'sourceRowId', 'sourceStackAnchor', 'sourceRowAnchor', 'sourceRowShell');
+        });
+      },
+      redo: function () {
+        return runWithoutDndMutationUndoOperationRecording(function () {
+          return moveDndMutationStackByOperation(operation, 'targetRowId', 'targetStackAnchor', 'targetRowAnchor', 'targetRowShell');
+        });
+      }
+    });
+  }
+
   // ── Row / column relative insertion ───────────────────────────────
 
   function addColumnRelativeToDisplayPosition(displayRowIdx, displayStackIdx, displayColIdx, insertBefore) {
@@ -246,10 +465,22 @@ var LexeraDndMutations = (function () {
     if (!insertBefore) insertAt++;
     if (insertAt === sourceFullIdx) return;
 
-    _deps.pushUndo();
+    var sourceAnchor = captureDndMutationSiblingAnchor(fbd.rows, sourceFullIdx);
+    finalizePendingDndMutationUndo();
     var moved = fbd.rows.splice(sourceFullIdx, 1)[0];
+    if (!moved) return;
     fbd.rows.splice(insertAt, 0, moved);
-    return _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    var movedIdx = fbd.rows.indexOf(moved);
+    var operation = {
+      boardId: activeBoardId(),
+      rowId: normalizeDndMutationEntityId(moved.id),
+      sourceAnchor: sourceAnchor,
+      targetAnchor: captureDndMutationSiblingAnchor(fbd.rows, movedIdx)
+    };
+    return afterDndMutationPersist(
+      _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] }),
+      function () { if (operation.rowId) recordDndMutationRowMoveUndo(operation); }
+    );
   }
 
   function moveStack(fromRowIdx, fromStackIdx, toRowIdx, toStackIdx, insertBefore) {
@@ -267,14 +498,38 @@ var LexeraDndMutations = (function () {
     if (!insertBefore) insertAt++;
     if (fromRow === toRow && insertAt === fromFullStackIdx) return;
 
-    _deps.pushUndo();
+    var sourceRowIndex = fbd.rows.indexOf(fromRow);
+    var targetRowIndex = fbd.rows.indexOf(toRow);
+    var sourceRowShell = cloneDndMutationContainerShell(fromRow, 'stacks');
+    var targetRowShell = cloneDndMutationContainerShell(toRow, 'stacks');
+    var sourceRowAnchor = captureDndMutationSiblingAnchor(fbd.rows, sourceRowIndex);
+    var targetRowAnchor = captureDndMutationSiblingAnchor(fbd.rows, targetRowIndex);
+    var sourceStackAnchor = captureDndMutationSiblingAnchor(fromRow.stacks, fromFullStackIdx);
+    finalizePendingDndMutationUndo();
     var moved = fromRow.stacks.splice(fromFullStackIdx, 1)[0];
+    if (!moved) return;
     if (insertAt < 0) insertAt = 0;
     if (insertAt > toRow.stacks.length) insertAt = toRow.stacks.length;
     toRow.stacks.splice(insertAt, 0, moved);
+    var movedStackIdx = toRow.stacks.indexOf(moved);
+    var operation = {
+      boardId: activeBoardId(),
+      stackId: normalizeDndMutationEntityId(moved.id),
+      sourceRowId: normalizeDndMutationEntityId(fromRow.id),
+      targetRowId: normalizeDndMutationEntityId(toRow.id),
+      sourceRowShell: sourceRowShell,
+      targetRowShell: targetRowShell,
+      sourceRowAnchor: sourceRowAnchor,
+      targetRowAnchor: targetRowAnchor,
+      sourceStackAnchor: sourceStackAnchor,
+      targetStackAnchor: captureDndMutationSiblingAnchor(toRow.stacks, movedStackIdx)
+    };
     removeEmptyStacksAndRows();
 
-    return _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    return afterDndMutationPersist(
+      _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] }),
+      function () { if (operation.stackId) recordDndMutationStackMoveUndo(operation); }
+    );
   }
 
   // ── Mutation entity ID generation ─────────────────────────────────
