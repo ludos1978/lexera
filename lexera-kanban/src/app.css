@@ -2993,7 +2993,13 @@ body.is-dragging-layout .columns-container {
 
 .board-stack-header {
   display: flex;
-  align-items: center;
+  /* Same structure as .board-row-header: anchor all header content to
+     the flex CROSS-start edge so the fold icon + title + grip + menu
+     stay on one axis and the fold icon doesn't jump when the stack
+     flips from a horizontal bar (unfolded) to a vertical column
+     (folded). See .board-stack-header .stack-fold-btn + the folded
+     override below. */
+  align-items: flex-start;
   gap: var(--btn-gap);
   padding: var(--layout-stack-header-pad-y) var(--layout-stack-header-pad-x);
   cursor: grab;
@@ -3017,6 +3023,11 @@ body.is-dragging-layout .columns-container {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Same calculation as .board-row-title: pin the title's line box to
+     the icon size so its text centres on the SAME axis as the
+     flex-centred icon glyphs (pad + S/2), in both the horizontal bar
+     and the folded rotated-text column. */
+  line-height: var(--icon-button-size);
 }
 .board-stack-title:hover {
   text-decoration: none;
@@ -3044,6 +3055,12 @@ body.is-dragging-layout .columns-container {
 .board-stack-header .stack-fold-btn,
 .column-header .column-fold-btn {
   order: 0;
+  /* Same calculation as .board-row-header .row-fold-btn: pin the fold
+     icon to the header's cross-start edge so it resolves to the same
+     physical (pad, pad) corner regardless of fold state — for the
+     stack that means top-left whether the header is a horizontal bar
+     (unfolded) or a vertical column (folded); no jump on toggle. */
+  align-self: flex-start;
 }
 
 .board-stack-header .drag-grip,
@@ -3159,7 +3176,10 @@ body.is-dragging-layout .columns-container {
   border-radius: 0;
   width: 100%;
   padding: var(--layout-stack-header-pad-y) var(--space-1);
-  align-items: center;
+  /* Keep the cross-start anchor in the folded (vertical column) state
+     too — center would re-introduce the fold-icon jump vs the
+     unfolded horizontal bar. */
+  align-items: flex-start;
   gap: var(--btn-gap);
 }
 
@@ -3548,7 +3568,10 @@ body.is-dragging-layout .columns-container {
   display: flex;
   justify-content: flex-start;
   gap: var(--btn-gap);
-  align-items: center;
+  /* Same structure as .board-row-header / .board-stack-header: anchor
+     header content to the cross-start edge so the fold icon + title +
+     grip + menu sit on one axis. */
+  align-items: flex-start;
   user-select: none;
   background: var(--surface-header-bg);
 }
@@ -3781,6 +3804,10 @@ u {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: text;
+  /* Same calculation as .board-row-title / .board-stack-title: pin the
+     line box to the icon size so the title text centres on the SAME
+     axis as the flex-centred fold/grip/menu glyphs. */
+  line-height: var(--icon-button-size);
 }
 
 .column-count {

@@ -87,3 +87,57 @@ describe('row fold button stays pinned to the row corner across fold state', () 
     expect(found, 'folded .row-fold-btn order rule must still exist').toBe(true);
   });
 });
+
+// User contract 2026-05-18 (follow-up): "now apply the same structure
+// and calculation to all folding icons!". The stack header flips from
+// a horizontal bar (unfolded) to a vertical column (folded) so its
+// fold icon has the same jump class as the row's; the column header
+// stays a bar but gets the same structure for consistency + the
+// title-text-on-icon-axis alignment. Mirror of the row contract above.
+describe('stack + column fold icons reuse the same anchor structure', () => {
+  it('.board-stack-header anchors content to the cross-start edge (not center)', () => {
+    const bodies = ruleBodies('.board-stack-header');
+    expect(bodies.length, 'base .board-stack-header rule must exist').toBeGreaterThan(0);
+    const base = bodies.find((b) => /align-items\s*:/.test(b));
+    expect(base, '.board-stack-header must declare align-items').toBeTruthy();
+    expect(base).toMatch(/align-items\s*:\s*flex-start\s*;/);
+    expect(base).not.toMatch(/align-items\s*:\s*center\s*;/);
+  });
+
+  it('the folded .board-stack-header keeps the cross-start anchor (no re-center jump)', () => {
+    const m = appCss.match(
+      /\.board-stack\.folded\s+\.board-stack-header\s*\{([^}]*)\}/
+    );
+    expect(m, 'folded .board-stack-header rule must exist').not.toBeNull();
+    expect(m[1]).toMatch(/align-items\s*:\s*flex-start\s*;/);
+    expect(m[1]).not.toMatch(/align-items\s*:\s*center\s*;/);
+  });
+
+  it('.column-header anchors content to the cross-start edge (not center)', () => {
+    const bodies = ruleBodies('.column-header');
+    expect(bodies.length, 'base .column-header rule must exist').toBeGreaterThan(0);
+    const base = bodies.find((b) => /align-items\s*:/.test(b));
+    expect(base, '.column-header must declare align-items').toBeTruthy();
+    expect(base).toMatch(/align-items\s*:\s*flex-start\s*;/);
+    expect(base).not.toMatch(/align-items\s*:\s*center\s*;/);
+  });
+
+  it('the shared stack/column fold-btn rule pins align-self: flex-start', () => {
+    // Grouped selector — match the rule directly. align-self is what
+    // keeps the icon on the same physical corner across fold state.
+    const m = appCss.match(
+      /\.board-stack-header\s+\.stack-fold-btn\s*,\s*\.column-header\s+\.column-fold-btn\s*\{([\s\S]*?)\}/
+    );
+    expect(m, 'shared stack/column fold-btn rule must exist').not.toBeNull();
+    expect(m[1]).toMatch(/align-self\s*:\s*flex-start\s*;/);
+  });
+
+  it('.board-stack-title and .column-title align text to the icon axis via line-height', () => {
+    for (const sel of ['.board-stack-title', '.column-title']) {
+      const bodies = ruleBodies(sel);
+      const aligned = bodies.some((b) =>
+        /line-height\s*:\s*var\(\s*--icon-button-size\s*\)\s*;/.test(b));
+      expect(aligned, `${sel} must set line-height: var(--icon-button-size)`).toBe(true);
+    }
+  });
+});
