@@ -68,7 +68,7 @@ var LexeraPollingService = (function () {
       parts.push([
         item.id || '',
         item[key] || '',
-        item.filePath || item.file_path || item.name || '',
+        item.filePath || item.name || '',
         workspaceIdsFingerprint(item)
       ].join(':'));
     }

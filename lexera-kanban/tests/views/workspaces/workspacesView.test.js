@@ -207,8 +207,7 @@ describe('workspaces view sub-app', () => {
       boards: [
         { id: 'b1', title: '', filePath: '/workspace/Sprint Plan.md' },
         { id: 'b2', title: '', filePath: '/workspace/sub/board-3.md' },
-        // snake_case from a legacy payload shape — still recovered.
-        { id: 'b3', title: '', file_path: '/workspace/Roadmap.md' }
+        { id: 'b3', title: '', filePath: '/workspace/Roadmap.md' }
       ],
       remoteBoards: [],
       workspaces: []

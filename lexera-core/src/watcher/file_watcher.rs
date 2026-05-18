@@ -268,7 +268,23 @@ fn handle_debounced_event(
     use notify::EventKind;
 
     for path in &event.paths {
-        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+        // A deleted file can't be canonicalized (the inode is gone), so
+        // `canonicalize` falls back to the raw notify path. The
+        // `main_files` map is keyed by the CANONICAL board path
+        // (watch_board canonicalizes), so a deletion would miss the
+        // lookup whenever the ancestry has a symlink (/tmp, /var, …) and
+        // the board's file-gone state would never be detected. The parent
+        // directory still exists, so reconstruct the canonical file path
+        // from canonical(parent) + filename when the file itself can no
+        // longer be resolved.
+        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| {
+            match (path.parent(), path.file_name()) {
+                (Some(parent), Some(name)) => std::fs::canonicalize(parent)
+                    .map(|p| p.join(name))
+                    .unwrap_or_else(|_| path.clone()),
+                _ => path.clone(),
+            }
+        });
 
         // Check if this is a main board file
         let mapping = match path_mapping.read() {

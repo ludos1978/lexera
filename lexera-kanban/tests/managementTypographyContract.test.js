@@ -30,9 +30,8 @@ describe('management typography contract', () => {
     expect(Array.from(new Set(fontSizes)).sort()).toEqual(['0', 'var(--mgmt-font-size)']);
   });
 
-  it('keeps management hierarchy selection and hover background-free', () => {
-    expect(managementCss).toMatch(/\.mgmt-config-tree \.tree-node\.selected,\s*\.mgmt-config-tree \.mgmt-config-tree-node\.selected\s*\{[\s\S]*background:\s*var\(--hierarchy-active-bg, transparent\)[\s\S]*box-shadow:\s*inset 2px 0 0 var\(--hierarchy-active-accent/);
-    expect(managementCss).toMatch(/\.mgmt-config-tree-node:hover\s*\{[\s\S]*background:\s*var\(--hierarchy-hover-bg, transparent\)/);
+  it('keeps management hierarchy selection background-free', () => {
+    expect(managementCss).toMatch(/\.mgmt-config-tree \.tree-node\.selected\s*\{[\s\S]*background:\s*var\(--hierarchy-active-bg, transparent\)[\s\S]*box-shadow:\s*inset 2px 0 0 var\(--hierarchy-active-accent/);
   });
 
   it('uses the shared transparent burger-menu style in the files tree', () => {

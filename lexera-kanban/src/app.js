@@ -2855,6 +2855,34 @@ var LexeraDashboard = (function () {
       }
       return;
     }
+    // The board's markdown file was deleted on disk (moved, removed, or
+    // a freshly-added board whose file never landed). The in-memory
+    // board is still intact and the user's kanban is still rendering it,
+    // so this is recoverable: tell the user, then recreate the file from
+    // the in-memory copy via the normal save path. storage's
+    // write_board_internal self-heals a missing file, so the save
+    // succeeds, the file reappears, and the post-save
+    // `hierarchy-board-changed` broadcast refreshes the workspace tree
+    // and any sibling kanban. Without this branch a file deletion is
+    // silently unrecoverable — every save fails with ENOENT forever and
+    // edits only survive as crashsaves.
+    if (kind === 'FileDeleted') {
+      var deletedPath = event.path || '';
+      logFrontendIssue('warn', 'sse.fileDeleted',
+        'Board file deleted on disk board=' + boardId + ' path=' + deletedPath);
+      if (canUseLiveSync(activeBoardId)) return;
+      if (isActiveRemoteBoard()) return;
+      if (BoardDataStore.getSaveInFlight()) return;
+      if (typeof showNotification === 'function') {
+        showNotification('This board’s file was deleted on disk. Recreating it from your open copy…');
+      }
+      // Mark dirty so the in-memory board is treated as unsaved work and
+      // route through the established autosave pipeline (which recreates
+      // the file and broadcasts hierarchy-board-changed on success).
+      markBoardDirty();
+      scheduleAutoSave('file-deleted-recover', 0);
+      return;
+    }
     if (kind === 'IncludeFileChanged' && Array.isArray(includeBoardIds) && includeBoardIds.length > 0 && includeBoardIds.indexOf(activeBoardId) === -1) {
       traceFrontendAction('info', 'sse.fileChanged.ignore', 'Ignoring include change for unrelated board', {
         activeBoardId: activeBoardId,

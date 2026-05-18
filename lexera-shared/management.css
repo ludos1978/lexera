@@ -574,15 +574,9 @@
 }
 /* Management tree: inherits the shared `.tree-*` base styles from app.css
  * including indent guides, toggle, label, meta, count, grip, and hover.
- * The only management-specific rule is the selected-state highlight. The
- * old mgmt-config-tree-node / mgmt-config-tree-child / mgmt-config-tree-
- * toggle / mgmt-config-tree-label / mgmt-config-tree-badge classes are
- * no longer applied to TreeView nodes — TreeView's own .tree-toggle,
- * .tree-label, .tree-count handle everything. The legacy fallback path
- * (renderLegacyConfigTree) still references some of these for environments
- * without TreeView. */
-.mgmt-config-tree .tree-node.selected,
-.mgmt-config-tree .mgmt-config-tree-node.selected {
+ * The only management-specific rule is the selected-state highlight —
+ * TreeView's own .tree-toggle / .tree-label / .tree-count handle the rest. */
+.mgmt-config-tree .tree-node.selected {
   background: var(--hierarchy-active-bg, transparent);
   color: var(--hierarchy-active-color, inherit);
   box-shadow: inset 2px 0 0 var(--hierarchy-active-accent, var(--accent, #4c7abf));
@@ -626,75 +620,6 @@
   --tree-indent-guide-center: 6px;
 }
 /* No bold on any hierarchy level — all labels inherit the base font-weight */
-/* Legacy fallback classes — only used when TreeView is unavailable.
- * Values match the shared .tree-node layout so the fallback looks
- * identical to the TreeView rendering path. */
-.mgmt-config-tree-node {
-  display: flex;
-  align-items: center;
-  min-height: var(--hierarchy-row-min-height, 18px);
-  gap: var(--hierarchy-row-gap, 3px);
-  padding: var(--hierarchy-row-pad-y, 2px) var(--hierarchy-row-pad-x, 6px);
-  cursor: pointer;
-  border-radius: var(--hierarchy-row-radius, 3px);
-  font-size: var(--mgmt-font-size);
-  font-weight: var(--hierarchy-font-weight, 400);
-  color: var(--hierarchy-text-color, inherit);
-  margin: 0 2px;
-}
-.mgmt-config-tree-node:hover {
-  color: var(--hierarchy-hover-color, inherit);
-  background: var(--hierarchy-hover-bg, transparent);
-}
-.mgmt-config-tree-node.selected {
-  background: var(--hierarchy-active-bg, transparent);
-  color: var(--hierarchy-active-color, inherit);
-  box-shadow: inset 2px 0 0 var(--hierarchy-active-accent, var(--accent, #4c7abf));
-}
-.mgmt-config-tree-child {
-  padding-left: 20px;
-}
-.mgmt-config-tree-toggle {
-  font-size: var(--mgmt-font-size);
-  flex-shrink: 0;
-  width: var(--tree-toggle-col, 14px);
-  min-width: var(--tree-toggle-col, 14px);
-  text-align: center;
-  color: var(--hierarchy-meta-color, inherit);
-}
-.mgmt-config-tree-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mgmt-config-tree-badge {
-  font-size: var(--mgmt-font-size);
-  color: var(--hierarchy-meta-color, inherit);
-  flex-shrink: 0;
-}
-.mgmt-config-tree-default {
-  font-size: var(--mgmt-font-size);
-  color: var(--accent, #4c7abf);
-  flex-shrink: 0;
-}
-.mgmt-config-tree-divider {
-  height: 1px;
-  background: var(--border, #474747);
-  margin: 4px 8px;
-}
-.mgmt-config-tree-heading {
-  display: flex;
-  align-items: center;
-  min-height: var(--hierarchy-row-min-height, 18px);
-  gap: var(--hierarchy-row-gap, 3px);
-  padding: var(--hierarchy-row-pad-y, 2px) var(--hierarchy-row-pad-x, 6px);
-  margin: 0 2px;
-  font-size: var(--mgmt-font-size);
-  font-weight: var(--hierarchy-font-weight, 400);
-  color: var(--hierarchy-meta-color, inherit);
-}
 .mgmt-config-tree-add {
   padding: 4px 8px;
 }

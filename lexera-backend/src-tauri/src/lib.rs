@@ -310,6 +310,23 @@ fn setup_file_watcher(
                                             }
                                         }
                                     }
+                                    BoardChangeEvent::FileDeleted { board_id, path } => {
+                                        // The board's markdown file was removed
+                                        // out from under us. Do NOT reload (the
+                                        // file is gone) and do NOT drop the
+                                        // in-memory board — it's the only
+                                        // surviving copy and the user's open
+                                        // kanban is still rendering it. The
+                                        // event is forwarded as-is below so the
+                                        // frontend can surface it and recreate
+                                        // the file from memory on next save
+                                        // (storage::write_board_internal now
+                                        // self-heals a missing file).
+                                        log::warn!(
+                                            "[lexera.events] Board {} file deleted on disk at {:?}; keeping in-memory copy, forwarding for in-app recovery",
+                                            board_id, path
+                                        );
+                                    }
                                     _ => {}
                                 }
 

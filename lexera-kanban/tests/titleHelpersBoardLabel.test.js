@@ -37,9 +37,9 @@ describe('LexeraTitleHelpers.resolveBoardLabel', () => {
       .toBe('Sprint Plan');
   });
 
-  it('accepts legacy snake_case file_path', () => {
+  it('ignores legacy snake_case file_path (legacy alias removed)', () => {
     expect(th.resolveBoardLabel({ title: '', file_path: '/workspace/Roadmap.md' }))
-      .toBe('Roadmap');
+      .toBe('Untitled');
   });
 
   it('falls back to legacy name field when both title and filePath are absent', () => {

@@ -277,7 +277,7 @@ var ManagementUI = (function () {
   }
 
   function getManagementBoardDisplayName(board) {
-    return board.title || (board.filePath || board.file_path || board.id || '').split('/').pop().replace('.md', '') || 'Untitled';
+    return board.title || (board.filePath || board.id || '').split('/').pop().replace('.md', '') || 'Untitled';
   }
 
   function buildConfigTreeNodeType(baseType, options) {
@@ -1062,7 +1062,7 @@ var ManagementUI = (function () {
         e.dataTransfer.dropEffect = 'copy';
         var wsNode = e.target.closest('[data-mgmt-config-type="workspace"]');
         // Remove highlight from all nodes first
-        var allNodes = configTree.querySelectorAll('.mgmt-config-tree-node');
+        var allNodes = configTree.querySelectorAll('.mgmt-drop-active');
         for (var n = 0; n < allNodes.length; n++) allNodes[n].classList.remove('mgmt-drop-active');
         if (wsNode) wsNode.classList.add('mgmt-drop-active');
       };
@@ -1072,12 +1072,12 @@ var ManagementUI = (function () {
           wsNode.classList.remove('mgmt-drop-active');
         }
         if (!configTree.contains(e.relatedTarget)) {
-          var allNodes = configTree.querySelectorAll('.mgmt-config-tree-node');
+          var allNodes = configTree.querySelectorAll('.mgmt-drop-active');
           for (var n = 0; n < allNodes.length; n++) allNodes[n].classList.remove('mgmt-drop-active');
         }
       };
       mountObj.configTreeDropHandler = function (e) {
-        var allNodes = configTree.querySelectorAll('.mgmt-config-tree-node');
+        var allNodes = configTree.querySelectorAll('.mgmt-drop-active');
         for (var n = 0; n < allNodes.length; n++) allNodes[n].classList.remove('mgmt-drop-active');
         var wsNode = e.target.closest('[data-mgmt-config-type="workspace"]');
         var targetWsId = wsNode ? wsNode.getAttribute('data-mgmt-config-id') : null;
@@ -1741,7 +1741,7 @@ var ManagementUI = (function () {
     var html = '';
     for (var i = 0; i < boards.length; i++) {
       var b = boards[i];
-      var boardName = b.title || (b.filePath || b.file_path || b.id || '').split('/').pop().replace('.md', '') || 'Untitled';
+      var boardName = b.title || (b.filePath || b.id || '').split('/').pop().replace('.md', '') || 'Untitled';
       var isExpanded = expandedBoardId === b.id;
       var wsIds = getBoardWorkspaceIds(b);
 
@@ -2256,88 +2256,6 @@ var ManagementUI = (function () {
     renderConfigInspector();
   }
 
-  function renderLegacyConfigTree(el) {
-    var html = '';
-
-    // Global Settings node
-    var isGlobalSelected = configSelectedItem && configSelectedItem.type === 'global';
-    html += '<div class="mgmt-config-tree-node' + (isGlobalSelected ? ' selected' : '') + '"'
-      + ' data-mgmt-action="config-select" data-mgmt-config-type="global" data-mgmt-config-id="global">';
-    html += '<span class="mgmt-config-tree-toggle">\u2699</span>';
-    html += '<span class="mgmt-config-tree-label">Global Settings</span>';
-    html += '</div>';
-    html += '<div class="mgmt-config-tree-divider"></div>';
-
-    for (var i = 0; i < cachedWorkspaces.length; i++) {
-      var ws = cachedWorkspaces[i];
-      var isDefault = ws.id === cachedDefaultWorkspaceId;
-      var isSelected = configSelectedItem && configSelectedItem.type === 'workspace' && configSelectedItem.id === ws.id;
-      var wsBoards = cachedBoards.filter(function (b) {
-        var wsIds = getBoardWorkspaceIds(b);
-        return wsIds.indexOf(ws.id) >= 0;
-      });
-
-      html += '<div class="mgmt-config-tree-node' + (isSelected ? ' selected' : '') + '"'
-        + ' data-mgmt-action="config-select" data-mgmt-config-type="workspace" data-mgmt-config-id="' + esc(ws.id) + '">';
-      html += '<span class="mgmt-config-tree-toggle">\u25BC</span>';
-      html += '<span class="mgmt-config-tree-label">' + esc(ws.name) + '</span>';
-      html += '<span class="mgmt-config-tree-badge">' + wsBoards.length + '</span>';
-      if (isDefault) html += '<span class="mgmt-config-tree-default" title="Default workspace">&#9733;</span>';
-      html += '</div>';
-
-      for (var j = 0; j < wsBoards.length; j++) {
-        var b = wsBoards[j];
-        var boardName = b.title || (b.filePath || b.file_path || b.id || '').split('/').pop().replace('.md', '') || 'Untitled';
-        var isBoardSelected = configSelectedItem && configSelectedItem.type === 'board' && configSelectedItem.id === b.id;
-        html += '<div class="mgmt-config-tree-node mgmt-config-tree-child' + (isBoardSelected ? ' selected' : '') + '"'
-          + ' data-mgmt-action="config-select" data-mgmt-config-type="board" data-mgmt-config-id="' + esc(b.id) + '">';
-        html += '<span class="mgmt-config-tree-label">' + esc(boardName) + '</span>';
-        html += '</div>';
-      }
-    }
-
-    // Unassigned boards (not in any workspace)
-    var unassigned = cachedBoards.filter(function (b) {
-      var wsIds = getBoardWorkspaceIds(b);
-      for (var k = 0; k < wsIds.length; k++) {
-        for (var m = 0; m < cachedWorkspaces.length; m++) {
-          if (cachedWorkspaces[m].id === wsIds[k]) return false;
-        }
-      }
-      return wsIds.length === 0 || true;
-    });
-    // Actually, filter boards whose workspace IDs don't match any existing workspace
-    unassigned = cachedBoards.filter(function (b) {
-      var wsIds = getBoardWorkspaceIds(b);
-      if (wsIds.length === 0) return true;
-      for (var k = 0; k < wsIds.length; k++) {
-        for (var m = 0; m < cachedWorkspaces.length; m++) {
-          if (cachedWorkspaces[m].id === wsIds[k]) return false;
-        }
-      }
-      return true;
-    });
-    if (unassigned.length > 0) {
-      html += '<div class="mgmt-config-tree-divider"></div>';
-      html += '<div class="mgmt-config-tree-heading">Unassigned</div>';
-      for (var u = 0; u < unassigned.length; u++) {
-        var ub = unassigned[u];
-        var ubName = ub.title || (ub.filePath || ub.file_path || ub.id || '').split('/').pop().replace('.md', '') || 'Untitled';
-        var isUbSelected = configSelectedItem && configSelectedItem.type === 'board' && configSelectedItem.id === ub.id;
-        html += '<div class="mgmt-config-tree-node mgmt-config-tree-child' + (isUbSelected ? ' selected' : '') + '"'
-          + ' data-mgmt-action="config-select" data-mgmt-config-type="board" data-mgmt-config-id="' + esc(ub.id) + '">';
-        html += '<span class="mgmt-config-tree-label">' + esc(ubName) + '</span>';
-        html += '</div>';
-      }
-    }
-
-    html += '<div class="mgmt-config-tree-add">';
-    html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="config-add-workspace">+ Add Workspace</button>';
-    html += '</div>';
-
-    el.innerHTML = html;
-  }
-
   function bindConfigTreeInteractions(el) {
     var controller = getManagementHierarchyControllerApi();
     var TreeView = getManagementTreeViewApi();
@@ -2387,14 +2305,9 @@ var ManagementUI = (function () {
   function renderConfigTree() {
     var el = queryFirst('#mgmt-config-tree');
     if (!el) return;
-    if (renderSharedConfigTree(el)) return;
-    // Legacy fallback: only used when TreeView/HierarchyController aren't
-    // loaded. Log a warning so the issue is visible in the console.
-    if (typeof console !== 'undefined' && console.warn) {
-      console.warn('[management] TreeView not available — falling back to legacy config tree rendering. ' +
-        'Ensure treeView.js + hierarchy/hierarchyContract.js + hierarchy/hierarchyController.js load BEFORE management.js.');
+    if (!renderSharedConfigTree(el)) {
+      throw new Error('[management] TreeView unavailable — treeView.js + hierarchy/hierarchyContract.js + hierarchy/hierarchyController.js must load before management.js');
     }
-    renderLegacyConfigTree(el);
   }
 
   function renderConfigInspector() {
@@ -2520,8 +2433,8 @@ var ManagementUI = (function () {
       el.innerHTML = '<div class="mgmt-list-empty">Board not found</div>';
       return;
     }
-    var boardName = board.title || (board.filePath || board.file_path || board.id || '').split('/').pop().replace('.md', '') || 'Untitled';
-    var filePath = board.filePath || board.file_path || '';
+    var boardName = board.title || (board.filePath || board.id || '').split('/').pop().replace('.md', '') || 'Untitled';
+    var filePath = board.filePath || '';
     var boardWsIds = getBoardWorkspaceIds(board);
 
     var html = '';
@@ -2814,7 +2727,7 @@ var ManagementUI = (function () {
       if (targetWsId) {
         for (var j = 0; j < cachedBoards.length; j++) {
           var b = cachedBoards[j];
-          var bPath = b.filePath || b.file_path || '';
+          var bPath = b.filePath || '';
           for (var k = 0; k < paths.length; k++) {
             if (bPath && bPath === paths[k]) {
               var currentWsIds = getBoardWorkspaceIds(b);

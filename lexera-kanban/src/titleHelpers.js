@@ -39,9 +39,8 @@
   // Priority: parsed `title` (markdown H1, set by lexera-core's
   // `build_board_summary` from `KanbanBoard.title`) → filename
   // basename without `.md` (recovers a useful label when the file
-  // has no H1) → legacy `name` field → `'Untitled'`. Both `filePath`
-  // (camelCase per Rust serde rename) and `file_path` (legacy
-  // snake_case payloads) are accepted.
+  // has no H1) → legacy `name` field → `'Untitled'`. The board file
+  // path arrives as `filePath` (camelCase per Rust serde rename).
   function basenameWithoutMd(filePath) {
     var raw = String(filePath || '').trim();
     if (!raw) return '';
@@ -52,7 +51,7 @@
     if (!meta) return 'Untitled';
     var title = String(meta.title || '').trim();
     if (title) return title;
-    var fileName = basenameWithoutMd(meta.filePath || meta.file_path || '');
+    var fileName = basenameWithoutMd(meta.filePath || '');
     if (fileName) return fileName;
     var name = String(meta.name || '').trim();
     if (name) return name;

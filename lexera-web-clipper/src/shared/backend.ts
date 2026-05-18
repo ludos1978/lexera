@@ -21,7 +21,6 @@ export interface BackendBoardSummary {
   id: string;
   title: string;
   filePath?: string;
-  file_path?: string;
   workspaceIds?: string[];
   workspace_ids?: string[];
   columns?: BackendColumnSummary[];

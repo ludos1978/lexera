@@ -61,7 +61,6 @@ type PopupBoard = {
   id: string;
   title?: string;
   filePath?: string;
-  file_path?: string;
   workspaceIds?: string[];
   workspace_ids?: string[];
   columns?: PopupColumn[];
@@ -440,7 +439,6 @@ function extractFeedOptionDescription(context: WebClipperContext, candidate: Web
 function boardFilePath(board: PopupBoard | undefined): string {
   if (!board) return '';
   if (typeof board.filePath === 'string' && board.filePath.trim()) return board.filePath.trim();
-  if (typeof board.file_path === 'string' && board.file_path.trim()) return board.file_path.trim();
   return '';
 }
 

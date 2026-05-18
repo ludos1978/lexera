@@ -174,7 +174,7 @@ describe('hierarchy view sub-app', () => {
     capturedOpts.onCatalog({
       boards: [
         { id: 'b1', title: '', filePath: '/workspace/Sprint Plan.md', workspace_id: 'ws-1' },
-        { id: 'b2', title: '', file_path: '/workspace/Roadmap.md', workspace_id: 'ws-1' }
+        { id: 'b2', title: '', filePath: '/workspace/Roadmap.md', workspace_id: 'ws-1' }
       ],
       remoteBoards: [],
       workspaces: [{ id: 'ws-1', name: 'Default' }],
