@@ -132,3 +132,63 @@ describe('autoRunBootstrap', () => {
     expect(iframeRun).toHaveBeenCalledWith({ autoRun: true, filter: '' });
   });
 });
+
+// Pre-test stall watchdog: makes a `pre-run-board-ready` / `pre-test-paint`
+// readiness stall actionable instead of a frozen "test 0/161 [phase]" line
+// followed by silence when run-lexera-tests.sh kills the harness.
+describe('autoRunBootstrap pre-test stall watchdog', () => {
+  function loadDescribeStall() {
+    const { sandbox } = createSandbox({ parentTests: 1 });
+    runInNewContext(source, sandbox, { filename: 'autoRunBootstrap.js' });
+    return sandbox.window.__LEXERA_AUTO_RUN_DESCRIBE_STALL__;
+  }
+
+  it('exposes describeStall as a pure test hook at IIFE load', () => {
+    expect(typeof loadDescribeStall()).toBe('function');
+  });
+
+  it('returns null when the run is inactive or state is missing', () => {
+    const describeStall = loadDescribeStall();
+    expect(describeStall(null, 999999)).toBeNull();
+    expect(describeStall({ active: false, currentIndex: -1, total: 5 }, 999999)).toBeNull();
+  });
+
+  it('returns null once a test has started, even long past the threshold', () => {
+    const describeStall = loadDescribeStall();
+    expect(
+      describeStall({ active: true, currentIndex: 0, total: 161, phase: 'running' }, 600000)
+    ).toBeNull();
+  });
+
+  it('returns null while still under the warn threshold', () => {
+    const describeStall = loadDescribeStall();
+    expect(
+      describeStall({ active: true, currentIndex: -1, total: 161, phase: 'pre-run-board-ready' }, 29000)
+    ).toBeNull();
+  });
+
+  it('emits an actionable diagnostic naming the stuck phase, count, and timeout once past the threshold', () => {
+    const describeStall = loadDescribeStall();
+    const msg = describeStall(
+      { active: true, currentIndex: -1, total: 161, phase: 'pre-run-board-ready' },
+      30000
+    );
+    expect(msg).toBeTypeOf('string');
+    expect(msg).toContain('STALL');
+    expect(msg).toContain("pre-test phase 'pre-run-board-ready'");
+    expect(msg).toContain('0/161 tests started');
+    expect(msg).toContain('30s');
+    expect(msg).toContain('90s hard timeout');
+    expect(msg).toContain('Board not ready');
+    expect(msg.endsWith('\n')).toBe(true);
+  });
+
+  it('escalates: the reported elapsed seconds grow on re-emit', () => {
+    const describeStall = loadDescribeStall();
+    const at30 = describeStall({ active: true, currentIndex: -1, total: 8, phase: 'pre-test-paint' }, 30000);
+    const at90 = describeStall({ active: true, currentIndex: -1, total: 8, phase: 'pre-test-paint' }, 90000);
+    expect(at30).toContain('after 30s');
+    expect(at90).toContain('after 90s');
+    expect(at90).toContain("pre-test phase 'pre-test-paint'");
+  });
+});

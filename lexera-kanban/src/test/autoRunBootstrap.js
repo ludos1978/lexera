@@ -30,6 +30,38 @@
     } catch (_) {}
   }
 
+  // Pre-test stall watchdog. While the runner sits in a pre-test phase
+  // (no test body has started — `currentIndex < 0`, e.g. `pre-run-paint`
+  // / `pre-run-board-ready` / `pre-test-paint`) the progress line stays
+  // BYTE-IDENTICAL ("test 0/161 [pre-run-board-ready autoRun]"), so a
+  // readiness stall is invisible in logs/frontend-tests.log: one frozen
+  // line then silence when run-lexera-tests.sh kills the harness. This
+  // pure helper turns that into an actionable diagnostic — it names the
+  // stuck phase, elapsed time, and the known hard-timeout behaviour so
+  // the operator knows it's a board-readiness gate (not a hung test) and
+  // that waitForBoardReady() will abort the run at 90s. Returns null
+  // when there is nothing actionable to report (run inactive, a test has
+  // already started, or still under the warn threshold).
+  var STALL_WARN_MS = 30000;
+  function describeStall(state, elapsedMs) {
+    if (!state || state.active === false) return null;
+    var currentIndex = typeof state.currentIndex === 'number' ? state.currentIndex : -1;
+    if (currentIndex >= 0) return null; // a test has started — not a pre-test stall
+    if (!(typeof elapsedMs === 'number' && elapsedMs >= STALL_WARN_MS)) return null;
+    var total = typeof state.total === 'number' ? state.total : 0;
+    var phase = state.phase || 'unknown';
+    var secs = Math.round(elapsedMs / 1000);
+    return '[auto-run] STALL: still in pre-test phase \'' + phase + '\' after ' + secs +
+      's — 0/' + total + ' tests started; the board-readiness gate has not been ' +
+      'satisfied. waitForBoardReady() has a 90s hard timeout after which the run ' +
+      'aborts with "Board not ready: ..." — see the [test.runner] readiness logs ' +
+      'for the missing id/rows/dom signal.\n';
+  }
+  // Test hook: pure + side-effect-free, exposed in the same spirit as
+  // LFT._runState / _buildResults so the watchdog can be unit-tested
+  // without driving the whole async progress loop + a fake clock.
+  try { window.__LEXERA_AUTO_RUN_DESCRIBE_STALL__ = describeStall; } catch (_) {}
+
   function normalizeAutoRunConfig(config) {
     if (!config || typeof config !== 'object') return null;
     if (config.auto_run !== true && config.autoRun !== true) return null;
@@ -539,6 +571,8 @@
     // Poll until tests finish
     var lastProgressText = '';
     var lastProgressAt = 0;
+    var runActiveSince = Date.now();
+    var lastStallAt = 0;
     while (true) {
       try {
         if (LFT._runState && !LFT._runState.active) break;
@@ -551,6 +585,15 @@
             lastProgressText = progressText;
             lastProgressAt = now;
             await writeTestOutput(outputPath, progressText);
+          }
+          // Pre-test stall watchdog: escalates every STALL_WARN_MS while
+          // stuck before the first test so the frozen progress line gets
+          // an actionable companion instead of silence.
+          var stallText = describeStall(LFT && LFT._runState ? LFT._runState : null, now - runActiveSince);
+          if (stallText && now - lastStallAt >= STALL_WARN_MS) {
+            lastStallAt = now;
+            await writeTestOutput(outputPath, stallText);
+            bootstrapLog('warn', stallText.trim());
           }
         } catch (progressErr) {
           console.warn('[auto-run] failed to write progress:', progressErr);
