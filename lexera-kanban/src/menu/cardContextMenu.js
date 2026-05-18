@@ -250,12 +250,207 @@ var CardContextMenu = (function () {
     return directiveScope === 'scoped' ? ('_' + directiveName) : directiveName;
   }
 
+  // Legacy single-directive comment (pre-consolidation): `<!-- name: value -->`.
+  // Still read for backward compat + migrated into the consolidated comment
+  // on the next edit. Kept exported (callers/tests reference it).
   function getMarpDirectiveRegex(directiveName, directiveScope) {
     var finalDirectiveName = getMarpDirectiveFinalName(directiveName, directiveScope);
     return new RegExp('<!--\\s*' + deps.escapeRegex(finalDirectiveName) + '\\s*:\\s*([\\s\\S]*?)\\s*-->', 'gi');
   }
 
+  // All directive final-names Lexera manages, so migration can safely sweep
+  // ONLY known marp comments (never an unrelated user `<!-- TODO -->`).
+  function getManagedMarpFinalNames() {
+    // Mirrors MARP_COLOR_DIRECTIVES + MARP_TEXT_DIRECTIVES + class/paginate.
+    // Hardcoded (not derived from those consts) so the function is
+    // self-contained — Marp's per-slide directive set is fixed.
+    var bases = [
+      'class', 'paginate',
+      'color', 'backgroundColor', 'backgroundImage',
+      'backgroundPosition', 'backgroundRepeat', 'backgroundSize',
+      'header', 'footer'
+    ];
+    var set = {};
+    for (var k = 0; k < bases.length; k++) { set[bases[k]] = true; set['_' + bases[k]] = true; }
+    return set;
+  }
+
+  // The consolidated form: a single YAML flow-mapping HTML comment, e.g.
+  // `<!-- { _class: "lead invert", color: "red" } -->`. Marpit parses the
+  // comment body with js-yaml (FAILSAFE_SCHEMA) via both its block AND
+  // inline comment rulers, so a flow map sharing the title line is valid
+  // Marp with NO pre-export conversion. Single line keeps the card-title
+  // parser (which strips single-line HTML comments) unaffected.
+  function getMarpConsolidatedCommentRegex() {
+    return /<!--\s*\{([\s\S]*?)\}\s*-->/g;
+  }
+
+  function splitMarpFlowEntries(body) {
+    var entries = [];
+    var cur = '';
+    var quote = null;
+    var src = String(body || '');
+    for (var i = 0; i < src.length; i++) {
+      var ch = src[i];
+      if (quote) {
+        cur += ch;
+        if (ch === '\\' && i + 1 < src.length) { cur += src[++i]; continue; }
+        if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") { quote = ch; cur += ch; continue; }
+      if (ch === ',') { entries.push(cur); cur = ''; continue; }
+      cur += ch;
+    }
+    if (cur.trim() !== '') entries.push(cur);
+    return entries;
+  }
+
+  function unquoteMarpScalar(value) {
+    var s = String(value == null ? '' : value).trim();
+    if (s.length >= 2) {
+      var q = s.charAt(0);
+      if ((q === '"' || q === "'") && s.charAt(s.length - 1) === q) {
+        s = s.slice(1, -1);
+        if (q === '"') s = s.replace(/\\(["\\])/g, '$1');
+        else s = s.replace(/''/g, "'");
+      }
+    }
+    return s.trim();
+  }
+
+  function parseMarpConsolidatedBody(body) {
+    var map = {};
+    var order = [];
+    var entries = splitMarpFlowEntries(body);
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i];
+      var idx = entry.indexOf(':');
+      if (idx === -1) continue;
+      var key = entry.slice(0, idx).trim().replace(/^["']|["']$/g, '').trim();
+      if (!key) continue;
+      var val = unquoteMarpScalar(entry.slice(idx + 1));
+      if (!Object.prototype.hasOwnProperty.call(map, key)) order.push(key);
+      map[key] = val;
+    }
+    return { map: map, order: order };
+  }
+
+  function readMarpConsolidatedSettings(headerText) {
+    var re = getMarpConsolidatedCommentRegex();
+    var text = String(headerText || '');
+    var match = null;
+    var last = null;
+    while ((match = re.exec(text)) !== null) {
+      last = parseMarpConsolidatedBody(match[1]); // last one wins
+    }
+    return last;
+  }
+
+  function escapeMarpSettingsValue(value) {
+    return String(value == null ? '' : value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }
+
+  function serializeMarpConsolidatedComment(map, order) {
+    var keys = (order && order.length) ? order : Object.keys(map);
+    var parts = [];
+    var emitted = {};
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      if (emitted[key] || !Object.prototype.hasOwnProperty.call(map, key)) continue;
+      var val = String(map[key] == null ? '' : map[key]).trim();
+      if (val === '') continue;
+      emitted[key] = true;
+      parts.push(key + ': "' + escapeMarpSettingsValue(val) + '"');
+    }
+    if (parts.length === 0) return '';
+    return '<!-- { ' + parts.join(', ') + ' } -->';
+  }
+
+  function collectLegacyMarpDirectives(headerText) {
+    var managed = getManagedMarpFinalNames();
+    var text = String(headerText || '');
+    var re = /<!--\s*(_?[A-Za-z][A-Za-z0-9]*)\s*:\s*([\s\S]*?)\s*-->/g;
+    var match = null;
+    var found = { map: {}, order: [] };
+    while ((match = re.exec(text)) !== null) {
+      // The consolidated flow-map comment can't match this regex (a brace
+      // follows the comment opener, not a directive name) — no guard needed.
+      var key = String(match[1] || '').trim();
+      if (!managed[key]) continue;
+      var val = String(match[2] || '').trim();
+      if (!Object.prototype.hasOwnProperty.call(found.map, key)) found.order.push(key);
+      found.map[key] = val;
+    }
+    return found;
+  }
+
+  function stripManagedMarpComments(headerText) {
+    var managed = getManagedMarpFinalNames();
+    return String(headerText || '')
+      .replace(/<!--\s*\{[\s\S]*?\}\s*-->/g, ' ')
+      .replace(/<!--\s*(_?[A-Za-z][A-Za-z0-9]*)\s*:[\s\S]*?-->/g, function (m, key) {
+        return managed[String(key).trim()] ? ' ' : m;
+      })
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  // Upsert (or delete when nextValue is empty/null) a single directive into
+  // the ONE consolidated comment, migrating any legacy standalone comments
+  // in the process. Consolidated values win over legacy on conflict.
+  function applyMarpSettingMutation(headerText, finalName, nextValue) {
+    var text = String(headerText || '');
+    var legacy = collectLegacyMarpDirectives(text);
+    var map = {};
+    var order = [];
+    function put(k, v) {
+      var val = String(v == null ? '' : v).trim();
+      if (val === '') return;
+      if (!Object.prototype.hasOwnProperty.call(map, k)) order.push(k);
+      map[k] = val;
+    }
+    for (var li = 0; li < legacy.order.length; li++) put(legacy.order[li], legacy.map[legacy.order[li]]);
+    var consolidated = readMarpConsolidatedSettings(text);
+    if (consolidated) {
+      for (var ci = 0; ci < consolidated.order.length; ci++) {
+        put(consolidated.order[ci], consolidated.map[consolidated.order[ci]]);
+      }
+    }
+
+    var clean = String(nextValue == null ? '' : nextValue).trim();
+    if (clean === '') {
+      if (Object.prototype.hasOwnProperty.call(map, finalName)) {
+        delete map[finalName];
+        order = order.filter(function (k) { return k !== finalName; });
+      }
+    } else {
+      if (!Object.prototype.hasOwnProperty.call(map, finalName)) order.push(finalName);
+      map[finalName] = clean;
+    }
+
+    var stripped = stripManagedMarpComments(text);
+    var comment = serializeMarpConsolidatedComment(map, order);
+    if (!comment) return stripped;
+    if (!stripped) return comment;
+    // Anchor the single comment to the END of the FIRST header line (the
+    // title line) so it stays at the top of the card and the card-title
+    // parser still strips it (single-line HTML comment).
+    var lines = stripped.split('\n');
+    lines[0] = (lines[0] + ' ' + comment).replace(/[ \t]{2,}/g, ' ').trim();
+    return lines.join('\n');
+  }
+
   function getMarpDirectiveValueFromHeader(headerText, directiveName, directiveScope) {
+    var finalName = getMarpDirectiveFinalName(directiveName, directiveScope);
+    var consolidated = readMarpConsolidatedSettings(headerText);
+    if (consolidated && Object.prototype.hasOwnProperty.call(consolidated.map, finalName)) {
+      return String(consolidated.map[finalName] || '').trim();
+    }
+    // Backward compat: fall back to a legacy standalone comment.
     var re = getMarpDirectiveRegex(directiveName, directiveScope);
     var text = String(headerText || '');
     var match = null;
@@ -267,32 +462,11 @@ var CardContextMenu = (function () {
   }
 
   function clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope) {
-    return String(headerText || '')
-      .replace(getMarpDirectiveRegex(directiveName, directiveScope), ' ')
-      .replace(/[ \t]{2,}/g, ' ')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n[ \t]+/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+    return applyMarpSettingMutation(headerText, getMarpDirectiveFinalName(directiveName, directiveScope), null);
   }
 
   function setMarpDirectiveInHeaderText(headerText, directiveName, value, directiveScope) {
-    var cleanValue = String(value || '').trim();
-    if (!cleanValue) {
-      return clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
-    }
-    var nextHeader = clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
-    var comment = '<!-- ' + getMarpDirectiveFinalName(directiveName, directiveScope) + ': ' + cleanValue + ' -->';
-    if (!nextHeader) return comment;
-    // Attach the directive to the END of the FIRST header line (the title
-    // line) so it sits at the TOP of the card. Appending to the whole
-    // multi-line header put it on a later tag line ("within the card").
-    // A standalone leading comment line can't be used: resolveCardLabel
-    // treats a comment-only first line as the end of the title block and
-    // then shows the next line raw (e.g. "## Card" with the heading marks).
-    var lines = nextHeader.split('\n');
-    lines[0] = (lines[0] + ' ' + comment).trim();
-    return lines.join('\n');
+    return applyMarpSettingMutation(headerText, getMarpDirectiveFinalName(directiveName, directiveScope), value);
   }
 
   function hasMarpDirectiveValue(headerText, directiveName, directiveScope, targetValue) {

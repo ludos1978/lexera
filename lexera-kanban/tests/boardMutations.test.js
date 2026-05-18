@@ -213,6 +213,17 @@ function loadMutationFunctions() {
     extractFunction(findLine('function hasTag(')),
     extractFunctionAny('function getMarpDirectiveFinalName('),
     extractFunctionAny('function getMarpDirectiveRegex('),
+    extractFunctionAny('function getManagedMarpFinalNames('),
+    extractFunctionAny('function getMarpConsolidatedCommentRegex('),
+    extractFunctionAny('function splitMarpFlowEntries('),
+    extractFunctionAny('function unquoteMarpScalar('),
+    extractFunctionAny('function parseMarpConsolidatedBody('),
+    extractFunctionAny('function readMarpConsolidatedSettings('),
+    extractFunctionAny('function escapeMarpSettingsValue('),
+    extractFunctionAny('function serializeMarpConsolidatedComment('),
+    extractFunctionAny('function collectLegacyMarpDirectives('),
+    extractFunctionAny('function stripManagedMarpComments('),
+    extractFunctionAny('function applyMarpSettingMutation('),
     extractFunctionAny('function getMarpDirectiveValueFromHeader('),
     extractFunctionAny('function clearMarpDirectiveFromHeaderText('),
     extractFunctionAny('function setMarpDirectiveInHeaderText('),
@@ -1777,18 +1788,57 @@ describe('Marp directive helpers', () => {
     expect(F.clearMarpDirectiveFromHeaderText(header, 'paginate', 'local')).toBe('Slide Title');
   });
 
-  it('places the directive on the first header line, not a later tag line', () => {
+  it('consolidates all directives into ONE flow-map comment on the title line', () => {
     var header = '## Card Title\n#todo #p1';
     var next = F.setMarpDirectiveInHeaderText(header, 'color', 'red', 'local');
+    next = F.setMarpDirectiveInHeaderText(next, 'header', 'My Header', 'local');
+    next = F.toggleMarpClassInHeaderText(next, 'lead', 'local');
+    next = F.toggleMarpClassInHeaderText(next, 'invert', 'scoped');
     var lines = next.split('\n');
 
-    // Directive sits at the TOP (title line), not "within the card"
-    expect(lines[0]).toBe('## Card Title <!-- color: red -->');
-    expect(lines[lines.length - 1]).toBe('#todo #p1');
-    expect(lines[lines.length - 1]).not.toContain('<!--');
-    // Still readable + the heading text is unaffected by the comment
+    // Exactly ONE comment, single line, at the end of the title line.
+    expect((next.match(/<!--/g) || []).length).toBe(1);
+    expect(lines.length).toBe(2);
+    expect(lines[0]).toBe(
+      '## Card Title <!-- { color: "red", header: "My Header", class: "lead", _class: "invert" } -->'
+    );
+    expect(lines[1]).toBe('#todo #p1');
+
+    // Valid Marp: the comment body is a YAML flow-mapping js-yaml can load.
+    var body = next.match(/<!--\s*(\{[\s\S]*?\})\s*-->/)[1];
+    expect(() => JSON.parse(body
+      .replace(/(\w+):/g, '"$1":'))).not.toThrow();
+
+    // All directives still read back, regardless of scope.
     expect(F.getMarpDirectiveValueFromHeader(next, 'color', 'local')).toBe('red');
-    expect(/^#{1,3}\s+(.+)/.exec(F.clearMarpDirectiveFromHeaderText(next, 'color', 'local').split('\n')[0])[1]).toBe('Card Title');
+    expect(F.getMarpDirectiveValueFromHeader(next, 'header', 'local')).toBe('My Header');
+    expect(F.getMarpClassListFromHeader(next, 'local')).toEqual(['lead']);
+    expect(F.getMarpClassListFromHeader(next, 'scoped')).toEqual(['invert']);
+
+    // Card-title parser invariant: the single-line comment strips cleanly,
+    // so the derived heading text is unaffected by the consolidated comment.
+    expect(lines[0].replace(/<!--[\s\S]*?-->/g, '').trim()).toBe('## Card Title');
+    // Clearing every directive removes the comment entirely (no residue).
+    var cleared = next;
+    cleared = F.clearMarpDirectiveFromHeaderText(cleared, 'color', 'local');
+    cleared = F.clearMarpDirectiveFromHeaderText(cleared, 'header', 'local');
+    cleared = F.setMarpClassListInHeader(cleared, [], 'local');
+    cleared = F.setMarpClassListInHeader(cleared, [], 'scoped');
+    expect(cleared).toBe('## Card Title\n#todo #p1');
+  });
+
+  it('migrates legacy separate directive comments into the consolidated one', () => {
+    var header = '## Card <!-- color: red --> <!-- _class: lead -->\n#todo';
+    // Reads the legacy form for backward compat.
+    expect(F.getMarpDirectiveValueFromHeader(header, 'color', 'local')).toBe('red');
+    expect(F.getMarpClassListFromHeader(header, 'scoped')).toEqual(['lead']);
+    // Any edit migrates ALL managed legacy comments into one flow map.
+    var next = F.setMarpDirectiveInHeaderText(header, 'footer', 'Foot', 'local');
+    expect((next.match(/<!--/g) || []).length).toBe(1);
+    expect(next.split('\n')[0]).toBe(
+      '## Card <!-- { color: "red", _class: "lead", footer: "Foot" } -->'
+    );
+    expect(next.split('\n')[1]).toBe('#todo');
   });
 
   it('toggles Marp classes in local and scoped class directives', () => {
