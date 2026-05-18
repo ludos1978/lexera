@@ -1,5 +1,12 @@
 # Lexera Kanban — Completed Items Archive
 
+## Archived During Storage-Mode TODO Cleanup — 2026-05-18
+
+- [x] Cleaned the active TODO file so it only contains open or in-progress work. Removed duplicate historical planning sections and consolidated overlapping tasks into the current grouped backlog.
+- [x] Archived completed items that were still inline in the active TODO list, including FileDeleted recovery, Marp context-menu fixes, fold-icon alignment, export media conversion, export column selection, optional CRDT feature-gating groundwork, dashboard kid-based focus fixes, workspace focus fixes, unit-test sweep repairs, board menu removal, stack-delete targeting, stale localStorage purge, developer-tools verification, slot-map diffing, embedded empty-state repair, no-CRDT smoke/runtime/frontend gating, save transaction coverage, registry ownership, parser/backend refactors, IPC migration steps, and typedef-gate paydown slices.
+- [x] Deleted obsolete duplicate open sections whose live work is now represented once in [TODOs-lexera.md](TODOs-lexera.md): frontend modernization, backend crate extraction, IPC Windows verification, multiview lifecycle, view parity, and defensive contract-test inventory.
+- [x] Added the revised storage-mode plan to the active backlog: one backend process at a time, two build variants, `/status` capability-driven frontends, sequential integration tests for markdown and CRDT modes, and iOS/external-client compatibility work.
+
 - [x] if the content cannot be written into the file the content can be written into the main markdown file. When loading a markdown file that has a include and content in the main file we try to merge the data into the included file if possible (on loading, and when an include file is added to a header with pre-existing content!) if a include file is replaced (one included file for another): if there is just content from the included file, just replace all cards with the new cards. if there is a mixed setup (main and include) we show a warning and ask the user: keep content from main file in main file or export as marp-markdown (user can select a filename, default is the same filename and location as the existing file, but do not overwrite!)
 
 ## Archived During Workspaces-View Single-Scrollbar Fix — 2026-05-04
