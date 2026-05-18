@@ -189,7 +189,7 @@
   --layout-column-header-pad-y: calc(3px * var(--ui-scale));
   --layout-column-header-pad-x: calc(6px * var(--ui-scale));
   --board-row-gap: calc(5px * var(--ui-scale));
-  --board-stack-gap: calc(3px * var(--ui-scale));
+  --board-stack-gap: calc(9px * var(--ui-scale));
   --board-column-gap: calc(3px * var(--ui-scale));
   --board-inner-padding: calc(3px * var(--ui-scale));
   --board-layout-rows: 1;
@@ -2532,7 +2532,13 @@ body.show-special-characters .card-content .ws-nl {
 .board-row-header {
   display: flex;
   flex-direction: row;
-  align-items: center;
+  /* Anchor ALL header content (fold button, drag grip, title, count,
+     actions) to the flex cross-START edge rather than centering it in
+     the 34px rail. Combined with the fold button's own align-self this
+     keeps the whole header column lined up with the fold icon at the
+     same physical (pad-x, pad-y) corner in both the rotated rail
+     (unfolded) and the flat bar (folded) — nothing shifts on toggle. */
+  align-items: flex-start;
   justify-content: flex-end;
   gap: var(--btn-gap);
   padding: var(--layout-row-header-pad-y) var(--layout-row-header-pad-x);
@@ -2549,6 +2555,17 @@ body.show-special-characters .card-content .ws-nl {
 .board-row-header .row-fold-btn {
   writing-mode: horizontal-tb;
   order: 40;
+  /* Keep the fold button at the row's top-left corner in BOTH states.
+     The header geometry differs wildly between unfolded (vertical rail,
+     rotate(180deg), justify flex-end) and folded (horizontal bar, justify
+     flex-start). Anchoring the button to the flex CROSS-start edge instead
+     of letting the header's `align-items: center` center it in the 34px
+     rail makes it resolve to the same physical (pad-x, pad-y) corner in
+     both states: unfolded the cross-start edge maps to x = pad-x after the
+     180deg rail rotation; folded the cross-start edge maps to y = pad-y.
+     This removes the (rail-width - icon-size)/2 - pad-x horizontal jump
+     analytically, with no padding tuning and no magic offset. */
+  align-self: flex-start;
 }
 
 .board-row-header .drag-grip {
@@ -3246,7 +3263,7 @@ body.is-dragging-layout .columns-container {
 /* Board setting: spacious layout */
 .columns-container.layout-spacious {
   --board-row-gap: calc(20px * var(--ui-scale));
-  --board-stack-gap: calc(16px * var(--ui-scale));
+  --board-stack-gap: calc(48px * var(--ui-scale));
   --board-column-gap: calc(10px * var(--ui-scale));
   --board-inner-padding: calc(14px * var(--ui-scale));
 }
