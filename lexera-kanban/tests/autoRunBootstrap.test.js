@@ -192,3 +192,55 @@ describe('autoRunBootstrap pre-test stall watchdog', () => {
     expect(at90).toContain("pre-test phase 'pre-test-paint'");
   });
 });
+
+// Companion to the stall watchdog: when frontendTests.js aborts the run
+// (board-readiness pre-flight timed out) it leaves a `_runState.abort`
+// marker; the bootstrap must flush an actionable reason to the output
+// log so the run doesn't just trail off after the frozen progress line.
+describe('autoRunBootstrap pre-flight abort reporting', () => {
+  function loadDescribeAbort() {
+    const { sandbox } = createSandbox({ parentTests: 1 });
+    runInNewContext(source, sandbox, { filename: 'autoRunBootstrap.js' });
+    return sandbox.window.__LEXERA_AUTO_RUN_DESCRIBE_ABORT__;
+  }
+
+  it('exposes describeAbort as a pure test hook at IIFE load', () => {
+    expect(typeof loadDescribeAbort()).toBe('function');
+  });
+
+  it('returns null when the run has no abort marker (completed normally)', () => {
+    const describeAbort = loadDescribeAbort();
+    expect(describeAbort(null)).toBeNull();
+    expect(describeAbort({ active: false })).toBeNull();
+    expect(describeAbort({ active: false, abort: null })).toBeNull();
+    expect(describeAbort({ active: false, abort: 'oops' })).toBeNull();
+  });
+
+  it('emits an actionable line naming the source, phase, and reason of the abort', () => {
+    const describeAbort = loadDescribeAbort();
+    const msg = describeAbort({
+      active: false,
+      abort: {
+        source: 'runAll',
+        phase: 'pre-run-board-ready',
+        reason: 'Board not ready after 90000ms (status=id/-/-)',
+        at: 123
+      }
+    });
+    expect(msg).toBeTypeOf('string');
+    expect(msg).toContain('ABORTED');
+    expect(msg).toContain('runAll pre-flight failed');
+    expect(msg).toContain("phase 'pre-run-board-ready'");
+    expect(msg).toContain('Board not ready after 90000ms (status=id/-/-)');
+    expect(msg).toContain('no tests executed');
+    expect(msg.endsWith('\n')).toBe(true);
+  });
+
+  it('falls back to safe placeholders when abort fields are missing', () => {
+    const describeAbort = loadDescribeAbort();
+    const msg = describeAbort({ abort: {} });
+    expect(msg).toContain('run pre-flight failed');
+    expect(msg).toContain("phase 'unknown'");
+    expect(msg).toContain('— unknown (');
+  });
+});

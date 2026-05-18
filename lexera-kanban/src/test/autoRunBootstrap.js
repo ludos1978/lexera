@@ -57,10 +57,30 @@
       'aborts with "Board not ready: ..." — see the [test.runner] readiness logs ' +
       'for the missing id/rows/dom signal.\n';
   }
-  // Test hook: pure + side-effect-free, exposed in the same spirit as
-  // LFT._runState / _buildResults so the watchdog can be unit-tested
-  // without driving the whole async progress loop + a fake clock.
-  try { window.__LEXERA_AUTO_RUN_DESCRIBE_STALL__ = describeStall; } catch (_) {}
+  // Companion to the stall watchdog: once a run ends, surface WHY it
+  // ended early. frontendTests.js records a `_runState.abort` marker
+  // (source/phase/reason) before endRun() when the board-readiness
+  // pre-flight fails; without flushing it the output log just shows the
+  // frozen pre-test progress line and the operator never learns the
+  // actionable reason. Pure — returns null when the run completed
+  // normally (no abort marker).
+  function describeAbort(state) {
+    if (!state || !state.abort || typeof state.abort !== 'object') return null;
+    var a = state.abort;
+    var source = a.source || 'run';
+    var phase = a.phase || 'unknown';
+    var reason = a.reason || 'unknown';
+    return '[auto-run] ABORTED: ' + source + ' pre-flight failed in phase \'' + phase +
+      '\' — ' + reason + ' (no tests executed; this is the actionable reason the ' +
+      'run ended early instead of producing results).\n';
+  }
+  // Test hooks: pure + side-effect-free, exposed in the same spirit as
+  // LFT._runState / _buildResults so the watchdog + abort reporter can
+  // be unit-tested without driving the whole async progress loop.
+  try {
+    window.__LEXERA_AUTO_RUN_DESCRIBE_STALL__ = describeStall;
+    window.__LEXERA_AUTO_RUN_DESCRIBE_ABORT__ = describeAbort;
+  } catch (_) {}
 
   function normalizeAutoRunConfig(config) {
     if (!config || typeof config !== 'object') return null;
@@ -600,6 +620,20 @@
         }
       }
       await new Promise(function (res) { setTimeout(res, 500); });
+    }
+
+    // If the run ended early (e.g. the board-readiness pre-flight timed
+    // out and aborted before any test ran), flush the actionable reason
+    // so logs/frontend-tests.log explains WHY instead of trailing off
+    // after the frozen pre-test progress line.
+    if (outputPath) {
+      try {
+        var abortText = describeAbort(LFT && LFT._runState ? LFT._runState : null);
+        if (abortText) {
+          await writeTestOutput(outputPath, abortText);
+          bootstrapLog('warn', abortText.trim());
+        }
+      } catch (_) {}
     }
 
     // Format results

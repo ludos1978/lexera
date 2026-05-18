@@ -20,7 +20,13 @@
     currentIndex: -1,
     total: 0,
     phase: 'idle',
-    autoRun: false
+    autoRun: false,
+    // Survives endRun() (intentionally NOT reset there) so the auto-run
+    // bootstrap can read the actionable reason a run ended early — e.g.
+    // the board-readiness pre-flight timed out — and write it to
+    // logs/frontend-tests.log instead of leaving the operator with a
+    // frozen pre-test progress line. Cleared by beginRun() each run.
+    abort: null
   };
   var _manualInspectState = {
     enabled: false,
@@ -7866,6 +7872,21 @@
     el.style.color = color || 'var(--text-muted)';
   }
 
+  // Record the actionable reason a run is ending early, BEFORE endRun()
+  // resets the volatile run fields. Kept on _runState (which endRun()
+  // deliberately leaves intact) so the auto-run bootstrap can flush it
+  // to the output log after the run goes inactive.
+  function recordPreflightAbort(source, message) {
+    try {
+      _runState.abort = {
+        source: source || 'run',
+        phase: _runState.phase || '',
+        reason: message || 'unknown',
+        at: Date.now()
+      };
+    } catch (_) {}
+  }
+
   function beginRun(total, options) {
     _runState.active = true;
     _runState.cancelRequested = false;
@@ -7873,6 +7894,7 @@
     _runState.total = typeof total === 'number' ? total : 0;
     _runState.phase = 'starting';
     _runState.autoRun = isAutoRunContext(options);
+    _runState.abort = null;
     _autoRunBoardSelectorRefreshed = false;
     updateRunControls();
   }
@@ -8748,6 +8770,7 @@
       var preflightMsg = err && err.message ? err.message : String(err);
       testLog('error', '[test.runner] runAll: pre-flight failed — ' + preflightMsg);
       setSummaryText('Board not ready: ' + preflightMsg, 'var(--error)');
+      recordPreflightAbort('runAll', preflightMsg);
       endRun();
       return;
     }
@@ -8870,6 +8893,7 @@
       testLog('error', '[test.runner] runOne: pre-flight failed — ' + preflightMsg);
       updateRow(index, 'fail', 'Board not ready: ' + preflightMsg, 0);
       setSummaryText('Board not ready', 'var(--error)');
+      recordPreflightAbort('runOne', preflightMsg);
       endRun();
       return;
     }
