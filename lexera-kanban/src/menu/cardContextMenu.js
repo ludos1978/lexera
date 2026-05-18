@@ -283,7 +283,16 @@ var CardContextMenu = (function () {
     }
     var nextHeader = clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
     var comment = '<!-- ' + getMarpDirectiveFinalName(directiveName, directiveScope) + ': ' + cleanValue + ' -->';
-    return nextHeader ? (nextHeader + ' ' + comment).trim() : comment;
+    if (!nextHeader) return comment;
+    // Attach the directive to the END of the FIRST header line (the title
+    // line) so it sits at the TOP of the card. Appending to the whole
+    // multi-line header put it on a later tag line ("within the card").
+    // A standalone leading comment line can't be used: resolveCardLabel
+    // treats a comment-only first line as the end of the title block and
+    // then shows the next line raw (e.g. "## Card" with the heading marks).
+    var lines = nextHeader.split('\n');
+    lines[0] = (lines[0] + ' ' + comment).trim();
+    return lines.join('\n');
   }
 
   function hasMarpDirectiveValue(headerText, directiveName, directiveScope, targetValue) {

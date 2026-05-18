@@ -1777,6 +1777,20 @@ describe('Marp directive helpers', () => {
     expect(F.clearMarpDirectiveFromHeaderText(header, 'paginate', 'local')).toBe('Slide Title');
   });
 
+  it('places the directive on the first header line, not a later tag line', () => {
+    var header = '## Card Title\n#todo #p1';
+    var next = F.setMarpDirectiveInHeaderText(header, 'color', 'red', 'local');
+    var lines = next.split('\n');
+
+    // Directive sits at the TOP (title line), not "within the card"
+    expect(lines[0]).toBe('## Card Title <!-- color: red -->');
+    expect(lines[lines.length - 1]).toBe('#todo #p1');
+    expect(lines[lines.length - 1]).not.toContain('<!--');
+    // Still readable + the heading text is unaffected by the comment
+    expect(F.getMarpDirectiveValueFromHeader(next, 'color', 'local')).toBe('red');
+    expect(/^#{1,3}\s+(.+)/.exec(F.clearMarpDirectiveFromHeaderText(next, 'color', 'local').split('\n')[0])[1]).toBe('Card Title');
+  });
+
   it('toggles Marp classes in local and scoped class directives', () => {
     var header = 'Slide Title';
     header = F.toggleMarpClassInHeaderText(header, 'lead', 'local');
