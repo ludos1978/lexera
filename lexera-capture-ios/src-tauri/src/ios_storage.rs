@@ -563,6 +563,8 @@ impl BoardStorage for IosStorage {
                             row_index: None,
                             stack_index: None,
                             col_local_index: None,
+                            card_kid: None,
+                            card_index: None,
                         });
                     }
                 }
@@ -616,6 +618,8 @@ impl BoardStorage for IosStorage {
                         row_index: None,
                         stack_index: None,
                         col_local_index: None,
+                        card_kid: None,
+                        card_index: None,
                     });
                 }
             }
