@@ -774,6 +774,37 @@ pub struct NativeMenuItem {
     pub items: Option<Vec<NativeMenuItem>>,
 }
 
+/// Recursively build a native submenu so menus nested more than one level
+/// deep (e.g. Marp Classes ▸ Local Classes ▸ lead) keep working. The previous
+/// non-recursive builder flattened the third level into dead leaves whose ids
+/// had no action handler.
+fn build_native_submenu(
+    app: &AppHandle,
+    label: &str,
+    items: &[NativeMenuItem],
+) -> Result<tauri::menu::Submenu<tauri::Wry>, String> {
+    let mut sub_builder = SubmenuBuilder::new(app, label);
+    for sub_item in items {
+        if sub_item.separator {
+            sub_builder = sub_builder.separator();
+            continue;
+        }
+        let sub_label = sub_item.label.as_deref().unwrap_or("");
+        let sub_id = sub_item.id.as_deref().unwrap_or("");
+        if let Some(nested) = &sub_item.items {
+            let nested_menu = build_native_submenu(app, sub_label, nested)?;
+            sub_builder = sub_builder.item(&nested_menu);
+        } else {
+            let mi = MenuItemBuilder::with_id(sub_id, sub_label)
+                .enabled(!sub_item.disabled)
+                .build(app)
+                .map_err(|e| e.to_string())?;
+            sub_builder = sub_builder.item(&mi);
+        }
+    }
+    sub_builder.build().map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn show_context_menu(
     window: Window,
@@ -808,21 +839,7 @@ pub async fn show_context_menu(
         let id = item.id.as_deref().unwrap_or("");
 
         if let Some(sub_items) = &item.items {
-            let mut sub_builder = SubmenuBuilder::new(&app, label);
-            for sub_item in sub_items {
-                if sub_item.separator {
-                    sub_builder = sub_builder.separator();
-                    continue;
-                }
-                let sub_label = sub_item.label.as_deref().unwrap_or("");
-                let sub_id = sub_item.id.as_deref().unwrap_or("");
-                let mi = MenuItemBuilder::with_id(sub_id, sub_label)
-                    .enabled(!sub_item.disabled)
-                    .build(&app)
-                    .map_err(|e| e.to_string())?;
-                sub_builder = sub_builder.item(&mi);
-            }
-            let submenu = sub_builder.build().map_err(|e| e.to_string())?;
+            let submenu = build_native_submenu(&app, label, sub_items)?;
             builder = builder.item(&submenu);
         } else {
             let mi = MenuItemBuilder::with_id(id, label)
